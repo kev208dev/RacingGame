@@ -29,19 +29,113 @@ function makeTree(scale = 1) {
 // ── grandstand (3 stepped boxes) ─────────────────────────────────────
 function makeGrandstand() {
   const g = new THREE.Group();
-  const matFrame = new THREE.MeshLambertMaterial({ color: 0x9da8b8 });
-  const matSeats = new THREE.MeshLambertMaterial({ color: 0x4f6072 });
-  for (let i = 0; i < 4; i++) {
-    const w = 80, h = 5 + i * 3.5, d = 5;
-    const step = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), i === 3 ? matFrame : matSeats);
+  const matFrame = new THREE.MeshLambertMaterial({ color: 0xbec5c9 });
+  const matSeats = new THREE.MeshLambertMaterial({ color: 0x656b72 });
+  const matRoof  = new THREE.MeshLambertMaterial({ color: 0xd8d6c6 });
+  const crowdMats = [
+    new THREE.MeshBasicMaterial({ color: 0xe54b4b }),
+    new THREE.MeshBasicMaterial({ color: 0xf2f2f2 }),
+    new THREE.MeshBasicMaterial({ color: 0x3e8cff }),
+    new THREE.MeshBasicMaterial({ color: 0xffd34d }),
+    new THREE.MeshBasicMaterial({ color: 0x202226 }),
+  ];
+  for (let i = 0; i < 7; i++) {
+    const w = 112, h = 2.8 + i * 1.8, d = 5.2;
+    const step = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), matSeats);
     step.position.set(0, h / 2, -i * d);
     step.castShadow = true;
     step.receiveShadow = true;
     g.add(step);
+    for (let j = -24; j <= 24; j += 4) {
+      if (Math.random() < 0.18) continue;
+      const p = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), crowdMats[Math.floor(Math.random() * crowdMats.length)]);
+      p.position.set(j * 2.1, h + 0.8, -i * d - 1.2);
+      g.add(p);
+    }
   }
-  const roof = new THREE.Mesh(new THREE.BoxGeometry(86, 1.5, 22), matFrame);
-  roof.position.set(0, 19, -10);
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(124, 1.5, 45), matRoof);
+  roof.position.set(0, 23, -17);
+  roof.rotation.x = -0.12;
   g.add(roof);
+  for (let x = -54; x <= 54; x += 18) {
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.9, 23, 0.9), matFrame);
+    post.position.set(x, 11.5, -4);
+    g.add(post);
+  }
+  return g;
+}
+
+function makeCatchFence(length = 36) {
+  const g = new THREE.Group();
+  const postMat = new THREE.MeshLambertMaterial({ color: 0xb8c0c6 });
+  const wireMat = new THREE.MeshBasicMaterial({ color: 0xdfe5e8, transparent: true, opacity: 0.45 });
+  const base = new THREE.Mesh(new THREE.BoxGeometry(length, 2.2, 0.6), new THREE.MeshLambertMaterial({ color: 0x9fa5a9 }));
+  base.position.y = 1.1;
+  g.add(base);
+  for (let x = -length / 2; x <= length / 2; x += 6) {
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.35, 10, 0.35), postMat);
+    post.position.set(x, 6, 0);
+    g.add(post);
+  }
+  for (let y = 4; y <= 11; y += 1.8) {
+    const wire = new THREE.Mesh(new THREE.BoxGeometry(length, 0.12, 0.18), wireMat);
+    wire.position.y = y;
+    g.add(wire);
+  }
+  return g;
+}
+
+function makeSponsorBridge(labelColor = 0xffd500) {
+  const g = new THREE.Group();
+  const yellow = new THREE.MeshLambertMaterial({ color: labelColor });
+  const black = new THREE.MeshBasicMaterial({ color: 0x111111 });
+  const pylonMat = new THREE.MeshLambertMaterial({ color: 0xb7bdc2 });
+  const beam = new THREE.Mesh(new THREE.BoxGeometry(118, 10, 7), yellow);
+  beam.position.y = 32;
+  beam.castShadow = true;
+  g.add(beam);
+  for (const x of [-54, 54]) {
+    const post = new THREE.Mesh(new THREE.BoxGeometry(4, 32, 4), pylonMat);
+    post.position.set(x, 16, 0);
+    g.add(post);
+  }
+  for (const x of [-26, 0, 26]) {
+    const mark = new THREE.Mesh(new THREE.BoxGeometry(14, 4, 7.3), black);
+    mark.position.set(x, 33, 0);
+    g.add(mark);
+  }
+  return g;
+}
+
+function makePitWall(length = 150) {
+  const g = new THREE.Group();
+  const wall = new THREE.Mesh(
+    new THREE.BoxGeometry(length, 4.5, 1.4),
+    new THREE.MeshLambertMaterial({ color: 0xd9d9d6 })
+  );
+  wall.position.y = 2.25;
+  wall.receiveShadow = true;
+  g.add(wall);
+  const rail = new THREE.Mesh(
+    new THREE.BoxGeometry(length, 0.7, 1.8),
+    new THREE.MeshLambertMaterial({ color: 0x20252a })
+  );
+  rail.position.y = 5.0;
+  g.add(rail);
+  return g;
+}
+
+function makeCityBlock(seed = 0) {
+  const g = new THREE.Group();
+  const mat = new THREE.MeshLambertMaterial({ color: 0x65707a });
+  const glass = new THREE.MeshLambertMaterial({ color: 0x98b5c8, transparent: true, opacity: 0.72 });
+  for (let i = 0; i < 5; i++) {
+    const h = 40 + ((seed + i * 17) % 50);
+    const b = new THREE.Mesh(new THREE.BoxGeometry(24, h, 22), i % 2 ? mat : glass);
+    b.position.set((i - 2) * 28, h / 2, (i % 2) * 18);
+    b.castShadow = true;
+    g.add(b);
+  }
   return g;
 }
 
@@ -170,8 +264,7 @@ export function scatterProps(scene, track) {
   const trackW = track.width || 100;
   if (!cl || cl.length === 0) return propsGroup;
 
-  // ── trees densely placed just outside the wall (close-up speed cues) ──
-  // Step along the centerline; offset perpendicular outward, stagger distance.
+  // ── catch fencing close to the wall, plus fewer trees away from the circuit ──
   for (let i = 0; i < cl.length; i++) {
     const [cx, cy] = cl[i];
     const [nx, ny] = cl[(i + 1) % cl.length];
@@ -179,9 +272,19 @@ export function scatterProps(scene, track) {
     const tl = Math.hypot(tx, ty) || 1;
     const px =  ty / tl;            // outward perpendicular
     const py = -tx / tl;
-    // Trees on outer side
-    if (i % 3 === 0 && Math.random() < 0.85) {
-      const off = trackW / 2 + 18 + Math.random() * 22;
+    if (i % 6 === 0) {
+      const side = i % 12 === 0 ? 1 : -1;
+      const off = trackW / 2 + 8;
+      const sx = cx + side * px * off;
+      const sy = cy + side * py * off;
+      const fence = makeCatchFence(32);
+      fence.position.set(sx, 0, -sy);
+      fence.rotation.y = Math.atan2(ty, tx);
+      propsGroup.add(fence);
+    }
+    // Trees set farther back so the scene no longer reads as pure grassland.
+    if (i % 9 === 0 && Math.random() < 0.55) {
+      const off = trackW / 2 + 72 + Math.random() * 70;
       const sx = cx + px * off;
       const sy = cy + py * off;
       const t = makeTree(0.7 + Math.random() * 0.7);
@@ -189,9 +292,8 @@ export function scatterProps(scene, track) {
       t.rotation.y = Math.random() * Math.PI * 2;
       propsGroup.add(t);
     }
-    // Trees on inner side, less dense
-    if (i % 6 === 0 && Math.random() < 0.55) {
-      const off = trackW / 2 + 18 + Math.random() * 28;
+    if (i % 18 === 0 && Math.random() < 0.35) {
+      const off = trackW / 2 + 84 + Math.random() * 50;
       const sx = cx - px * off;
       const sy = cy - py * off;
       // skip if it would land on the track (rare with offset >= halfWidth + 18)
@@ -204,14 +306,14 @@ export function scatterProps(scene, track) {
   }
 
   // ── billboards at moderate intervals just outside the wall ──
-  for (let i = 0; i < cl.length; i += 32) {
+  for (let i = 0; i < cl.length; i += 24) {
     const [cx, cy] = cl[i];
     const [nx, ny] = cl[(i + 1) % cl.length];
     const tx = nx - cx, ty = ny - cy;
     const tl = Math.hypot(tx, ty) || 1;
     const px =  ty / tl;
     const py = -tx / tl;
-    const off = trackW / 2 + 14;
+    const off = trackW / 2 + 24;
     const sx = cx + px * off;
     const sy = cy + py * off;
     const b = makeBillboard();
@@ -247,7 +349,7 @@ export function scatterProps(scene, track) {
     for (const side of [-1, 1]) {
       for (let k = 0; k < 2; k++) {
         const longOff = (k - 0.5) * 110;          // straddle start line
-        const sideOff = side * (trackW / 2 + 38);
+        const sideOff = side * (trackW / 2 + 54);
         const wx = sp.x + fwdX * longOff + perpX * sideOff;
         const wy = sp.y + fwdY * longOff + perpY * sideOff;
         const gs = makeGrandstand();
@@ -264,6 +366,20 @@ export function scatterProps(scene, track) {
     pits.rotation.y = sa;
     propsGroup.add(pits);
 
+    const pitWall = makePitWall(190);
+    const pitWallX = sp.x + fwdX * 12 + perpX * (trackW / 2 + 7) * -1;
+    const pitWallY = sp.y + fwdY * 12 + perpY * (trackW / 2 + 7) * -1;
+    pitWall.position.set(pitWallX, 0, -pitWallY);
+    pitWall.rotation.y = sa;
+    propsGroup.add(pitWall);
+
+    const bridge = makeSponsorBridge(track.id === 'suzuka' ? 0xffd200 : 0xf1c400);
+    const bridgeX = sp.x + fwdX * 120;
+    const bridgeY = sp.y + fwdY * 120;
+    bridge.position.set(bridgeX, 0, -bridgeY);
+    bridge.rotation.y = sa;
+    propsGroup.add(bridge);
+
     // Flag poles flanking the start line
     for (const side of [-1, 1]) {
       for (let k = 0; k < 4; k++) {
@@ -277,6 +393,16 @@ export function scatterProps(scene, track) {
         propsGroup.add(f);
       }
     }
+  }
+
+  // ── distant city/paddock skyline like modern street and grand prix venues ──
+  for (let i = 0; i < 9; i++) {
+    const a = (i / 9) * Math.PI * 2 + 0.4;
+    const r = 4300 + (i % 3) * 330;
+    const block = makeCityBlock(i * 23);
+    block.position.set(Math.cos(a) * r, 0, -Math.sin(a) * r);
+    block.rotation.y = -a + Math.PI / 2;
+    propsGroup.add(block);
   }
 
   // ── marshal posts every ~30 centerline points, on the outer side ──

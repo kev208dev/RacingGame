@@ -190,16 +190,20 @@ export function makeSpeedLines(count = 60) {
   return arr;
 }
 
-export function drawSpeedLines(ctx, lines, kmh, w, h, dt) {
-  // Activate above 60 km/h so the player feels speed sooner.
-  if (kmh < 60) {
+export function drawSpeedLines(ctx, lines, kmh, w, h, dt, cameraMode = 'chase') {
+  if (cameraMode === 'high') {
     for (const p of lines) p.life = 0;
     return;
   }
-  const intensity = Math.min(1, (kmh - 60) / 220);  // 0 at 60, 1 at 280
-  const cx = w * 0.5, cy = h * 0.55;                // slightly below center
-  const speedScale = 1100 + intensity * 2400;       // px/sec radial speed
-  const spawnRate  = 140  + intensity * 380;        // particles/sec
+  // Activate above 60 km/h so the player feels speed sooner.
+  if (kmh < 105) {
+    for (const p of lines) p.life = 0;
+    return;
+  }
+  const intensity = Math.min(1, (kmh - 105) / 240);
+  const cx = w * 0.5, cy = h * 0.62;
+  const speedScale = 900 + intensity * 1700;
+  const spawnRate  = 45 + intensity * 115;
 
   // Spawn fresh particles
   let toSpawn = spawnRate * dt;
@@ -212,9 +216,9 @@ export function drawSpeedLines(ctx, lines, kmh, w, h, dt) {
     p.y = cy + Math.sin(a) * r0;
     p.vx = Math.cos(a) * speedScale;
     p.vy = Math.sin(a) * speedScale;
-    p.len = 24 + Math.random() * 36;
-    p.alpha = 0.20 + Math.random() * 0.25;
-    p.life  = 0.35;
+    p.len = 18 + Math.random() * 26;
+    p.alpha = 0.08 + Math.random() * 0.14;
+    p.life  = 0.28;
     toSpawn -= 1;
   }
 
@@ -233,8 +237,8 @@ export function drawSpeedLines(ctx, lines, kmh, w, h, dt) {
     const dl = Math.hypot(dx, dy) || 1;
     const tx = -dx / dl * p.len;
     const ty = -dy / dl * p.len;
-    ctx.strokeStyle = `rgba(255,255,255,${p.alpha * intensity})`;
-    ctx.lineWidth = 1 + intensity * 1.5;
+    ctx.strokeStyle = `rgba(190,220,255,${p.alpha * intensity})`;
+    ctx.lineWidth = 0.8 + intensity * 0.8;
     ctx.beginPath();
     ctx.moveTo(p.x, p.y);
     ctx.lineTo(p.x + tx, p.y + ty);

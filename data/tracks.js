@@ -94,7 +94,7 @@ function makeCircuit({
     startLine,
     sectors,
     startPos,
-    backgroundColor: '#2f6b3a',
+    backgroundColor: '#4f554d',
     trackColor:      '#3a3a3a',
   };
 }

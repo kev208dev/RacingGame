@@ -9,10 +9,10 @@ export function getTrackGroup(track, scene) {
 function _buildTrackGroup(track) {
   const grp = new THREE.Group();
 
-  // ── ground (grass) — large enough to wrap any reasonable circuit ──
+  // ── ground — muted paddock/asphalt apron instead of endless grass ──
   const groundGeo = new THREE.PlaneGeometry(15000, 15000);
   groundGeo.rotateX(-Math.PI / 2);
-  const groundMat = new THREE.MeshLambertMaterial({ color: 0x2d5a1b });
+  const groundMat = new THREE.MeshLambertMaterial({ color: 0x4f554d });
   const ground    = new THREE.Mesh(groundGeo, groundMat);
   ground.position.set(0, -0.3, 0);
   ground.receiveShadow = true;
@@ -38,7 +38,7 @@ function _buildTrackGroup(track) {
 
   const trackGeo = new THREE.ShapeGeometry(shape, 8);
   trackGeo.rotateX(-Math.PI / 2);
-  const trackMat = new THREE.MeshLambertMaterial({ color: 0x383838 });
+  const trackMat = new THREE.MeshLambertMaterial({ color: 0x2f3032 });
   const trackMesh = new THREE.Mesh(trackGeo, trackMat);
   trackMesh.position.y = 0;
   trackMesh.receiveShadow = true;

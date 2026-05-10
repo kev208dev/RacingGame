@@ -51,6 +51,12 @@ export function createCar3D(carData) {
   const tire  = new THREE.MeshPhongMaterial({ color: 0x1a1a1a, shininess: 20 });
   const rim   = new THREE.MeshPhongMaterial({ color: 0xb6b6b6, shininess: 160 });
   const white = new THREE.MeshPhongMaterial({ color: 0xeeeeee });
+  const carbon = new THREE.MeshPhongMaterial({ color: 0x07090c, shininess: 90 });
+  const accent = new THREE.MeshPhongMaterial({ color: 0xffd84a, shininess: 130 });
+  const flameMat = new THREE.MeshBasicMaterial({
+    color: 0xff7a18, transparent: true, opacity: 0.0,
+    blending: THREE.AdditiveBlending, depthWrite: false,
+  });
 
   // ── body ──
   const bodyMesh = new THREE.Mesh(new THREE.BoxGeometry(26, 4.5, 12), bodyM);
@@ -58,11 +64,21 @@ export function createCar3D(carData) {
   bodyMesh.castShadow = true;
   body.add(bodyMesh);
 
+  // low carbon floor and sculpted splitter make the silhouettes less boxy
+  const floor = new THREE.Mesh(new THREE.BoxGeometry(34, 0.8, 16), carbon);
+  floor.position.set(0, 2.2, 0);
+  floor.castShadow = true;
+  body.add(floor);
+
   // nose
   const nose = new THREE.Mesh(new THREE.BoxGeometry(6, 2.5, 8), bodyM);
   nose.position.set(14, 3.5, 0);
   nose.castShadow = true;
   body.add(nose);
+
+  const noseStripe = new THREE.Mesh(new THREE.BoxGeometry(7, 0.22, 1.2), accent);
+  noseStripe.position.set(14.5, 4.85, 0);
+  body.add(noseStripe);
 
   // side pods
   for (const side of [-1, 1]) {
@@ -70,6 +86,10 @@ export function createCar3D(carData) {
     sp.position.set(-1, 4.5, side * 7.5);
     sp.castShadow = true;
     body.add(sp);
+    const intake = new THREE.Mesh(new THREE.BoxGeometry(7, 2.2, 0.6), carbon);
+    intake.position.set(3, 5.2, side * 9.3);
+    intake.castShadow = true;
+    body.add(intake);
   }
 
   // cockpit surround
@@ -89,16 +109,47 @@ export function createCar3D(carData) {
   cockpit.position.set(1, 7.8, 0);
   body.add(cockpit);
 
+  const halo = new THREE.Mesh(new THREE.TorusGeometry(4.2, 0.28, 8, 24, Math.PI * 1.25), carbon);
+  halo.position.set(2.0, 10.3, 0);
+  halo.rotation.set(Math.PI / 2, 0, -0.45);
+  body.add(halo);
+
+  for (const side of [-1, 1]) {
+    const mirrorArm = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 4.5), carbon);
+    mirrorArm.position.set(5.5, 8.2, side * 5.5);
+    body.add(mirrorArm);
+    const mirror = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.7, 0.35), bodyM);
+    mirror.position.set(5.5, 8.4, side * 7.8);
+    body.add(mirror);
+  }
+
   // rear diffuser
   const diffuser = new THREE.Mesh(new THREE.BoxGeometry(5, 1.5, 13), dark);
   diffuser.position.set(-12, 3.5, 0);
   body.add(diffuser);
+
+  for (const side of [-1, 1]) {
+    const exhaust = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 2.2, 12), carbon);
+    exhaust.rotation.z = Math.PI / 2;
+    exhaust.position.set(-15.1, 5.0, side * 2.4);
+    body.add(exhaust);
+
+    const flame = new THREE.Mesh(new THREE.ConeGeometry(0.9, 5.5, 16), flameMat.clone());
+    flame.rotation.z = Math.PI / 2;
+    flame.position.set(-18.5, 5.0, side * 2.4);
+    flame.name = 'boostflame';
+    flame.visible = false;
+    body.add(flame);
+  }
 
   // ── front wing ──
   const fw = new THREE.Mesh(new THREE.BoxGeometry(4, 0.8, 18), bodyM);
   fw.position.set(16, 2, 0);
   fw.castShadow = true;
   body.add(fw);
+  const fwFlap = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.45, 20), carbon);
+  fwFlap.position.set(18.1, 2.8, 0);
+  body.add(fwFlap);
   for (const s of [-1, 1]) {
     const fwEnd = new THREE.Mesh(new THREE.BoxGeometry(0.8, 3, 0.8), bodyM);
     fwEnd.position.set(16, 2, s * 9);
@@ -110,10 +161,27 @@ export function createCar3D(carData) {
   rw.position.set(-13, 12, 0);
   rw.castShadow = true;
   body.add(rw);
+  const rwFlap = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.8, 18), carbon);
+  rwFlap.position.set(-15.1, 13.8, 0);
+  rwFlap.castShadow = true;
+  body.add(rwFlap);
   for (const s of [-1, 1]) {
     const p = new THREE.Mesh(new THREE.BoxGeometry(1.2, 5, 1.2), dark);
     p.position.set(-13, 9, s * 6);
     body.add(p);
+  }
+
+  if (carData.category === 'Prototype') {
+    body.scale.set(1.1, 0.82, 1.18);
+    rw.position.y += 1.5;
+    rwFlap.position.y += 1.5;
+  } else if (carData.category === 'Road Car') {
+    surround.scale.set(1.25, 0.9, 0.9);
+    ws.rotation.z = -0.25;
+    fw.scale.z = 0.7;
+    fwFlap.visible = false;
+    rw.scale.set(0.75, 0.8, 0.75);
+    rwFlap.scale.set(0.65, 0.7, 0.65);
   }
 
   // ── brake lights (part of body, lights with the chassis) ──
@@ -216,6 +284,13 @@ export function updateCar3D(mesh3d, car, input) {
   mesh3d.traverse(c => {
     if (c.name === 'brakelight' && c.material) {
       c.material.emissive.setHex(braking ? 0xff2222 : 0x441111);
+    }
+    if (c.name === 'boostflame' && c.material) {
+      const on = !!car.boosting;
+      c.visible = on;
+      c.material.opacity = on ? 0.72 + Math.random() * 0.18 : 0.0;
+      const s = on ? 0.75 + Math.random() * 0.45 : 0.1;
+      c.scale.set(s, s, 1.0 + Math.random() * 0.4);
     }
   });
 }
