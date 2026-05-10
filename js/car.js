@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { getPaintJob } from '../utils/storage.js';
 
 // ── physics state ────────────────────────────────────────────
 export function createCar(carData, startPos) {
@@ -12,6 +13,12 @@ export function createCar(carData, startPos) {
     dragCoef:    carData.dragCoef,
     maxRpm:      carData.maxRpm,
     maxTorque:   carData.maxTorque,
+    boostChargeRate: carData.boostChargeRate || 14,
+    boostCost:   carData.boostCost || 38,
+    boostDuration: carData.boostDuration || 1.45,
+    boostSpeedMult: carData.boostSpeedMult || 1.23,
+    boostAccelMult: carData.boostAccelMult || 1.35,
+    flameScale:  carData.flameScale || 1,
     color:       carData.color,
     bodyColor:   carData.color,
     x: startPos.x, y: startPos.y, angle: startPos.angle,
@@ -26,6 +33,7 @@ export function createCar(carData, startPos) {
     drifting: false,
     boostMeter: 0,            // 0..100
     boostTimer: 0,
+    boostPower: 0,
     boosting: false,
     lastWallHit: null,
     _acc: 0, _shiftTimer: 0,
@@ -45,14 +53,32 @@ export function createCar3D(carData) {
 
   const hex   = parseInt(carData.color.replace('#', ''), 16);
   const bodyM = new THREE.MeshPhongMaterial({ color: hex, shininess: 120 });
+  const paintJob = getPaintJob(carData.id);
+  if (paintJob) {
+    const paintTexture = new THREE.TextureLoader().load(paintJob);
+    paintTexture.colorSpace = THREE.SRGBColorSpace;
+    paintTexture.wrapS = THREE.RepeatWrapping;
+    paintTexture.wrapT = THREE.RepeatWrapping;
+    paintTexture.repeat.set(1.15, 1.0);
+    bodyM.map = paintTexture;
+    bodyM.color.setHex(0xffffff);
+    bodyM.emissive.setHex(0x111111);
+  }
   const black = new THREE.MeshPhongMaterial({ color: 0x111111 });
   const dark  = new THREE.MeshPhongMaterial({ color: 0x222222, shininess: 40 });
   const glass = new THREE.MeshPhongMaterial({ color: 0x5599cc, transparent: true, opacity: 0.7, shininess: 200 });
-  const tire  = new THREE.MeshPhongMaterial({ color: 0x1a1a1a, shininess: 20 });
+  const tire  = new THREE.MeshPhongMaterial({ color: paintJob ? 0x2b1f34 : 0x1a1a1a, shininess: 20 });
   const rim   = new THREE.MeshPhongMaterial({ color: 0xb6b6b6, shininess: 160 });
   const white = new THREE.MeshPhongMaterial({ color: 0xeeeeee });
   const carbon = new THREE.MeshPhongMaterial({ color: 0x07090c, shininess: 90 });
   const accent = new THREE.MeshPhongMaterial({ color: 0xffd84a, shininess: 130 });
+  if (paintJob) {
+    accent.color.setHex(0xffffff);
+    accent.map = bodyM.map;
+  }
+  const paintPanelMat = paintJob
+    ? new THREE.MeshPhongMaterial({ color: 0xffffff, map: bodyM.map, shininess: 160, emissive: 0x181818 })
+    : bodyM;
   const flameMat = new THREE.MeshBasicMaterial({
     color: 0xff7a18, transparent: true, opacity: 0.0,
     blending: THREE.AdditiveBlending, depthWrite: false,
@@ -63,6 +89,18 @@ export function createCar3D(carData) {
   bodyMesh.position.set(0, 5, 0);
   bodyMesh.castShadow = true;
   body.add(bodyMesh);
+  if (paintJob) {
+    const hoodPaint = new THREE.Mesh(new THREE.BoxGeometry(18, 0.35, 13.5), paintPanelMat);
+    hoodPaint.position.set(4, 7.45, 0);
+    hoodPaint.castShadow = true;
+    body.add(hoodPaint);
+    const sidePaintL = new THREE.Mesh(new THREE.BoxGeometry(22, 5.2, 0.5), paintPanelMat);
+    sidePaintL.position.set(0, 5.3, 8.45);
+    body.add(sidePaintL);
+    const sidePaintR = sidePaintL.clone();
+    sidePaintR.position.z = -8.45;
+    body.add(sidePaintR);
+  }
 
   // low carbon floor and sculpted splitter make the silhouettes less boxy
   const floor = new THREE.Mesh(new THREE.BoxGeometry(34, 0.8, 16), carbon);
@@ -134,11 +172,28 @@ export function createCar3D(carData) {
     exhaust.position.set(-15.1, 5.0, side * 2.4);
     body.add(exhaust);
 
-    const flame = new THREE.Mesh(new THREE.ConeGeometry(0.9, 5.5, 16), flameMat.clone());
-    flame.rotation.z = Math.PI / 2;
-    flame.position.set(-18.5, 5.0, side * 2.4);
+    const flame = new THREE.Group();
     flame.name = 'boostflame';
+    flame.position.set(-17.2, 5.0, side * 2.4);
     flame.visible = false;
+    const outer = new THREE.Mesh(new THREE.ConeGeometry(1.05, 6.2, 18), flameMat.clone());
+    outer.rotation.z = Math.PI / 2;
+    outer.position.x = -2.6;
+    outer.name = 'flameouter';
+    flame.add(outer);
+    const innerMat = flameMat.clone();
+    innerMat.color.setHex(0xfff2a0);
+    const inner = new THREE.Mesh(new THREE.ConeGeometry(0.55, 3.7, 16), innerMat);
+    inner.rotation.z = Math.PI / 2;
+    inner.position.x = -1.6;
+    inner.name = 'flameinner';
+    flame.add(inner);
+    const glowMat = flameMat.clone();
+    glowMat.color.setHex(0xff3b19);
+    const glow = new THREE.Mesh(new THREE.SphereGeometry(1.0, 12, 8), glowMat);
+    glow.position.x = -0.25;
+    glow.name = 'flameglow';
+    flame.add(glow);
     body.add(flame);
   }
 
@@ -175,6 +230,23 @@ export function createCar3D(carData) {
     body.scale.set(1.1, 0.82, 1.18);
     rw.position.y += 1.5;
     rwFlap.position.y += 1.5;
+  } else if (carData.category === 'Lightweight') {
+    body.scale.set(0.86, 0.78, 0.82);
+    floor.scale.set(0.9, 0.9, 0.82);
+    rw.position.y -= 1.2;
+    rw.scale.set(0.72, 0.75, 0.72);
+    rwFlap.scale.set(0.72, 0.7, 0.72);
+  } else if (carData.category === 'Heavyweight') {
+    body.scale.set(1.22, 1.08, 1.18);
+    floor.scale.set(1.22, 1, 1.2);
+    rw.scale.set(1.08, 1.1, 1.08);
+    rwFlap.scale.set(1.08, 1, 1.08);
+  } else if (carData.category === 'Formula') {
+    body.scale.set(1.0, 0.74, 0.92);
+    rw.position.y += 2.8;
+    rwFlap.position.y += 2.8;
+    fw.scale.set(1.15, 0.8, 1.15);
+    fwFlap.scale.set(1.15, 0.8, 1.15);
   } else if (carData.category === 'Road Car') {
     surround.scale.set(1.25, 0.9, 0.9);
     ws.rotation.z = -0.25;
@@ -223,6 +295,11 @@ export function createCar3D(carData) {
 
     const rimMesh = new THREE.Mesh(rimGeo, rim);
     spinGroup.add(rimMesh);
+    if (paintJob) {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(3.15, 0.28, 8, 18), accent);
+      ring.rotation.x = Math.PI / 2;
+      spinGroup.add(ring);
+    }
 
     const hubMesh = new THREE.Mesh(hubGeo, white);
     spinGroup.add(hubMesh);
@@ -285,12 +362,21 @@ export function updateCar3D(mesh3d, car, input) {
     if (c.name === 'brakelight' && c.material) {
       c.material.emissive.setHex(braking ? 0xff2222 : 0x441111);
     }
-    if (c.name === 'boostflame' && c.material) {
+    if (c.name === 'boostflame') {
       const on = !!car.boosting;
       c.visible = on;
-      c.material.opacity = on ? 0.72 + Math.random() * 0.18 : 0.0;
-      const s = on ? 0.75 + Math.random() * 0.45 : 0.1;
-      c.scale.set(s, s, 1.0 + Math.random() * 0.4);
+      const power = car.boostPower ?? (on ? 1 : 0);
+      const base = 1.55 * (car.flameScale || 1) * (0.45 + power * 0.75);
+      const flicker = 0.88 + Math.random() * 0.22;
+      c.scale.set(base * flicker, base * (0.92 + Math.random() * 0.12), base * (0.88 + Math.random() * 0.18));
+      c.children.forEach(part => {
+        if (!part.material) return;
+        const inner = part.name === 'flameinner';
+        const glow = part.name === 'flameglow';
+        part.material.opacity = on
+          ? (inner ? 0.82 : glow ? 0.22 : 0.48) * (0.55 + power * 0.45)
+          : 0;
+      });
     }
   });
 }

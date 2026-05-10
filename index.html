@@ -32,10 +32,22 @@
           <span>닉네임</span>
           <input id="player-name" maxlength="24" autocomplete="nickname" />
         </label>
+        <div class="auth-box" id="auth-box">
+          <input id="auth-email" type="email" placeholder="이메일 로그인" autocomplete="email" />
+          <button class="btn-secondary btn-small" id="btn-auth-login">로그인</button>
+          <button class="btn-secondary btn-small hidden" id="btn-auth-logout">로그아웃</button>
+          <span id="auth-status">고성능 차량 잠김</span>
+        </div>
         <button class="btn-secondary btn-small" id="btn-open-leaderboard">랭킹보드</button>
       </div>
     </div>
     <div class="category-tabs" id="cat-tabs"></div>
+    <div class="paint-bar">
+      <input id="paint-upload" type="file" accept="image/*" hidden />
+      <button class="btn-secondary btn-small" id="btn-paint-upload">사진으로 도색</button>
+      <button class="btn-secondary btn-small" id="btn-paint-clear">도색 지우기</button>
+      <span id="paint-status">선택한 차량에 이미지 도색을 적용합니다.</span>
+    </div>
     <div class="car-grid" id="car-grid"></div>
     <div class="screen-footer">
       <div class="car-desc" id="car-desc"></div>
@@ -98,6 +110,7 @@
           <h2>토탈 랭킹</h2>
           <p id="global-leaderboard-status">서버 연결 중...</p>
         </div>
+        <select id="leaderboard-track-filter" aria-label="랭킹 맵 선택"></select>
         <button class="btn-icon" id="btn-leaderboard-close" aria-label="닫기">×</button>
       </div>
       <ol class="global-leaderboard-list" id="global-leaderboard-list"></ol>

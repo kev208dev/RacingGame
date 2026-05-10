@@ -1,27 +1,11 @@
-import { createClient } from '@supabase/supabase-js';
+import { getSupabase } from './supabaseClient.js';
 
 const API_BASE = '';
 const PROFILE_KEY = 'racing_player_profile';
-const SUPABASE_URL = 'https://fcexjurcapptmiagdcxn.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_b7fJ1n3J0WMDV2x8XQqwFQ_kzxWPZ2S';
 const TABLE = 'leaderboard_records';
 
-let supabase = null;
 let channel = null;
 const listeners = new Set();
-
-function getSupabase() {
-  if (!supabase) {
-    supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-        detectSessionInUrl: false,
-      },
-    });
-  }
-  return supabase;
-}
 
 function randomId() {
   const bytes = new Uint32Array(2);
@@ -111,7 +95,7 @@ export function subscribeLeaderboard(listener) {
         const carId = row.car_id || '';
         const trackId = row.track_id || '';
         try {
-          const result = await fetchLeaderboard(carId, trackId, 10);
+          const result = await fetchLeaderboard('', trackId, 20);
           for (const fn of listeners) {
             fn({ carId, trackId, leaderboard: result.leaderboard || [] });
           }
@@ -183,8 +167,8 @@ async function submitSupabaseLeaderboard(profile, car, track, lapData) {
 
   if (error) throw error;
 
-  const result = await fetchSupabaseLeaderboard(car.id, track.id, 10);
-  const rank = result.leaderboard.find(row => row.playerId === profile.id)?.rank ?? null;
+  const result = await fetchSupabaseLeaderboard('', track.id, 20);
+  const rank = result.leaderboard.find(row => row.playerId === profile.id && row.carId === car.id)?.rank ?? null;
   return {
     accepted: true,
     improved,

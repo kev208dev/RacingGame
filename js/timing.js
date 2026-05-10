@@ -1,12 +1,12 @@
 import { segmentsIntersect } from '../utils/math.js';
 
-export function createTiming() {
+export function createTiming(bestSectors = [null, null, null]) {
   return {
     lapStart:      null,
     currentLap:    0,
     bestLap:       null,
     sectorTimes:   [null, null, null],
-    sectorBest:    [null, null, null],
+    sectorBest:    [...bestSectors],
     lapTimes:      [],
     lastSector:    0,
     prevPos:       null,
@@ -54,7 +54,7 @@ export function updateTiming(timing, car, track, now) {
       timing._sectorPassed = [false, false, false];
       timing.lastSector = 0;
 
-      event = { type: 'lapComplete', lapMs, isNew, sectors };
+      event = { type: 'lapComplete', lapMs, isNew, sectors, sectorBest: [...timing.sectorBest] };
     }
   }
 

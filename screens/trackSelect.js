@@ -37,6 +37,7 @@ function _render() {
       <span>${track.length}</span>
       <span>난이도: ${track.difficulty}</span>
       ${track.desc ? `<span class="desc">${track.desc}</span>` : ''}
+      ${track.character ? `<span class="desc track-character">${track.character}</span>` : ''}
     `;
     card.appendChild(info);
 
@@ -63,7 +64,11 @@ function _drawMiniMap(canvas, track) {
   const ctx = canvas.getContext('2d');
   const w = canvas.width, h = canvas.height;
 
-  ctx.fillStyle = track.backgroundColor || '#2d5a1b';
+  const bg = ctx.createLinearGradient(0, 0, w, h);
+  bg.addColorStop(0, '#101820');
+  bg.addColorStop(0.55, track.backgroundColor || '#2d5a1b');
+  bg.addColorStop(1, '#0b1117');
+  ctx.fillStyle = bg;
   ctx.fillRect(0, 0, w, h);
 
   const pts  = track.outerBoundary;
@@ -84,12 +89,35 @@ function _drawMiniMap(canvas, track) {
   ctx.moveTo(...tp(track.innerBoundary[0]));
   for (const p of track.innerBoundary) ctx.lineTo(...tp(p));
   ctx.closePath();
+  ctx.shadowColor = 'rgba(0,0,0,0.45)';
+  ctx.shadowBlur = 14;
+  ctx.shadowOffsetY = 8;
   ctx.fillStyle = track.trackColor || '#3e3e3e';
   ctx.fill('evenodd');
+  ctx.shadowColor = 'transparent';
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetY = 0;
+
+  // F1-style colored sector centerline
+  const center = track.centerLine || [];
+  if (center.length) {
+    const colors = [track.accentColor || '#ffd166', track.sectors?.[0]?.color || '#2ec4b6', track.sectors?.[1]?.color || '#c77dff'];
+    for (let s = 0; s < 3; s++) {
+      const a = Math.floor(center.length * s / 3);
+      const b = Math.floor(center.length * (s + 1) / 3);
+      ctx.strokeStyle = colors[s];
+      ctx.lineWidth = 5;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(...tp(center[a]));
+      for (let i = a + 1; i < b; i++) ctx.lineTo(...tp(center[i]));
+      ctx.stroke();
+    }
+  }
 
   // outer edge
-  ctx.strokeStyle = '#aaa';
-  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+  ctx.lineWidth = 1.2;
   ctx.beginPath();
   ctx.moveTo(...tp(track.outerBoundary[0]));
   for (const p of track.outerBoundary) ctx.lineTo(...tp(p));
@@ -102,10 +130,31 @@ function _drawMiniMap(canvas, track) {
     const [sx1, sy1] = tp([sl.x1, sl.y1]);
     const [sx2, sy2] = tp([sl.x2, sl.y2]);
     ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2.5;
+    ctx.lineWidth = 3.5;
     ctx.beginPath();
     ctx.moveTo(sx1, sy1);
     ctx.lineTo(sx2, sy2);
     ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 10px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('START', (sx1 + sx2) / 2, (sy1 + sy2) / 2 - 8);
+  }
+
+  for (const [idx, sector] of (track.sectors || []).entries()) {
+    const line = sector.checkLine;
+    const [x1, y1] = tp([line.x1, line.y1]);
+    const [x2, y2] = tp([line.x2, line.y2]);
+    const mx = (x1 + x2) / 2;
+    const my = (y1 + y2) / 2;
+    ctx.fillStyle = sector.color || '#2ec4b6';
+    ctx.beginPath();
+    ctx.arc(mx, my, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#091014';
+    ctx.font = 'bold 10px system-ui';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`S${idx + 2}`, mx, my + 0.5);
   }
 }

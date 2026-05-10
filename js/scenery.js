@@ -107,6 +107,36 @@ function makeSponsorBridge(span = 150, labelColor = 0xffd500) {
   return g;
 }
 
+function makeCrowdWall(length = 180) {
+  const g = new THREE.Group();
+  const wallMat = new THREE.MeshLambertMaterial({ color: 0x3f464b });
+  const roofMat = new THREE.MeshLambertMaterial({ color: 0xd8d6c6 });
+  const crowdMats = [
+    new THREE.MeshBasicMaterial({ color: 0xe54b4b }),
+    new THREE.MeshBasicMaterial({ color: 0xf2f2f2 }),
+    new THREE.MeshBasicMaterial({ color: 0x3e8cff }),
+    new THREE.MeshBasicMaterial({ color: 0xffd34d }),
+    new THREE.MeshBasicMaterial({ color: 0x202226 }),
+  ];
+  const wall = new THREE.Mesh(new THREE.BoxGeometry(length, 42, 10), wallMat);
+  wall.position.y = 21;
+  wall.castShadow = true;
+  wall.receiveShadow = true;
+  g.add(wall);
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(length + 16, 2.4, 26), roofMat);
+  roof.position.set(0, 48, -5);
+  roof.rotation.x = -0.08;
+  g.add(roof);
+  for (let row = 0; row < 4; row++) {
+    for (let x = -length / 2 + 8; x < length / 2 - 8; x += 8) {
+      const p = new THREE.Mesh(new THREE.BoxGeometry(4.5, 2.6, 1.8), crowdMats[(row + Math.floor((x + length / 2) / 8)) % crowdMats.length]);
+      p.position.set(x, 31 + row * 3.6, -5.8);
+      g.add(p);
+    }
+  }
+  return g;
+}
+
 function makePitWall(length = 150) {
   const g = new THREE.Group();
   const wall = new THREE.Mesh(
@@ -291,7 +321,7 @@ export function scatterProps(scene, track) {
         placeTrackside(makeCatchFence(82), sx, sy, segRot);
       }
     }
-    if (i % 10 === 0) {
+    if (i % 8 === 0) {
       for (const side of [-1, 1]) {
         const off = trackW / 2 + 34;
         const sx = cx + side * px * off;
@@ -299,13 +329,21 @@ export function scatterProps(scene, track) {
         placeTrackside(makeBillboard(), sx, sy, segRot + (side > 0 ? Math.PI / 2 : -Math.PI / 2));
       }
     }
-    if (i % 20 === 0) {
+    if (i % 12 === 0) {
+      for (const side of [-1, 1]) {
+        const off = trackW / 2 + 84;
+        const sx = cx + side * px * off;
+        const sy = cy + side * py * off;
+        placeTrackside(makeCrowdWall(170), sx, sy, segRot + (side > 0 ? Math.PI : 0));
+      }
+    }
+    if (i % 28 === 0) {
       const side = i % 40 === 0 ? 1 : -1;
-      const off = trackW / 2 + 92;
+      const off = trackW / 2 + 130;
       const sx = cx + side * px * off;
       const sy = cy + side * py * off;
       const gs = makeGrandstand();
-      gs.scale.setScalar(0.72);
+      gs.scale.setScalar(0.95);
       placeTrackside(gs, sx, sy, segRot + (side > 0 ? Math.PI : 0));
     }
     // Trees set farther back so the scene no longer reads as pure grassland.
@@ -366,13 +404,6 @@ export function scatterProps(scene, track) {
     const pitWallX = sp.x + fwdX * 12 + perpX * (trackW / 2 + 7) * -1;
     const pitWallY = sp.y + fwdY * 12 + perpY * (trackW / 2 + 7) * -1;
     placeTrackside(pitWall, pitWallX, pitWallY, sa);
-
-    const bridge = makeSponsorBridge(trackW + 92, track.id === 'suzuka' ? 0xffd200 : 0xf1c400);
-    const bridgeX = sp.x + fwdX * 120;
-    const bridgeY = sp.y + fwdY * 120;
-    bridge.position.set(bridgeX, 0, -bridgeY);
-    bridge.rotation.y = sa + Math.PI / 2;
-    propsGroup.add(bridge);
 
     // Flag poles flanking the start line
     for (const side of [-1, 1]) {

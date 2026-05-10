@@ -7,7 +7,7 @@ import { createTiming, updateTiming } from '../js/timing.js';
 import { getInput }       from '../utils/input.js';
 import { startEngine, stopEngine, updateEngineSound, resumeContext, playLapDing, playWallThud } from '../js/audio.js';
 import { formatTime } from '../utils/math.js';
-import { saveBestLap, addLapHistory } from '../utils/storage.js';
+import { saveBestLap, addLapHistory, getBestSectors, saveBestSectors, getBestGhost, saveBestGhost, getPaintColor } from '../utils/storage.js';
 import {
   createSmokePool, spawnSmoke, updateSmoke,
   createSkidBuffer,
@@ -51,6 +51,12 @@ let lapBannerText  = '';
 let lapBannerSub   = '';
 let lapBannerNew   = false;
 let pendingResults = null;
+let startCountdown = 0;
+let startReadyAt = 0;
+let raceReleased = false;
+let lapPath = [];
+let bestGhost = null;
+let resultsTimeout = null;
 
 // fixed-step physics
 const FIXED_DT  = 1 / 60;
@@ -71,6 +77,15 @@ export function initGame(cd, tr, resultsCb, menuCb) {
   accumulator = 0;
   cameraMode  = 'chase';
   lastWallHitId = 0;
+  startCountdown = 3.2;
+  startReadyAt = performance.now() + 3200;
+  raceReleased = false;
+  lapPath = [];
+  bestGhost = getBestGhost(tr.id);
+  if (resultsTimeout) {
+    clearTimeout(resultsTimeout);
+    resultsTimeout = null;
+  }
 
   // ── HUD canvas ──
   hudCanvas = document.getElementById('hud-canvas');
@@ -101,12 +116,12 @@ export function initGame(cd, tr, resultsCb, menuCb) {
   const sa = tr.startPos.angle;
   _camPos.set(
     tr.startPos.x - Math.cos(sa) * 78,
-    22,
+    36,
     -(tr.startPos.y - Math.sin(sa) * 78)
   );
   _camLook.set(
     tr.startPos.x + Math.cos(sa) * 45,
-    6,
+    12,
     -(tr.startPos.y + Math.sin(sa) * 45)
   );
   _camAngle = sa;
@@ -153,7 +168,7 @@ export function initGame(cd, tr, resultsCb, menuCb) {
   speedLines = makeSpeedLines(60);
 
   // ── timing ──
-  timing = createTiming();
+  timing = createTiming(getBestSectors(track.id));
 
   window.addEventListener('resize', _onResize);
 
@@ -172,6 +187,10 @@ export function initGame(cd, tr, resultsCb, menuCb) {
 
 export function stopGame() {
   running = false;
+  if (resultsTimeout) {
+    clearTimeout(resultsTimeout);
+    resultsTimeout = null;
+  }
   stopEngine();
   window.removeEventListener('resize', _onResize);
 
@@ -195,11 +214,19 @@ export function updateGame(dt, now) {
   if (input.reset)  _resetCar();
   if (input.escape) { stopGame(); if (onMenu) onMenu(); return; }
 
+  startCountdown = Math.max(0, (startReadyAt - now) / 1000);
+  raceReleased = startCountdown <= 0;
+  const driveInput = raceReleased ? input : {
+    ...input,
+    throttle: 0, brake: 0, steer: 0, handbrake: false,
+    boost: false, boostJust: false, gearUp: false, gearDown: false,
+  };
+
   // ── fixed-step physics ──
   accumulator += dt;
   let steps = 0;
   while (accumulator >= FIXED_DT && steps < 5) {
-    updatePhysics(car, input, FIXED_DT, track);
+    updatePhysics(car, driveInput, FIXED_DT, track);
     accumulator -= FIXED_DT;
     steps++;
   }
@@ -209,18 +236,30 @@ export function updateGame(dt, now) {
 
   // ── timing ──
   const event = updateTiming(timing, car, track, now);
+  if (timing.started && raceReleased) _sampleLapPath(now);
   if (event?.type === 'lapComplete') {
     const isNew = !!event.isNew;
     saveBestLap(carData.id, track.id, event.lapMs);
     addLapHistory(carData.id, track.id, {
-      lapMs: event.lapMs, sectors: event.sectors, date: Date.now()
+      lapMs: event.lapMs, sectors: event.sectors, date: Date.now(), path: lapPath.slice(0, 900)
     });
+    saveBestSectors(track.id, event.sectors, { carName: carData.name });
+    if (isNew) {
+      saveBestGhost(track.id, {
+        lapMs: event.lapMs,
+        carName: carData.name,
+        path: lapPath.slice(0, 900),
+      });
+      bestGhost = getBestGhost(track.id);
+    }
+    lapPath = [];
     // Show in-game banner first; results screen follows after a beat.
     lapBannerText  = formatTime(event.lapMs);
     lapBannerSub   = isNew ? '🏆 NEW BEST LAP' : 'LAP COMPLETE';
     lapBannerNew   = isNew;
     lapBannerTimer = 1.8;
     pendingResults = { ...event };
+    _scheduleResults({ ...event });
     playLapDing(isNew);
   }
   if (lapBannerTimer > 0) {
@@ -228,7 +267,7 @@ export function updateGame(dt, now) {
     if (lapBannerTimer <= 0 && pendingResults) {
       const ev = pendingResults;
       pendingResults = null;
-      if (onResults) onResults(ev);
+      _showResults(ev);
       return;
     }
   }
@@ -252,7 +291,7 @@ export function updateGame(dt, now) {
   updateSparks(sparkPool, dt);
 
   // ── 3D update ──
-  updateCar3D(carMesh, car, input);
+  updateCar3D(carMesh, car, driveInput);
   updateScenery(propsGroup, now);
   _updateCamera(dt);
 
@@ -284,7 +323,9 @@ function _emitDriftFx(dt) {
     const w3z = -wy;
     // Smoke puff occasionally (don't spawn every frame)
     if (Math.random() < 0.55) {
-      spawnSmoke(smokePool, wx, 3, w3z);
+      const paintColor = getPaintColor(carData.id);
+      const smokeColor = paintColor ? parseInt(paintColor.slice(1), 16) : 0xeeeeee;
+      spawnSmoke(smokePool, wx, 3, w3z, smokeColor);
     }
     // Skid mark: append a quad from the previous wheel position to the current.
     const key = sideSign < 0 ? '_lastSkidL' : '_lastSkidR';
@@ -302,11 +343,30 @@ function _emitDriftFx(dt) {
   }
 }
 
+function _scheduleResults(ev) {
+  if (resultsTimeout) clearTimeout(resultsTimeout);
+  resultsTimeout = setTimeout(() => {
+    if (!pendingResults) return;
+    const next = pendingResults;
+    pendingResults = null;
+    _showResults(next || ev);
+  }, 2200);
+}
+
+function _showResults(ev) {
+  if (resultsTimeout) {
+    clearTimeout(resultsTimeout);
+    resultsTimeout = null;
+  }
+  running = false;
+  if (onResults) onResults(ev);
+}
+
 // ── chase camera (framerate-independent smoothing) ──────────
 function _updateCamera(dt) {
-  const DIST       = cameraMode === 'high' ? 0   : 78;
-  const HEIGHT     = cameraMode === 'high' ? 380 : 22;
-  const LOOK_AHEAD = 45;
+  const DIST       = cameraMode === 'high' ? 0   : 92;
+  const HEIGHT     = cameraMode === 'high' ? 380 : 38;
+  const LOOK_AHEAD = cameraMode === 'high' ? 20 : 58;
 
   let dA = car.angle - _camAngle;
   while (dA >  Math.PI) dA -= Math.PI * 2;
@@ -322,7 +382,7 @@ function _updateCamera(dt) {
   const tz = -(car.y - sn * DIST);
 
   const lx = car.x + cs * LOOK_AHEAD;
-  const ly = 6;
+  const ly = cameraMode === 'high' ? 0 : 12;
   const lz = -(car.y + sn * LOOK_AHEAD);
 
   const posK  = 1 - Math.exp(-12.0 * dt);
@@ -357,8 +417,100 @@ function _renderHUD(dt, kmh) {
   hudCtx.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
   // speed-line streaks below normal HUD
   drawSpeedLines(hudCtx, speedLines, kmh, hudCanvas.width, hudCanvas.height, dt, cameraMode);
-  drawHUD(hudCtx, car, timing, hudCanvas.width, hudCanvas.height, track);
+  drawHUD(hudCtx, car, timing, hudCanvas.width, hudCanvas.height, track, bestGhost);
   if (lapBannerTimer > 0) _drawLapBanner(hudCtx, hudCanvas.width, hudCanvas.height);
+  if (!raceReleased) _drawStartSignal(hudCtx, hudCanvas.width, hudCanvas.height);
+}
+
+function _sampleLapPath(now) {
+  const last = lapPath[lapPath.length - 1];
+  if (last) {
+    const dx = car.x - last.x;
+    const dy = car.y - last.y;
+    if (dx * dx + dy * dy < 2600 && now - last.t < 220) return;
+  }
+  lapPath.push({ x: car.x, y: car.y, t: now - timing.lapStart });
+  if (lapPath.length > 900) lapPath.shift();
+}
+
+function _drawStartSignal(ctx, w, h) {
+  const left = startCountdown;
+  const lit = left > 2.2 ? 1 : left > 1.2 ? 2 : left > 0.25 ? 3 : 4;
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.38)';
+  ctx.fillRect(0, 0, w, h);
+  const cx = w / 2;
+  const y = h * 0.23;
+  ctx.fillStyle = 'rgba(8,12,18,0.92)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+  ctx.lineWidth = 3;
+  _roundRect(ctx, cx - 170, y - 42, 340, 84, 18);
+  ctx.fill();
+  ctx.stroke();
+  for (let i = 0; i < 4; i++) {
+    const x = cx - 112 + i * 74;
+    const go = lit >= 4;
+    const active = go ? i === 3 : i < lit;
+    const color = go ? '#2ec4b6' : '#e63946';
+    ctx.beginPath();
+    ctx.arc(x, y, 24, 0, Math.PI * 2);
+    ctx.fillStyle = active ? color : '#272d36';
+    ctx.shadowColor = active ? color : 'transparent';
+    ctx.shadowBlur = active ? 18 : 0;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+    ctx.stroke();
+  }
+  ctx.textAlign = 'center';
+  ctx.font = '800 20px system-ui';
+  ctx.fillStyle = 'rgba(255,255,255,0.82)';
+  ctx.fillText(lit >= 4 ? 'GO!' : '출발 신호 대기', cx, y + 62);
+  _drawFlagMarshal(ctx, 90, h * 0.38, performance.now());
+  _drawFlagMarshal(ctx, w - 90, h * 0.38, performance.now() + 800, true);
+  ctx.restore();
+}
+
+function _drawFlagMarshal(ctx, x, y, t, flip = false) {
+  ctx.save();
+  ctx.translate(x, y);
+  if (flip) ctx.scale(-1, 1);
+  const wave = Math.sin(t * 0.012) * 0.45;
+  ctx.strokeStyle = '#f5f5f5';
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.moveTo(0, 12);
+  ctx.lineTo(24, -24);
+  ctx.stroke();
+  ctx.save();
+  ctx.translate(24, -24);
+  ctx.rotate(wave);
+  for (let i = 0; i < 4; i++) {
+    for (let j = 0; j < 3; j++) {
+      ctx.fillStyle = (i + j) % 2 ? '#111' : '#fff';
+      ctx.fillRect(i * 10, j * 8, 10, 8);
+    }
+  }
+  ctx.restore();
+  ctx.fillStyle = '#101820';
+  ctx.beginPath();
+  ctx.arc(0, -8, 10, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillRect(-9, 2, 18, 36);
+  ctx.restore();
+}
+
+function _roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
 }
 
 function _drawLapBanner(ctx, w, h) {
@@ -395,13 +547,22 @@ function _resetCar() {
   car.offTrack = false;
   car.boostMeter = 0;
   car.boostTimer = 0;
+  car.boostPower = 0;
   car.boosting = false;
   car.lastWallHit = null;
   if (skidBuf) skidBuf.reset();
   // Re-create timing so the new lap starts cleanly when the line is crossed.
-  timing = createTiming();
+  timing = createTiming(getBestSectors(track.id));
+  lapPath = [];
+  startCountdown = 3.2;
+  startReadyAt = performance.now() + 3200;
+  raceReleased = false;
   lapBannerTimer = 0;
   pendingResults = null;
+  if (resultsTimeout) {
+    clearTimeout(resultsTimeout);
+    resultsTimeout = null;
+  }
 }
 
 function _onResize() {

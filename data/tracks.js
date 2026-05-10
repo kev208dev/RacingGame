@@ -1,22 +1,30 @@
-// Procedural F1-inspired tracks built as smooth polar curves with localized
-// "bumps" (Gaussian perturbations of the radius). The smoothness guarantees
-// that the perpendicular wall offset never self-intersects, so the track is
-// always drivable end-to-end.
+// Five F1-inspired circuits with intentionally different silhouettes.
+// The paths are closed Catmull-Rom splines through hand-shaped control points,
+// then widened into inner/outer track walls.
 
-function buildPolarCenterline({ baseR, bumps, segments = 220 }) {
-  const pts = [];
-  for (let i = 0; i < segments; i++) {
-    const a = (i / segments) * Math.PI * 2;
-    let r = baseR;
-    for (const b of bumps) {
-      let da = a - b.angle;
-      while (da >  Math.PI) da -= 2 * Math.PI;
-      while (da < -Math.PI) da += 2 * Math.PI;
-      r += b.amp * Math.exp(-(da * da) / (b.width * b.width));
+function catmull(p0, p1, p2, p3, t) {
+  const t2 = t * t;
+  const t3 = t2 * t;
+  return {
+    x: 0.5 * ((2 * p1.x) + (-p0.x + p2.x) * t + (2*p0.x - 5*p1.x + 4*p2.x - p3.x) * t2 + (-p0.x + 3*p1.x - 3*p2.x + p3.x) * t3),
+    y: 0.5 * ((2 * p1.y) + (-p0.y + p2.y) * t + (2*p0.y - 5*p1.y + 4*p2.y - p3.y) * t2 + (-p0.y + 3*p1.y - 3*p2.y + p3.y) * t3),
+  };
+}
+
+function buildSplineCenterline(points, segments = 240, mirrorX = true) {
+  const controls = points.map(([x, y]) => ({ x: mirrorX ? -x : x, y }));
+  const out = [];
+  const per = Math.max(8, Math.floor(segments / controls.length));
+  for (let i = 0; i < controls.length; i++) {
+    const p0 = controls[(i - 1 + controls.length) % controls.length];
+    const p1 = controls[i];
+    const p2 = controls[(i + 1) % controls.length];
+    const p3 = controls[(i + 2) % controls.length];
+    for (let j = 0; j < per; j++) {
+      out.push(catmull(p0, p1, p2, p3, j / per));
     }
-    pts.push({ x: Math.cos(a) * r, y: Math.sin(a) * r });
   }
-  return pts;
+  return out;
 }
 
 function offsetWalls(center, width) {
@@ -35,28 +43,37 @@ function offsetWalls(center, width) {
     outer.push([c.x + nx * width / 2, c.y + ny * width / 2]);
     inner.push([c.x - nx * width / 2, c.y - ny * width / 2]);
   }
-  return { outer, inner };
+  return Math.abs(_polyArea(outer)) >= Math.abs(_polyArea(inner))
+    ? { outer, inner }
+    : { outer: inner, inner: outer };
+}
+
+function _polyArea(points) {
+  let sum = 0;
+  for (let i = 0; i < points.length; i++) {
+    const [x1, y1] = points[i];
+    const [x2, y2] = points[(i + 1) % points.length];
+    sum += x1 * y2 - x2 * y1;
+  }
+  return sum / 2;
 }
 
 function makeCircuit({
-  id, name, length, difficulty, desc,
-  baseR, bumps, width,
-  segments = 220, startBackOffset = 130,
+  id, name, length, difficulty, desc, character, points, width,
+  segments = 240, startBackOffset = 130, theme = {}, mirrorX = true,
 }) {
-  const center = buildPolarCenterline({ baseR, bumps, segments });
+  const center = buildSplineCenterline(points, segments, mirrorX);
   const { outer, inner } = offsetWalls(center, width);
 
   const N = center.length;
   const sc      = center[0];
   const scNext  = center[1];
   const sAngle  = Math.atan2(scNext.y - sc.y, scNext.x - sc.x);
-  const halfW   = width * 0.55;
+  const halfW   = width * 0.58;
   const perpDx  = -Math.sin(sAngle);
   const perpDy  =  Math.cos(sAngle);
-
-  // Spawn N segments behind the start line, exactly on the centerline so the
-  // car always starts on the track regardless of curve geometry.
-  const backSeg = Math.max(2, Math.round(startBackOffset / (2 * Math.PI * baseR / N)));
+  const approxStep = _avgStep(center);
+  const backSeg = Math.max(3, Math.round(startBackOffset / approxStep));
   const spawnIdx = (N - backSeg) % N;
   const spawn  = center[spawnIdx];
   const spawnN = center[(spawnIdx + 1) % N];
@@ -82,11 +99,12 @@ function makeCircuit({
         x1: c.x + px * halfW, y1: c.y + py * halfW,
         x2: c.x - px * halfW, y2: c.y - py * halfW,
       },
+      color: s === 1 ? (theme.sector1 || '#2ec4b6') : (theme.sector2 || '#c77dff'),
     });
   }
 
   return {
-    id, name, length, difficulty, desc,
+    id, name, length, difficulty, desc, character,
     width,
     outerBoundary: outer,
     innerBoundary: inner,
@@ -94,180 +112,105 @@ function makeCircuit({
     startLine,
     sectors,
     startPos,
-    backgroundColor: '#4f554d',
-    trackColor:      '#3a3a3a',
+    backgroundColor: theme.background || '#4f554d',
+    trackColor: theme.track || '#303235',
+    accentColor: theme.accent || '#ffd166',
+    mapColor: theme.map || '#e7edf3',
   };
 }
 
-// Bump shorthand: { a:angle, w:width, amp:radius-perturb }
-const B = (a, w, amp) => ({ angle: a, width: w, amp });
+function _avgStep(center) {
+  let total = 0;
+  for (let i = 0; i < center.length; i++) {
+    const a = center[i];
+    const b = center[(i + 1) % center.length];
+    total += Math.hypot(b.x - a.x, b.y - a.y);
+  }
+  return total / center.length;
+}
 
 export const TRACKS = [
   makeCircuit({
-    id: 'spa', name: 'Spa-Francorchamps',
-    length: '약 7 km', difficulty: '어려움',
-    desc: '오뤼주, 라디용, 부스 스탑 시케인의 클래식 서킷',
-    baseR: 3400, width: 130, segments: 240, startBackOffset: 150,
-    bumps: [
-      B(0.10, 0.18, -380),  // La Source
-      B(0.80, 0.30,  500),  // Eau Rouge → Kemmel straight (long sweep out)
-      B(2.00, 0.20, -350),  // Les Combes chicane
-      B(2.60, 0.30,  280),  // sweep
-      B(3.60, 0.35, -380),  // Pouhon
-      B(4.50, 0.25,  300),  // Stavelot
-      B(5.40, 0.20, -260),  // Bus Stop chicane
+    id: 'spa',
+    name: 'Spa-Francorchamps',
+    length: '7.0 km',
+    difficulty: '어려움',
+    desc: '초고속 오르막, 긴 직선, 큰 리듬 변화',
+    character: '긴 고속 구간 + 급격한 리듬 변화',
+    width: 132,
+    startBackOffset: 170,
+    theme: { accent: '#ffd166', sector1: '#2ec4b6', sector2: '#79b8ff', map: '#f2f5f7' },
+    points: [
+      [-3600, -900], [-2600, -1900], [-900, -1720], [-260, -220],
+      [680, -2550], [2500, -2180], [3740, -760], [2080, 220],
+      [3300, 1500], [1080, 2350], [-900, 1820], [-2440, 2300],
+      [-3780, 820],
     ],
   }),
   makeCircuit({
-    id: 'suzuka', name: 'Suzuka Circuit',
-    length: '약 6 km', difficulty: '어려움',
-    desc: '에세스, 스푼, 130R로 이어지는 8자형 테크니컬',
-    baseR: 3100, width: 115, segments: 220, startBackOffset: 130,
-    bumps: [
-      B(0.40, 0.18, -260),  // T1
-      B(0.85, 0.12,  220),  // S1
-      B(1.10, 0.12, -200),  // S2
-      B(1.40, 0.12,  220),  // S3
-      B(2.20, 0.20, -300),  // Degner
-      B(3.40, 0.30,  350),  // back stretch
-      B(4.30, 0.25, -340),  // Spoon
-      B(5.20, 0.18,  240),  // 130R
-      B(5.80, 0.18, -240),  // Casio chicane
+    id: 'suzuka',
+    name: 'Suzuka Circuit',
+    length: '5.8 km',
+    difficulty: '어려움',
+    desc: 'S자 리듬과 고속 130R 느낌의 테크니컬 코스',
+    character: '연속 S자 + 빠른 후반부',
+    width: 116,
+    startBackOffset: 145,
+    theme: { accent: '#e63946', sector1: '#ff6b6b', sector2: '#2ec4b6', map: '#f6f0df' },
+    points: [
+      [-3000, -720], [-2040, -1780], [-620, -1570], [240, -820],
+      [1480, -1450], [3340, -900], [3560, 360], [2040, 1320],
+      [520, 780], [-340, 1740], [-1760, 1320], [-3180, 260],
     ],
   }),
   makeCircuit({
-    id: 'monaco', name: 'Circuit de Monaco',
-    length: '약 4 km', difficulty: '매우 어려움',
-    desc: '극도로 좁은 시가지 — 풀 코너와 Loews 헤어핀',
-    baseR: 2500, width: 90, segments: 220, startBackOffset: 110,
-    bumps: [
-      B(0.40, 0.15, -220),  // Sainte Devote
-      B(0.90, 0.20,  240),  // Massenet
-      B(1.40, 0.18, -300),  // Loews
-      B(2.00, 0.15,  220),  // tunnel approach
-      B(2.80, 0.18, -260),  // Nouvelle chicane
-      B(3.50, 0.15,  200),  // Tabac
-      B(4.10, 0.15, -200),  // pool L
-      B(4.50, 0.15,  200),  // pool R
-      B(5.30, 0.20, -220),  // Rascasse
-      B(5.80, 0.15,  180),
+    id: 'monaco',
+    name: 'Circuit de Monaco',
+    length: '3.3 km',
+    difficulty: '매우 어려움',
+    desc: '좁고 느린 시가지, 헤어핀과 벽 압박',
+    character: '저속 헤어핀 + 좁은 벽 코스',
+    width: 84,
+    startBackOffset: 105,
+    theme: { background: '#50545a', accent: '#f4a261', sector1: '#ffd166', sector2: '#ef476f', map: '#f9f2e7' },
+    points: [
+      [-1660, -1160], [-620, -1660], [520, -1500], [1180, -900],
+      [460, -380], [1720, 80], [1480, 940], [620, 1320],
+      [-160, 820], [-980, 1480], [-1780, 900], [-1320, 100],
+      [-2160, -360],
     ],
   }),
   makeCircuit({
-    id: 'silverstone', name: 'Silverstone',
-    length: '약 6 km', difficulty: '보통',
-    desc: '매기츠/베킷츠 고속 에세스가 매력',
-    baseR: 3300, width: 140, segments: 220, startBackOffset: 150,
-    bumps: [
-      B(0.30, 0.25,  300),  // Abbey/Village
-      B(1.20, 0.18, -260),  // Loop
-      B(1.90, 0.15,  240),  // Maggotts
-      B(2.20, 0.15, -240),  // Becketts
-      B(2.50, 0.15,  240),  // Chapel
-      B(3.50, 0.30,  350),  // Hangar straight
-      B(4.40, 0.20, -300),  // Stowe
-      B(5.30, 0.20, -250),  // Vale/Club
+    id: 'monza',
+    name: 'Autodromo di Monza',
+    length: '5.8 km',
+    difficulty: '보통',
+    desc: '긴 직선과 큰 제동, 최고속 싸움',
+    character: '초고속 직선 + 시케인 브레이킹',
+    width: 148,
+    startBackOffset: 180,
+    theme: { background: '#4d5548', accent: '#37c777', sector1: '#37c777', sector2: '#ffd166', map: '#eef7ed' },
+    points: [
+      [-3960, -1160], [1900, -1360], [3720, -480], [3240, 620],
+      [1220, 1040], [3420, 1840], [0, 2180], [-3560, 1180],
+      [-3880, 120],
     ],
   }),
   makeCircuit({
-    id: 'monza', name: 'Autodromo di Monza',
-    length: '약 6 km', difficulty: '보통',
-    desc: '긴 직선 + 3개 시케인 — 슬립스트림의 성지',
-    baseR: 3500, width: 145, segments: 220, startBackOffset: 160,
-    bumps: [
-      B(0.25, 0.15, -340),  // Variante del Rettifilo
-      B(1.50, 0.40,  500),  // Curva Grande / long sweep
-      B(3.00, 0.18, -340),  // Variante della Roggia
-      B(3.80, 0.20, -260),  // Lesmo 1
-      B(4.20, 0.18, -240),  // Lesmo 2
-      B(5.10, 0.18, -300),  // Variante Ascari
-      B(5.70, 0.30,  350),  // Curva Parabolica
-    ],
-  }),
-  makeCircuit({
-    id: 'interlagos', name: 'Autódromo José Carlos Pace',
-    length: '약 5 km', difficulty: '어려움',
-    desc: '세나의 S와 Junção, 짧고 응축된 흐름',
-    baseR: 2900, width: 120, segments: 220, startBackOffset: 135,
-    bumps: [
-      B(0.40, 0.18, -280),  // Senna S in
-      B(0.80, 0.18,  220),  // Senna S out
-      B(1.80, 0.30,  300),  // back stretch
-      B(2.80, 0.20, -300),  // Ferradura
-      B(3.60, 0.20,  240),  // Junção
-      B(4.40, 0.18, -250),  // Mergulho
-      B(5.20, 0.20,  240),  // Pinheirinho
-      B(5.80, 0.20, -220),
-    ],
-  }),
-  makeCircuit({
-    id: 'imola', name: 'Imola — A. E. Dino Ferrari',
-    length: '약 5 km', difficulty: '어려움',
-    desc: '탐부렐로, 토사, 리바차의 좁고 정밀한 테크니컬',
-    baseR: 2800, width: 105, segments: 220, startBackOffset: 125,
-    bumps: [
-      B(0.35, 0.20,  240),  // Tamburello (now chicane)
-      B(0.85, 0.18, -260),  // Villeneuve
-      B(1.50, 0.20, -300),  // Tosa
-      B(2.40, 0.25,  280),  // Piratella
-      B(3.30, 0.18, -260),  // Acque Minerali
-      B(4.10, 0.18, -240),  // Variante Alta
-      B(4.80, 0.20, -260),  // Rivazza 1
-      B(5.20, 0.18,  220),  // Rivazza 2
-    ],
-  }),
-  makeCircuit({
-    id: 'hungaroring', name: 'Hungaroring',
-    length: '약 4 km', difficulty: '어려움',
-    desc: '직선이 거의 없는 꼬임의 연속',
-    baseR: 2600, width: 100, segments: 220, startBackOffset: 120,
-    bumps: [
-      B(0.30, 0.18, -220),  // T1
-      B(0.80, 0.18,  220),
-      B(1.30, 0.18, -220),  // T3 hairpin
-      B(1.90, 0.18,  200),
-      B(2.50, 0.18, -200),
-      B(3.20, 0.20, -220),
-      B(3.80, 0.18,  200),
-      B(4.40, 0.18, -200),
-      B(5.00, 0.18,  220),
-      B(5.70, 0.18, -200),
-    ],
-  }),
-  makeCircuit({
-    id: 'bahrain', name: 'Bahrain International Circuit',
-    length: '약 6 km', difficulty: '보통',
-    desc: '빠른 직선과 느린 헤어핀이 교차',
-    baseR: 3200, width: 130, segments: 220, startBackOffset: 145,
-    bumps: [
-      B(0.40, 0.20, -300),  // T1 hairpin sequence
-      B(0.80, 0.18,  240),
-      B(1.30, 0.18, -260),  // T4
-      B(2.20, 0.30,  320),  // back stretch
-      B(3.20, 0.25, -300),  // T8
-      B(4.00, 0.20,  240),
-      B(4.80, 0.20, -240),  // T11 chicane
-      B(5.40, 0.18,  220),
-      B(5.90, 0.18, -200),
-    ],
-  }),
-  makeCircuit({
-    id: 'singapore', name: 'Marina Bay Street Circuit',
-    length: '약 5 km', difficulty: '어려움',
-    desc: '시가지 야간 레이스 — 좁은 코너의 연속',
-    baseR: 2700, width: 105, segments: 220, startBackOffset: 130,
-    bumps: [
-      B(0.30, 0.15, -240),
-      B(0.70, 0.15,  220),
-      B(1.20, 0.15, -240),
-      B(1.70, 0.18,  220),
-      B(2.30, 0.20, -260),
-      B(3.00, 0.20,  280),
-      B(3.70, 0.18, -240),
-      B(4.30, 0.15,  200),
-      B(4.80, 0.18, -240),
-      B(5.40, 0.20,  240),
-      B(5.90, 0.15, -200),
+    id: 'singapore',
+    name: 'Marina Bay Street Circuit',
+    length: '4.9 km',
+    difficulty: '어려움',
+    desc: '도시형 직각 코너, 부스트 회복과 탈출 가속이 중요',
+    character: '각진 시가지 + 짧은 가속 구간 반복',
+    width: 98,
+    startBackOffset: 130,
+    theme: { background: '#45484d', accent: '#c77dff', sector1: '#79b8ff', sector2: '#c77dff', map: '#edf2ff' },
+    points: [
+      [-2520, -1420], [-900, -1520], [-660, -660], [780, -920],
+      [2240, -500], [2320, 420], [960, 520], [1320, 1520],
+      [120, 1740], [-520, 820], [-1880, 120], [-2520, 820],
+      [-3200, -20],
     ],
   }),
 ];

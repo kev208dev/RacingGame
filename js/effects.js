@@ -250,13 +250,13 @@ export function drawSpeedLines(ctx, lines, kmh, w, h, dt, cameraMode = 'chase') 
 // ── FOV pump (camera lerps from base FOV up to base+boost) ───────────
 export function updateFovPump(camera, kmh, maxKmh, boostActive, dt) {
   const baseFov  = 62;
-  const speedFovBoost = 28;       // +28° at top speed → 90°
-  const boostFov = 100;           // floor when nitro is firing
+  const speedFovBoost = 20;
+  const boostFov = 86;
   const t = Math.min(1, kmh / maxKmh);
   // Quadratic so the pump kicks in harder at high speed.
   let target = baseFov + (t * t) * speedFovBoost;
   if (boostActive) target = Math.max(target, boostFov);
-  const k = 1 - Math.exp(-7.0 * dt);
+  const k = 1 - Math.exp(-4.6 * dt);
   camera.fov += (target - camera.fov) * k;
   camera.updateProjectionMatrix();
 }

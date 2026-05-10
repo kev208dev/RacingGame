@@ -1,27 +1,36 @@
 import { formatTime } from '../utils/math.js';
 import { KMH_PER_UNIT } from './physics.js';
 
-export function drawHUD(ctx, car, timing, canvasW, canvasH, track) {
+export function drawHUD(ctx, car, timing, canvasW, canvasH, track, ghost = null) {
   const kmh = car.speed * KMH_PER_UNIT;
   const rpmRatio = car.rpm / car.maxRpm;
 
   ctx.save();
   ctx.resetTransform();
 
-  // --- bottom bar ---
-  const barH = 90;
+  // --- bottom cockpit cluster ---
+  const barH = 118;
   const barY = canvasH - barH;
-  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  const panel = ctx.createLinearGradient(0, barY, 0, canvasH);
+  panel.addColorStop(0, 'rgba(12,16,22,0.78)');
+  panel.addColorStop(1, 'rgba(3,5,8,0.94)');
+  ctx.fillStyle = panel;
   ctx.fillRect(0, barY, canvasW, barH);
+  ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, barY + 0.5);
+  ctx.lineTo(canvasW, barY + 0.5);
+  ctx.stroke();
 
   // Speedometer
-  _speedometer(ctx, kmh, car.maxSpeed, 80, barY + barH / 2);
+  _speedometer(ctx, kmh, car.maxSpeed, 86, barY + 60);
 
   // RPM bar
-  _rpmBar(ctx, rpmRatio, 180, barY + 15, canvasW * 0.35, 20);
+  _rpmBar(ctx, rpmRatio, 180, barY + 22, canvasW * 0.36, 24);
 
   // gear (large, with redline flash + auto/manual badge)
-  const gearX = 290, gearY = barY + 56;
+  const gearX = 300, gearY = barY + 75;
   ctx.font = 'bold 13px monospace';
   ctx.textAlign = 'center';
   ctx.fillStyle = (car.transmission === 'manual') ? '#f4a261' : '#79b8ff';
@@ -44,7 +53,7 @@ export function drawHUD(ctx, car, timing, canvasW, canvasH, track) {
   }
 
   // boost meter
-  _boostMeter(ctx, car, 180, barY + 70, canvasW * 0.20, 8);
+  _boostMeter(ctx, car, 180, barY + 88, canvasW * 0.24, 12);
 
   // live lap timer (top-center)
   if (timing.started && timing.lapStart !== null) {
@@ -56,24 +65,24 @@ export function drawHUD(ctx, car, timing, canvasW, canvasH, track) {
   }
 
   // lap times
-  const lapX = canvasW - 260;
+  const lapX = canvasW - 315;
   ctx.textAlign = 'left';
   ctx.font = '14px monospace';
   ctx.fillStyle = '#aaa';
-  ctx.fillText('LAST', lapX, barY + 22);
+  ctx.fillText('LAST', lapX, barY + 28);
   ctx.font = 'bold 20px monospace';
   ctx.fillStyle = '#fff';
-  ctx.fillText(timing.currentLap ? formatTime(timing.currentLap) : '--:--.---', lapX, barY + 45);
+  ctx.fillText(timing.currentLap ? formatTime(timing.currentLap) : '--:--.---', lapX, barY + 52);
 
   ctx.font = '12px monospace';
   ctx.fillStyle = '#aaa';
-  ctx.fillText('BEST', lapX + 130, barY + 22);
+  ctx.fillText('BEST', lapX + 150, barY + 28);
   ctx.font = 'bold 16px monospace';
   ctx.fillStyle = '#c77dff';
-  ctx.fillText(timing.bestLap ? formatTime(timing.bestLap) : '--:--.---', lapX + 130, barY + 45);
+  ctx.fillText(timing.bestLap ? formatTime(timing.bestLap) : '--:--.---', lapX + 150, barY + 52);
 
   // sectors
-  _sectors(ctx, timing, lapX, barY + 62, canvasW);
+  _sectors(ctx, timing, lapX, barY + 74, canvasW);
 
   // off-track warning (top-center)
   if (car.offTrack) {
@@ -92,7 +101,7 @@ export function drawHUD(ctx, car, timing, canvasW, canvasH, track) {
   }
 
   // minimap (top-right)
-  if (track) _drawMinimap(ctx, car, track, canvasW - 230, 20, 210, 150);
+  if (track) _drawMinimap(ctx, car, track, canvasW - 250, 20, 230, 165, ghost);
 
   ctx.restore();
 }
@@ -101,13 +110,37 @@ export function drawHUD(ctx, car, timing, canvasW, canvasH, track) {
 let _miniCache = null;
 let _miniCacheKey = null;
 
-function _drawMinimap(ctx, car, track, x, y, w, h) {
+function _drawMinimap(ctx, car, track, x, y, w, h, ghost) {
   // Build & cache static layer (background + track outline) per-track.
   if (_miniCacheKey !== track.id) {
     _miniCache = _buildMinimap(track, w, h);
     _miniCacheKey = track.id;
   }
   ctx.drawImage(_miniCache.canvas, x, y);
+
+  if (ghost?.path?.length) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255, 209, 102, 0.9)';
+    ctx.lineWidth = 2.2;
+    ctx.setLineDash([6, 5]);
+    ctx.beginPath();
+    ghost.path.forEach((p, i) => {
+      const gx = x + (p.x - m.minX) * m.scale + m.padX;
+      const gy = y + (p.y - m.minY) * m.scale + m.padY;
+      if (i === 0) ctx.moveTo(gx, gy);
+      else ctx.lineTo(gx, gy);
+    });
+    ctx.stroke();
+    ctx.setLineDash([]);
+    const head = ghost.path[Math.min(ghost.path.length - 1, Math.floor(ghost.path.length * 0.55))];
+    const hx = x + (head.x - m.minX) * m.scale + m.padX;
+    const hy = y + (head.y - m.minY) * m.scale + m.padY;
+    ctx.fillStyle = '#ffd166';
+    ctx.beginPath();
+    ctx.arc(hx, hy, 4.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
 
   // Live overlay: car position dot.
   const m = _miniCache;
@@ -147,9 +180,12 @@ function _buildMinimap(track, w, h) {
   const tp    = ([px, py]) => [(px - minX) * scale + padX, (py - minY) * scale + padY];
 
   // panel background
-  c.fillStyle = 'rgba(0,0,0,0.55)';
+  const bg = c.createLinearGradient(0, 0, w, h);
+  bg.addColorStop(0, 'rgba(12,18,26,0.86)');
+  bg.addColorStop(1, 'rgba(44,55,62,0.72)');
+  c.fillStyle = bg;
   c.fillRect(0, 0, w, h);
-  c.strokeStyle = 'rgba(255,255,255,0.25)';
+  c.strokeStyle = 'rgba(255,255,255,0.32)';
   c.lineWidth = 1;
   c.strokeRect(0.5, 0.5, w - 1, h - 1);
 
@@ -164,9 +200,25 @@ function _buildMinimap(track, w, h) {
   c.fillStyle = '#666';
   c.fill('evenodd');
 
+  const center = track.centerLine || [];
+  if (center.length) {
+    const colors = [track.accentColor || '#ffd166', track.sectors?.[0]?.color || '#2ec4b6', track.sectors?.[1]?.color || '#c77dff'];
+    for (let s = 0; s < 3; s++) {
+      const a = Math.floor(center.length * s / 3);
+      const b = Math.floor(center.length * (s + 1) / 3);
+      c.strokeStyle = colors[s];
+      c.lineWidth = 4.2;
+      c.lineCap = 'round';
+      c.beginPath();
+      c.moveTo(...tp(center[a]));
+      for (let i = a + 1; i < b; i++) c.lineTo(...tp(center[i]));
+      c.stroke();
+    }
+  }
+
   // outline
-  c.strokeStyle = '#aaa';
-  c.lineWidth = 1.2;
+  c.strokeStyle = 'rgba(255,255,255,0.82)';
+  c.lineWidth = 1.1;
   c.beginPath();
   c.moveTo(...tp(track.outerBoundary[0]));
   for (const p of track.outerBoundary) c.lineTo(...tp(p));
@@ -190,13 +242,16 @@ function _buildMinimap(track, w, h) {
 }
 
 function _speedometer(ctx, kmh, maxKmh, cx, cy) {
-  const r = 36;
+  const r = 45;
   // background circle
   ctx.beginPath();
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
-  ctx.fillStyle = 'rgba(255,255,255,0.05)';
+  const face = ctx.createRadialGradient(cx, cy, 8, cx, cy, r);
+  face.addColorStop(0, 'rgba(35,43,54,0.95)');
+  face.addColorStop(1, 'rgba(5,8,12,0.95)');
+  ctx.fillStyle = face;
   ctx.fill();
-  ctx.strokeStyle = '#444';
+  ctx.strokeStyle = 'rgba(255,255,255,0.22)';
   ctx.lineWidth = 3;
   ctx.stroke();
 
@@ -207,8 +262,19 @@ function _speedometer(ctx, kmh, maxKmh, cx, cy) {
   ctx.beginPath();
   ctx.arc(cx, cy, r - 4, start, end);
   ctx.strokeStyle = ratio > 0.85 ? '#e63946' : '#2ec4b6';
-  ctx.lineWidth = 5;
+  ctx.lineWidth = 6;
   ctx.stroke();
+  const needle = start + ratio * Math.PI * 1.6;
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx + Math.cos(needle) * (r - 11), cy + Math.sin(needle) * (r - 11));
+  ctx.stroke();
+  ctx.fillStyle = '#2ec4b6';
+  ctx.beginPath();
+  ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+  ctx.fill();
 
   // speed text
   ctx.font = 'bold 18px monospace';
@@ -256,7 +322,7 @@ function _boostMeter(ctx, car, x, y, w, h) {
   ctx.textAlign = 'left';
   ctx.fillText('BOOST', x, y - 2);
   // ready hint
-  if (meter >= 0.30 && !car.boosting) {
+  if ((car.boostMeter || 0) >= (car.boostCost || 38) && !car.boosting) {
     ctx.fillStyle = '#9be9a8';
     ctx.textAlign = 'right';
     ctx.fillText('SHIFT', x + w, y - 2);
@@ -276,7 +342,9 @@ function _sectors(ctx, timing, x, y, canvasW) {
     ctx.font = '11px monospace';
     ctx.fillStyle = color;
     ctx.textAlign = 'left';
-    ctx.fillText(`${labels[i]}: ${t !== null ? formatTime(t) : '--:--.---'}`, x + dx, y);
-    dx += 140;
+    ctx.fillText(`${labels[i]} ${t !== null ? formatTime(t) : '--:--.---'}`, x + dx, y);
+    ctx.fillStyle = '#7d8590';
+    ctx.fillText(`BEST ${best ? formatTime(best) : '--:--.---'}`, x + dx, y + 17);
+    dx += 105;
   }
 }

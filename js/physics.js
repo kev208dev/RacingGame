@@ -26,19 +26,20 @@ export function updatePhysics(car, input, dt, track) {
   _updateBoost(car, input, dt);
 
   // ── derived car limits (boost-modulated) ──
-  const boostOn   = !!car.boosting;
-  const maxSpeed  = car.maxSpeed * SPEED_FACTOR * (boostOn ? 1.32 : 1.0);
-  const baseAccel = (130 + car.maxTorque * 0.32) * (boostOn ? 1.55 : 1.0);
-  const brakeRate = baseAccel * 1.8;
+  const boostPower = clamp(car.boostPower || 0, 0, 1);
+  const maxSpeed  = car.maxSpeed * SPEED_FACTOR * (1 + ((car.boostSpeedMult || 1.23) - 1) * boostPower);
+  const massFactor = Math.pow(1200 / Math.max(650, car.mass || 1200), 0.24);
+  const baseAccel = (130 + car.maxTorque * 0.32) * massFactor * (1 + ((car.boostAccelMult || 1.35) - 1) * boostPower);
+  const brakeRate = baseAccel * 1.65 * Math.pow(1250 / Math.max(700, car.mass || 1250), 0.12);
   const reverseTop = maxSpeed * 0.30;
-  const turnPower = 1.75;
+  const turnPower = 2.12;
 
   car.gear = clamp(car.gear || 1, 1, 6);
   const accelRate = baseAccel * GEAR_ACCEL[car.gear];
 
   // ── steering ── (negate so D = right turn)
   const speedRatio  = clamp(car.speed / maxSpeed, 0, 1);
-  const maxWheel    = 0.50 - speedRatio * 0.22;
+  const maxWheel    = 0.68 - speedRatio * 0.28;
   const targetWheel = -input.steer * maxWheel;
   car.steerAngle += (targetWheel - car.steerAngle) * Math.min(dt * 12, 1);
 
@@ -108,7 +109,8 @@ export function updatePhysics(car, input, dt, track) {
   car.sideSpeed = sSpeed;
   car.drifting  = (input.handbrake && Math.abs(sSpeed) > 6 && car.speed > 25);
   if (car.drifting) {
-    car.boostMeter = Math.min(100, (car.boostMeter || 0) + dt * 38);
+    const driftIntensity = clamp(Math.abs(sSpeed) / 45, 0.25, 1.15);
+    car.boostMeter = Math.min(100, (car.boostMeter || 0) + dt * (car.boostChargeRate || 14) * driftIntensity);
   }
 
   // ── drag + rolling ──
@@ -245,11 +247,15 @@ function _updateBoost(car, input, dt) {
   car.boostMeter = clamp(car.boostMeter || 0, 0, 100);
   car.boostTimer = Math.max(0, (car.boostTimer || 0) - dt);
 
-  if (input.boostJust && car.boostMeter >= 30 && car.boostTimer <= 0) {
-    car.boostMeter = Math.max(0, car.boostMeter - 30);
-    car.boostTimer = 1.5;
+  const cost = car.boostCost || 38;
+  if (input.boostJust && car.boostMeter >= cost && car.boostTimer <= 0) {
+    car.boostMeter = Math.max(0, car.boostMeter - cost);
+    car.boostTimer = car.boostDuration || 1.45;
   }
   car.boosting = car.boostTimer > 0;
+  const target = car.boosting ? 1 : 0;
+  const response = car.boosting ? 5.5 : 3.2;
+  car.boostPower = (car.boostPower || 0) + (target - (car.boostPower || 0)) * (1 - Math.exp(-response * dt));
 }
 
 function _closestSegment(x, y, boundary) {

@@ -41,6 +41,80 @@ export function addLapHistory(carId, trackId, lapData) {
   save(d);
 }
 
+export function getBestSectors(trackId) {
+  const d = load();
+  return d?.sectorBest?.[trackId] ?? [null, null, null];
+}
+
+export function saveBestSectors(trackId, sectors, meta = {}) {
+  const d = load();
+  if (!d.sectorBest) d.sectorBest = {};
+  const prev = d.sectorBest[trackId] ?? [null, null, null];
+  const next = [...prev];
+  let changed = false;
+  for (let i = 0; i < 3; i++) {
+    const value = sectors?.[i];
+    if (value && (!next[i] || value < next[i])) {
+      next[i] = value;
+      changed = true;
+    }
+  }
+  if (changed) {
+    d.sectorBest[trackId] = next;
+    d.sectorBestMeta = d.sectorBestMeta || {};
+    d.sectorBestMeta[trackId] = { ...d.sectorBestMeta[trackId], ...meta, updatedAt: Date.now() };
+    save(d);
+  }
+  return changed;
+}
+
+export function getBestGhost(trackId) {
+  const d = load();
+  return d?.ghosts?.[trackId] ?? null;
+}
+
+export function saveBestGhost(trackId, ghost) {
+  if (!ghost?.path?.length) return;
+  const d = load();
+  const prev = d?.ghosts?.[trackId];
+  if (prev?.lapMs && ghost.lapMs >= prev.lapMs) return;
+  if (!d.ghosts) d.ghosts = {};
+  d.ghosts[trackId] = {
+    lapMs: ghost.lapMs,
+    carName: ghost.carName,
+    path: ghost.path.slice(0, 900),
+    savedAt: Date.now(),
+  };
+  save(d);
+}
+
+export function getPaintJob(carId) {
+  const d = load();
+  return d?.paintJobs?.[carId] || null;
+}
+
+export function getPaintColor(carId) {
+  const d = load();
+  return d?.paintColors?.[carId] || '#eeeeee';
+}
+
+export function savePaintJob(carId, dataUrl, color = '#eeeeee') {
+  const d = load();
+  if (!d.paintJobs) d.paintJobs = {};
+  if (!d.paintColors) d.paintColors = {};
+  d.paintJobs[carId] = dataUrl;
+  d.paintColors[carId] = color;
+  save(d);
+}
+
+export function clearPaintJob(carId) {
+  const d = load();
+  if (!d.paintJobs?.[carId]) return;
+  delete d.paintJobs[carId];
+  if (d.paintColors) delete d.paintColors[carId];
+  save(d);
+}
+
 export function getSettings() {
   const d = load();
   return d.settings ?? {};

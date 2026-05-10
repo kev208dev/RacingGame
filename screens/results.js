@@ -33,6 +33,7 @@ export function initResults(data, car, track, retryCb, menuCb) {
     sectorsEl.innerHTML = '';
     const labels = ['섹터 1', '섹터 2', '섹터 3'];
     (data.sectors || []).forEach((t, i) => {
+      const best = data.sectorBest?.[i] || null;
       const row = document.createElement('div');
       row.className = 'sector-row';
       row.innerHTML = `
@@ -40,12 +41,13 @@ export function initResults(data, car, track, retryCb, menuCb) {
         <span class="sector-time${t !== null ? ' best' : ''}">
           ${t !== null ? formatTime(t) : '--:--.---'}
         </span>
+        <span class="sector-best">BEST ${best ? formatTime(best) : '--:--.---'}</span>
       `;
       sectorsEl.appendChild(row);
     });
   }
 
-  if (subtitleEl) subtitleEl.textContent = car && track ? `${track.name} / ${car.name}` : '--';
+  if (subtitleEl) subtitleEl.textContent = car && track ? `${track.name} 전체 랭킹 / ${car.name}` : '--';
   if (nameEl) nameEl.value = getPlayerProfile().name;
   _renderLeaderboard(listEl, null);
   _setStatus(statusEl, '기록을 서버에 업로드 중...');
@@ -54,7 +56,7 @@ export function initResults(data, car, track, retryCb, menuCb) {
     _syncLeaderboard({ data, car, track, token, listEl, statusEl });
     unsubscribeLeaderboard = subscribeLeaderboard(payload => {
       if (token !== renderToken) return;
-      if (payload.carId !== car.id || payload.trackId !== track.id) return;
+      if (payload.trackId !== track.id) return;
       _renderLeaderboard(listEl, payload.leaderboard);
       _setStatus(statusEl, '실시간 갱신됨');
     });
@@ -108,7 +110,7 @@ async function _syncLeaderboard({ data, car, track, token, listEl, statusEl }) {
     }
   } catch {
     try {
-      const fallback = await fetchLeaderboard(car.id, track.id, 10);
+      const fallback = await fetchLeaderboard('', track.id, 10);
       if (token !== renderToken) return;
       _renderLeaderboard(listEl, fallback.leaderboard);
       _setStatus(statusEl, '랭킹은 불러왔지만 이번 기록 업로드는 실패했습니다.');
@@ -147,7 +149,7 @@ function _renderLeaderboard(listEl, rows) {
 
     const rank = document.createElement('span');
     rank.className = 'leaderboard-rank';
-    rank.textContent = String(row.rank);
+    rank.textContent = row.rank === 1 ? '♛ 1' : String(row.rank);
 
     const name = document.createElement('span');
     name.className = 'leaderboard-driver';

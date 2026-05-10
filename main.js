@@ -1,7 +1,9 @@
 import { initCarSelect }   from './screens/carSelect.js';
 import { initTrackSelect }  from './screens/trackSelect.js';
+import { TRACKS }           from './data/tracks.js';
 import { initGame, updateGame, stopGame } from './screens/game.js';
 import { initResults }      from './screens/results.js';
+import { initAuth }         from './utils/auth.js';
 import { clearFrameKeys }   from './utils/input.js';
 import { formatTime }       from './utils/math.js';
 import {
@@ -131,7 +133,15 @@ function _wireGlobalLeaderboard() {
   const overlay = document.getElementById('leaderboard-overlay');
   const closeBtn = document.getElementById('btn-leaderboard-close');
   const refreshBtn = document.getElementById('btn-leaderboard-refresh');
+  const trackFilter = document.getElementById('leaderboard-track-filter');
   if (!openBtn || !overlay) return;
+
+  if (trackFilter) {
+    trackFilter.innerHTML = TRACKS.map((track, idx) =>
+      `<option value="${track.id}"${idx === 0 ? ' selected' : ''}>${track.name}</option>`
+    ).join('');
+    trackFilter.addEventListener('change', () => _loadGlobalLeaderboard());
+  }
 
   const open = () => {
     overlay.classList.remove('hidden');
@@ -154,15 +164,18 @@ function _wireGlobalLeaderboard() {
 async function _loadGlobalLeaderboard(statusText = '서버 연결 중...') {
   const list = document.getElementById('global-leaderboard-list');
   const status = document.getElementById('global-leaderboard-status');
+  const trackFilter = document.getElementById('leaderboard-track-filter');
   if (!list || !status) return;
+  const trackId = trackFilter?.value || TRACKS[0]?.id || '';
+  const trackName = TRACKS.find(t => t.id === trackId)?.name || '선택 맵';
 
-  status.textContent = statusText;
+  status.textContent = `${trackName} ${statusText}`;
   list.innerHTML = '<li class="leaderboard-empty">랭킹을 불러오는 중...</li>';
 
   try {
-    const result = await fetchLeaderboard('', '', 20);
+    const result = await fetchLeaderboard('', trackId, 20);
     _renderGlobalLeaderboard(result.leaderboard || []);
-    status.textContent = result.leaderboard?.length ? '전체 기록 TOP 20' : '아직 등록된 기록이 없습니다.';
+    status.textContent = result.leaderboard?.length ? `${trackName} TOP 20` : `${trackName} 등록된 기록이 없습니다.`;
   } catch {
     list.innerHTML = '<li class="leaderboard-empty">서버에 연결할 수 없습니다.</li>';
     status.textContent = '온라인 랭킹 서버를 확인하세요.';
@@ -186,7 +199,7 @@ function _renderGlobalLeaderboard(rows) {
 
     const rank = document.createElement('span');
     rank.className = 'leaderboard-rank';
-    rank.textContent = String(row.rank);
+    rank.textContent = row.rank === 1 ? '♛ 1' : String(row.rank);
 
     const main = document.createElement('span');
     main.className = 'global-leaderboard-main';
@@ -206,6 +219,7 @@ function _renderGlobalLeaderboard(rows) {
 }
 _wirePlayerBar();
 _wireGlobalLeaderboard();
+initAuth();
 
 // ── start ────────────────────────────────────────────────────
 goToCarSelect();
