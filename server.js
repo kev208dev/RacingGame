@@ -1,8 +1,11 @@
 import { createServer } from 'node:http';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { createReadStream } from 'node:fs';
+import { createReadStream, existsSync, readFileSync } from 'node:fs';
 import { extname, join, normalize, resolve } from 'node:path';
 import { networkInterfaces } from 'node:os';
+
+loadEnvFile('.env.local');
+loadEnvFile('.env');
 
 const PORT = Number(process.env.PORT || 3000);
 const ROOT = resolve('.');
@@ -11,8 +14,11 @@ const DB_PATH = join(DATA_DIR, 'leaderboard.json');
 const MAX_BODY_BYTES = 32 * 1024;
 const CLIENTS = new Set();
 const DATABASE_URL = process.env.DATABASE_URL;
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 let pgPool = null;
 let pgReady = false;
+let supabaseClient = null;
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -25,6 +31,22 @@ const MIME = {
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
 };
+
+function loadEnvFile(path) {
+  if (!existsSync(path)) return;
+  const lines = readFileSync(path, 'utf8').split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const match = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+    if (!match || process.env[match[1]]) continue;
+    let value = match[2].trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    process.env[match[1]] = value;
+  }
+}
 
 function sendJson(res, status, payload) {
   const body = JSON.stringify(payload);
@@ -56,6 +78,18 @@ async function loadDb() {
       LIMIT 1000
     `);
     return { records: result.rows.map(rowToRecord) };
+  }
+
+  if (SUPABASE_URL && SUPABASE_KEY) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('leaderboard_records')
+      .select('player_id, player_name, car_id, car_name, track_id, track_name, lap_ms, sectors, created_at, updated_at')
+      .order('lap_ms', { ascending: true })
+      .order('created_at', { ascending: true })
+      .limit(1000);
+    if (error) throw error;
+    return { records: (data || []).map(rowToRecord) };
   }
 
   try {
@@ -101,6 +135,12 @@ async function getPgPool() {
       CREATE INDEX IF NOT EXISTS leaderboard_track_car_lap_idx
       ON leaderboard_records (track_id, car_id, lap_ms, created_at)
     `);
+    await pgPool.query(`
+      CREATE INDEX IF NOT EXISTS leaderboard_global_lap_idx
+      ON leaderboard_records (lap_ms, created_at)
+    `);
+    await pgPool.query('ALTER TABLE leaderboard_records ENABLE ROW LEVEL SECURITY');
+    await pgPool.query('REVOKE ALL ON TABLE leaderboard_records FROM anon, authenticated');
     pgReady = true;
   }
   return pgPool;
@@ -108,17 +148,27 @@ async function getPgPool() {
 
 function rowToRecord(row) {
   return {
-    playerId: row.player_id,
-    playerName: row.player_name,
-    carId: row.car_id,
-    carName: row.car_name,
-    trackId: row.track_id,
-    trackName: row.track_name,
-    lapMs: Number(row.lap_ms),
+    playerId: row.player_id ?? row.playerId,
+    playerName: row.player_name ?? row.playerName,
+    carId: row.car_id ?? row.carId,
+    carName: row.car_name ?? row.carName,
+    trackId: row.track_id ?? row.trackId,
+    trackName: row.track_name ?? row.trackName,
+    lapMs: Number(row.lap_ms ?? row.lapMs),
     sectors: Array.isArray(row.sectors) ? row.sectors : [],
-    createdAt: Number(row.created_at),
-    updatedAt: Number(row.updated_at),
+    createdAt: Number(row.created_at ?? row.createdAt),
+    updatedAt: Number(row.updated_at ?? row.updatedAt),
   };
+}
+
+async function getSupabaseClient() {
+  if (!supabaseClient) {
+    const { createClient } = await import('@supabase/supabase-js');
+    supabaseClient = createClient(SUPABASE_URL, SUPABASE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+  }
+  return supabaseClient;
 }
 
 function getLeaderboard(db, carId, trackId, limit = 10) {
@@ -196,6 +246,9 @@ async function handlePostLeaderboard(req, res) {
   if (DATABASE_URL) {
     improved = !existing || lapMs < existing.lapMs;
     await upsertPgRecord(record, existing);
+  } else if (SUPABASE_URL && SUPABASE_KEY) {
+    improved = !existing || lapMs < existing.lapMs;
+    await upsertSupabaseRecord(record);
   } else {
     if (!existing) {
       db.records.push(record);
@@ -263,6 +316,25 @@ async function upsertPgRecord(record, existing) {
     createdAt,
     record.updatedAt,
   ]);
+}
+
+async function upsertSupabaseRecord(record) {
+  const supabase = await getSupabaseClient();
+  const { error } = await supabase
+    .from('leaderboard_records')
+    .upsert({
+      player_id: record.playerId,
+      player_name: record.playerName,
+      car_id: record.carId,
+      car_name: record.carName,
+      track_id: record.trackId,
+      track_name: record.trackName,
+      lap_ms: record.lapMs,
+      sectors: record.sectors || [],
+      created_at: record.createdAt,
+      updated_at: record.updatedAt,
+    }, { onConflict: 'player_id,car_id,track_id' });
+  if (error) throw error;
 }
 
 function handleStream(req, res) {

@@ -3,6 +3,13 @@ import { initTrackSelect }  from './screens/trackSelect.js';
 import { initGame, updateGame, stopGame } from './screens/game.js';
 import { initResults }      from './screens/results.js';
 import { clearFrameKeys }   from './utils/input.js';
+import { formatTime }       from './utils/math.js';
+import {
+  fetchLeaderboard,
+  getPlayerProfile,
+  setPlayerName,
+  subscribeLeaderboard,
+} from './utils/leaderboard.js';
 
 let currentScreen = 'carSelect';
 let selectedCar   = null;
@@ -96,6 +103,109 @@ function _wireHelpButton() {
   }, true);
 }
 _wireHelpButton();
+
+function _wirePlayerBar() {
+  const input = document.getElementById('player-name');
+  if (!input) return;
+  input.value = getPlayerProfile().name;
+
+  const save = () => {
+    const profile = setPlayerName(input.value);
+    input.value = profile.name;
+    const resultsName = document.getElementById('leaderboard-name');
+    if (resultsName) resultsName.value = profile.name;
+  };
+
+  input.addEventListener('change', save);
+  input.addEventListener('blur', save);
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      save();
+      input.blur();
+    }
+  });
+}
+
+function _wireGlobalLeaderboard() {
+  const openBtn = document.getElementById('btn-open-leaderboard');
+  const overlay = document.getElementById('leaderboard-overlay');
+  const closeBtn = document.getElementById('btn-leaderboard-close');
+  const refreshBtn = document.getElementById('btn-leaderboard-refresh');
+  if (!openBtn || !overlay) return;
+
+  const open = () => {
+    overlay.classList.remove('hidden');
+    _loadGlobalLeaderboard();
+  };
+  const close = () => overlay.classList.add('hidden');
+
+  openBtn.addEventListener('click', open);
+  closeBtn && closeBtn.addEventListener('click', close);
+  refreshBtn && refreshBtn.addEventListener('click', () => _loadGlobalLeaderboard());
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay) close();
+  });
+
+  subscribeLeaderboard(() => {
+    if (!overlay.classList.contains('hidden')) _loadGlobalLeaderboard('실시간 갱신됨');
+  });
+}
+
+async function _loadGlobalLeaderboard(statusText = '서버 연결 중...') {
+  const list = document.getElementById('global-leaderboard-list');
+  const status = document.getElementById('global-leaderboard-status');
+  if (!list || !status) return;
+
+  status.textContent = statusText;
+  list.innerHTML = '<li class="leaderboard-empty">랭킹을 불러오는 중...</li>';
+
+  try {
+    const result = await fetchLeaderboard('', '', 20);
+    _renderGlobalLeaderboard(result.leaderboard || []);
+    status.textContent = result.leaderboard?.length ? '전체 기록 TOP 20' : '아직 등록된 기록이 없습니다.';
+  } catch {
+    list.innerHTML = '<li class="leaderboard-empty">서버에 연결할 수 없습니다.</li>';
+    status.textContent = '온라인 랭킹 서버를 확인하세요.';
+  }
+}
+
+function _renderGlobalLeaderboard(rows) {
+  const list = document.getElementById('global-leaderboard-list');
+  if (!list) return;
+  list.innerHTML = '';
+
+  if (rows.length === 0) {
+    list.innerHTML = '<li class="leaderboard-empty">아직 등록된 기록이 없습니다.</li>';
+    return;
+  }
+
+  const me = getPlayerProfile().id;
+  for (const row of rows) {
+    const li = document.createElement('li');
+    li.className = 'global-leaderboard-row' + (row.playerId === me ? ' mine' : '');
+
+    const rank = document.createElement('span');
+    rank.className = 'leaderboard-rank';
+    rank.textContent = String(row.rank);
+
+    const main = document.createElement('span');
+    main.className = 'global-leaderboard-main';
+    main.textContent = row.playerName || 'Driver';
+
+    const meta = document.createElement('span');
+    meta.className = 'global-leaderboard-meta';
+    meta.textContent = `${row.trackName || row.trackId} / ${row.carName || row.carId}`;
+
+    const time = document.createElement('span');
+    time.className = 'leaderboard-time';
+    time.textContent = formatTime(row.lapMs);
+
+    li.append(rank, main, meta, time);
+    list.appendChild(li);
+  }
+}
+_wirePlayerBar();
+_wireGlobalLeaderboard();
 
 // ── start ────────────────────────────────────────────────────
 goToCarSelect();

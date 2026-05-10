@@ -66,6 +66,8 @@ export function initResults(data, car, track, retryCb, menuCb) {
     saveNameBtn.onclick = async () => {
       const profile = setPlayerName(nameEl?.value || '');
       if (nameEl) nameEl.value = profile.name;
+      const playerNameEl = document.getElementById('player-name');
+      if (playerNameEl) playerNameEl.value = profile.name;
       _setStatus(statusEl, '이름 저장됨. 현재 기록에 반영 중...');
       try {
         const result = await submitLeaderboard(car, track, data);
