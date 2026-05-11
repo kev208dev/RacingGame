@@ -32,12 +32,22 @@ function _render() {
     // info
     const info = document.createElement('div');
     info.className = 'track-info';
+    const cornerText = track.famousCorners?.length ? track.famousCorners.join(' / ') : '';
     info.innerHTML = `
       <h3>${track.name}</h3>
+      ${track.gpName ? `<span class="track-gp">${track.country} · ${track.gpName}</span>` : ''}
       <span>${track.length}</span>
+      ${track.laps ? `<span>${track.laps} laps</span>` : ''}
+      ${track.turns ? `<span>${track.turns} turns</span>` : ''}
+      ${track.firstGrandPrix ? `<span>since ${track.firstGrandPrix}</span>` : ''}
       <span>난이도: ${track.difficulty}</span>
       ${track.desc ? `<span class="desc">${track.desc}</span>` : ''}
       ${track.character ? `<span class="desc track-character">${track.character}</span>` : ''}
+      ${cornerText ? `<span class="desc">Famous corners: ${cornerText}</span>` : ''}
+      ${track.fastestLapRecord ? `<span class="desc">Fastest lap: ${track.fastestLapRecord} · ${track.fastestLapDriver}</span>` : ''}
+      ${track.polePositionRecord ? `<span class="desc">Pole record: ${track.polePositionRecord} · ${track.polePositionDriver}</span>` : ''}
+      ${track.mostWinsDriver ? `<span class="desc">Most wins: ${track.mostWinsDriver} (${track.mostWinsCount})</span>` : ''}
+      ${track.iconicMomentTitle ? `<span class="desc">Iconic moment: ${track.iconicMomentTitle}</span>` : ''}
     `;
     card.appendChild(info);
 

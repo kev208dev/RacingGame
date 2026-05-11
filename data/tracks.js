@@ -1,12 +1,23 @@
-// Five 2025 calendar-style F1 circuit traces.
-// The coordinates below are hand-traced from the supplied calendar image and
-// intentionally keep the same left/right orientation. No mirroring is applied.
+// Official f1-circuits.com based traces.
+// Coordinates are hand-traced from each linked circuit hero map in its original
+// image orientation. No mirroring or reshaping is applied.
 
-function buildTraceCenterline(trace, scale = 70, targetStep = 34) {
-  const controls = trace.map(([x, y]) => ({
-    x: (x - 50) * scale,
-    y: (y - 50) * scale,
+function buildSourceCenterline(trace, sourceSize, scale = 3.1, targetStep = 34) {
+  const points = trace.slice();
+  const first = points[0];
+  const last = points[points.length - 1];
+  if (first && last && first[0] === last[0] && first[1] === last[1]) points.pop();
+
+  const xs = points.map(([x]) => x);
+  const ys = points.map(([, y]) => y);
+  const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+  const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+
+  const controls = points.map(([x, y]) => ({
+    x: (x - cx) * scale,
+    y: (y - cy) * scale,
   }));
+
   const out = [];
   for (let i = 0; i < controls.length; i++) {
     const a = controls[i];
@@ -21,6 +32,7 @@ function buildTraceCenterline(trace, scale = 70, targetStep = 34) {
       });
     }
   }
+
   return out;
 }
 
@@ -55,11 +67,22 @@ function polyArea(points) {
   return sum / 2;
 }
 
-function makeCalendarCircuit({
-  id, name, length, difficulty, desc, character, trace, width,
-  scale = 70, startBackOffset = 130, theme = {},
+function makeOfficialCircuit({
+  id,
+  name,
+  length,
+  difficulty,
+  desc,
+  character,
+  sourceSize,
+  trace,
+  width,
+  scale = 3.1,
+  startBackOffset = 130,
+  theme = {},
+  info = {},
 }) {
-  const center = buildTraceCenterline(trace, scale);
+  const center = buildSourceCenterline(trace, sourceSize, scale);
   const { outer, inner } = offsetWalls(center, width);
 
   const N = center.length;
@@ -101,7 +124,12 @@ function makeCalendarCircuit({
   }
 
   return {
-    id, name, length, difficulty, desc, character,
+    id,
+    name,
+    length,
+    difficulty,
+    desc,
+    character,
     width,
     outerBoundary: outer,
     innerBoundary: inner,
@@ -113,6 +141,8 @@ function makeCalendarCircuit({
     trackColor: theme.track || '#303235',
     accentColor: theme.accent || '#ffd166',
     mapColor: theme.map || '#e7edf3',
+    sourceSize,
+    ...info,
   };
 }
 
@@ -127,88 +157,200 @@ function avgStep(center) {
 }
 
 export const TRACKS = [
-  makeCalendarCircuit({
-    id: 'australia',
-    name: 'Australia Melbourne',
-    length: '5.3 km',
+  makeOfficialCircuit({
+    id: 'autodromo_hermanos_rodriguez',
+    name: 'Autodromo Hermanos Rodriguez',
+    length: '4.304 km',
     difficulty: '보통',
-    desc: '캘린더 이미지의 멜버른 실루엣을 그대로 추적한 흐름',
-    character: '좌측 꺾임 + 우측 긴 리듬 변화',
-    width: 116,
-    scale: 76,
+    desc: 'Mexico City Grand Prix 공식 페이지 맵 방향 그대로 적용',
+    character: '긴 메인 스트레이트 + Foro Sol 스타디움 섹션',
+    width: 118,
+    scale: 3.0,
     startBackOffset: 150,
-    theme: { accent: '#79b8ff', sector1: '#79b8ff', sector2: '#ffd166', map: '#f4f7ff' },
+    sourceSize: { width: 1940, height: 1082 },
+    theme: { accent: '#d71920', sector1: '#22c55e', sector2: '#facc15', map: '#fff5f5' },
+    info: {
+      country: 'Mexico',
+      gpName: 'Mexico City Grand Prix',
+      laps: 71,
+      turns: 17,
+      elevationChangeM: 0,
+      firstGrandPrix: 1963,
+      fastestLapRecord: '1:17.774',
+      fastestLapDriver: 'Valtteri Bottas',
+      polePositionRecord: '1:14.758',
+      polePositionDriver: 'Daniel Ricciardo',
+      mostWinsDriver: 'Max Verstappen',
+      mostWinsCount: 5,
+      iconicMomentTitle: '1970: Unsafe Crowds Halt Race',
+      famousCorners: ['Foro Sol (Stadium Section)', 'Peraltada'],
+      sourceUrl: 'https://f1-circuits.com/circuits/autodromo-hermanos-rodriguez',
+    },
     trace: [
-      [17, 52], [24, 36], [38, 33], [48, 43], [60, 33], [74, 37],
-      [85, 49], [76, 61], [63, 59], [54, 73], [39, 71], [30, 61],
+      [323, 83], [505, 83], [715, 84], [960, 84], [1230, 84], [1508, 84],
+      [1668, 84], [1697, 178], [1766, 207], [1711, 241], [1688, 370],
+      [1608, 575], [1518, 820], [1482, 871], [1518, 914], [1435, 1005],
+      [1379, 965], [1378, 646], [1261, 566], [1218, 512], [1080, 512],
+      [1017, 497], [984, 430], [826, 380], [641, 375], [421, 375],
+      [398, 265], [360, 228], [330, 238], [303, 270], [225, 252],
+      [192, 224], [224, 117], [323, 83],
     ],
   }),
-  makeCalendarCircuit({
-    id: 'japan',
-    name: 'Japan Suzuka',
-    length: '5.8 km',
+  makeOfficialCircuit({
+    id: 'albert_park',
+    name: 'Albert Park Circuit',
+    length: '5.278 km',
+    difficulty: '보통',
+    desc: 'Australian Grand Prix 공식 페이지 맵 방향 그대로 적용',
+    character: '호수 주변 고속 리듬 + 빠른 9-10번 코너',
+    width: 116,
+    scale: 2.75,
+    startBackOffset: 160,
+    sourceSize: { width: 1940, height: 1083 },
+    theme: { accent: '#79b8ff', sector1: '#22c55e', sector2: '#facc15', map: '#f3f8ff' },
+    info: {
+      country: 'Australia',
+      gpName: 'Australian Grand Prix',
+      laps: 58,
+      turns: 14,
+      elevationChangeM: 8,
+      firstGrandPrix: 1996,
+      fastestLapRecord: '1:19.813',
+      fastestLapDriver: 'Charles Leclerc',
+      polePositionRecord: '1:15.096',
+      polePositionDriver: 'Lando Norris',
+      mostWinsDriver: 'Michael Schumacher',
+      mostWinsCount: 4,
+      iconicMomentTitle: "2002: Webber's Dream Debut",
+      famousCorners: ['Turn 9-10', 'Turn 1'],
+      sourceUrl: 'https://f1-circuits.com/circuits/albert-park-circuit',
+    },
+    trace: [
+      [532, 850], [770, 846], [1016, 840], [1216, 834], [1342, 827],
+      [1335, 725], [1462, 745], [1635, 790], [1745, 750], [1804, 632],
+      [1695, 548], [1500, 530], [1200, 555], [878, 600], [674, 590],
+      [550, 540], [430, 420], [250, 360], [185, 230], [320, 210],
+      [520, 145], [660, 96], [855, 180], [980, 360], [1110, 500],
+      [830, 610], [560, 750], [300, 780], [175, 600], [135, 455],
+      [178, 285], [190, 160], [345, 155], [650, 200], [760, 310],
+      [820, 450], [900, 590], [1140, 600], [1290, 575], [1320, 520],
+      [1470, 520], [1710, 620], [1750, 750], [1640, 850], [1205, 862],
+      [850, 856], [532, 850],
+    ],
+  }),
+  makeOfficialCircuit({
+    id: 'barcelona_catalunya',
+    name: 'Circuit de Barcelona-Catalunya',
+    length: '4.657 km',
     difficulty: '어려움',
-    desc: '캘린더 이미지의 스즈카 방향 그대로, S자와 우상단 헤어핀 유지',
-    character: '연속 S자 + 긴 우상단 루프',
-    width: 108,
-    scale: 78,
-    startBackOffset: 145,
-    theme: { accent: '#e63946', sector1: '#ff6b6b', sector2: '#2ec4b6', map: '#fff3f3' },
-    trace: [
-      [15, 79], [42, 79], [50, 68], [41, 57], [53, 45], [48, 34],
-      [60, 23], [76, 26], [87, 16], [72, 11], [58, 23], [52, 39],
-      [38, 36], [27, 47], [22, 64],
-    ],
-  }),
-  makeCalendarCircuit({
-    id: 'monaco',
-    name: 'Monaco Monte Carlo',
-    length: '3.3 km',
-    difficulty: '매우 어려움',
-    desc: '캘린더 이미지의 모나코 윤곽처럼 좁고 복잡한 시가지',
-    character: '헤어핀 + 벽 압박 + 짧은 가속',
-    width: 82,
-    scale: 62,
-    startBackOffset: 100,
-    theme: { background: '#50545a', accent: '#f4a261', sector1: '#ffd166', sector2: '#ef476f', map: '#fff4e8' },
-    trace: [
-      [18, 64], [25, 39], [42, 38], [56, 28], [78, 18], [88, 29],
-      [75, 42], [85, 55], [76, 74], [59, 82], [46, 65], [31, 79],
-      [18, 72],
-    ],
-  }),
-  makeCalendarCircuit({
-    id: 'belgium',
-    name: 'Belgium Spa-Francorchamps',
-    length: '7.0 km',
-    difficulty: '어려움',
-    desc: '캘린더 이미지의 스파 실루엣 방향 그대로 긴 흐름을 반영',
-    character: '긴 고속 구간 + 큰 고저 리듬',
+    desc: 'Spanish Grand Prix 공식 페이지 맵 방향 그대로 적용',
+    character: '긴 메인 스트레이트 + Turn 3 고속 우코너',
     width: 122,
-    scale: 82,
+    scale: 2.7,
     startBackOffset: 170,
-    theme: { accent: '#ffd166', sector1: '#2ec4b6', sector2: '#79b8ff', map: '#f2f5f7' },
+    sourceSize: { width: 1935, height: 1080 },
+    theme: { accent: '#ef4444', sector1: '#facc15', sector2: '#22c55e', map: '#fff2f2' },
+    info: {
+      country: 'Spain',
+      gpName: 'Spanish Grand Prix',
+      laps: 66,
+      turns: 14,
+      elevationChangeM: 30,
+      firstGrandPrix: 1991,
+      fastestLapRecord: '1:16.330',
+      fastestLapDriver: 'Max Verstappen',
+      polePositionRecord: '1:12.272',
+      polePositionDriver: 'Lewis Hamilton',
+      mostWinsDriver: 'Lewis Hamilton/Michael Schumacher',
+      mostWinsCount: 6,
+      iconicMomentTitle: "2016: Verstappen's Maiden Win",
+      famousCorners: ['Turn 3', 'Turn 10 (La Caixa)'],
+      sourceUrl: 'https://f1-circuits.com/circuits/circuit-de-barcelona-catalunya',
+    },
     trace: [
-      [12, 72], [22, 58], [35, 52], [47, 47], [55, 34], [66, 24],
-      [78, 18], [87, 25], [75, 35], [64, 47], [73, 61], [63, 75],
-      [47, 72], [38, 82], [27, 76],
+      [296, 790], [610, 790], [930, 789], [1245, 788], [1510, 787],
+      [1815, 787], [1850, 760], [1840, 390], [1780, 350], [1540, 293],
+      [1485, 332], [1468, 430], [1595, 510], [1678, 630], [1615, 645],
+      [1472, 545], [1520, 420], [1340, 400], [1300, 540], [1480, 660],
+      [1595, 708], [1465, 756], [1270, 650], [1045, 480], [955, 275],
+      [850, 330], [760, 585], [730, 660], [535, 650], [260, 455],
+      [280, 870], [180, 677], [68, 445], [130, 292], [290, 260],
+      [625, 260], [690, 315], [663, 438], [505, 455], [390, 560],
+      [296, 790],
     ],
   }),
-  makeCalendarCircuit({
-    id: 'singapore',
-    name: 'Singapore Marina Bay',
-    length: '4.9 km',
+  makeOfficialCircuit({
+    id: 'cota',
+    name: 'Circuit of the Americas',
+    length: '5.513 km',
     difficulty: '어려움',
-    desc: '캘린더 이미지의 싱가포르 각진 시가지 형태를 그대로 추적',
-    character: '직각 코너 + 짧은 탈출 가속 반복',
-    width: 92,
-    scale: 72,
-    startBackOffset: 130,
-    theme: { background: '#45484d', accent: '#c77dff', sector1: '#79b8ff', sector2: '#c77dff', map: '#edf2ff' },
+    desc: 'United States Grand Prix 공식 페이지 맵 방향 그대로 적용',
+    character: '가파른 Turn 1 + Maggotts/Becketts식 고속 연속 코너',
+    width: 112,
+    scale: 2.65,
+    startBackOffset: 165,
+    sourceSize: { width: 1935, height: 1080 },
+    theme: { accent: '#3b82f6', sector1: '#ef4444', sector2: '#facc15', map: '#eff6ff' },
+    info: {
+      country: 'USA',
+      gpName: 'United States Grand Prix',
+      laps: 56,
+      turns: 20,
+      elevationChangeM: 41,
+      firstGrandPrix: 2012,
+      fastestLapRecord: '1:36.169',
+      fastestLapDriver: 'Charles Leclerc',
+      polePositionRecord: '1:32.029',
+      polePositionDriver: 'Valtteri Bottas',
+      mostWinsDriver: 'Lewis Hamilton',
+      mostWinsCount: 5,
+      iconicMomentTitle: '2015: Hamilton Clinches Third Title',
+      famousCorners: ['Turn 1', 'Turns 3-6 (Maggotts/Becketts copy)'],
+      sourceUrl: 'https://f1-circuits.com/circuits/circuit-of-the-americas',
+    },
     trace: [
-      [18, 61], [26, 38], [38, 43], [44, 25], [62, 26], [69, 38],
-      [78, 36], [80, 18], [88, 35], [83, 55], [69, 61], [63, 79],
-      [48, 72], [37, 84], [26, 75],
+      [676, 1010], [625, 820], [675, 720], [790, 640], [875, 555],
+      [950, 470], [1085, 425], [1215, 486], [1322, 430], [1360, 368],
+      [1418, 425], [1600, 420], [1840, 145], [1620, 190], [1350, 235],
+      [742, 252], [790, 440], [826, 455], [760, 475], [705, 340],
+      [620, 345], [660, 625], [590, 665], [490, 625], [390, 430],
+      [100, 500], [300, 740], [540, 1018], [676, 1010],
+    ],
+  }),
+  makeOfficialCircuit({
+    id: 'hungaroring',
+    name: 'Hungaroring',
+    length: '4.381 km',
+    difficulty: '어려움',
+    desc: 'Hungarian Grand Prix 공식 페이지 맵 방향 그대로 적용',
+    character: '좁고 비틀린 중저속 코너 + 추월이 어려운 흐름',
+    width: 110,
+    scale: 2.85,
+    startBackOffset: 145,
+    sourceSize: { width: 1935, height: 1080 },
+    theme: { accent: '#22c55e', sector1: '#facc15', sector2: '#ef4444', map: '#f0fdf4' },
+    info: {
+      country: 'Hungary',
+      gpName: 'Hungarian Grand Prix',
+      laps: 70,
+      turns: 14,
+      elevationChangeM: 36,
+      firstGrandPrix: 1986,
+      fastestLapRecord: '1:16.627',
+      fastestLapDriver: 'Lewis Hamilton',
+      polePositionRecord: '1:13.447',
+      polePositionDriver: 'Lewis Hamilton',
+      mostWinsDriver: 'Lewis Hamilton',
+      mostWinsCount: 8,
+      iconicMomentTitle: "1997: Hill's Heartbreak",
+      famousCorners: ['Turn 1', 'Turn 4'],
+      sourceUrl: 'https://f1-circuits.com/circuits/hungaroring',
+    },
+    trace: [
+      [615, 70], [710, 225], [735, 470], [808, 500], [870, 372],
+      [1050, 330], [1340, 292], [1452, 128], [1570, 155], [1535, 420],
+      [1395, 560], [1460, 700], [1225, 965], [800, 940], [815, 725],
+      [740, 700], [675, 900], [620, 900], [615, 70],
     ],
   }),
 ];
