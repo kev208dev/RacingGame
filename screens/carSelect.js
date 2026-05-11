@@ -220,17 +220,17 @@ function _drawCarPreview(canvas, car) {
   const w = canvas.width, h = canvas.height;
   ctx.clearRect(0, 0, w, h);
 
-  const cx = w / 2, cy = h / 2 + 4;
+  const cx = w / 2, cy = h / 2 + 7;
   const paint = car._skipPaint ? null : getPaintJob(car.id);
-  const isFormula = car.category !== 'Road Car' && car.category !== 'Heavyweight';
   const isLight = car.category === 'Lightweight';
   const isHeavy = car.category === 'Heavyweight';
-  const bw = isLight ? 84 : isHeavy ? 116 : isFormula ? 104 : 92;
-  const bh = isLight ? 20 : isHeavy ? 42 : isFormula ? 24 : 34;
+  const isFormula = car.category === 'Formula';
+  const bw = isLight ? 96 : isHeavy ? 124 : isFormula ? 118 : 110;
+  const bh = isLight ? 28 : isHeavy ? 38 : isFormula ? 26 : 34;
 
   const grad = ctx.createLinearGradient(16, 8, w - 12, h - 4);
-  grad.addColorStop(0, 'rgba(255,255,255,0.14)');
-  grad.addColorStop(1, 'rgba(0,0,0,0.28)');
+  grad.addColorStop(0, 'rgba(255,255,255,0.18)');
+  grad.addColorStop(1, 'rgba(0,0,0,0.36)');
   ctx.fillStyle = grad;
   ctx.beginPath();
   ctx.roundRect(8, 8, w - 16, h - 16, 10);
@@ -238,24 +238,30 @@ function _drawCarPreview(canvas, car) {
 
   ctx.save();
   ctx.translate(cx, cy);
-  ctx.rotate(-0.08);
+  ctx.rotate(-0.06);
   ctx.translate(-cx, -cy);
 
-  // body
-  ctx.fillStyle = car.color;
+  const bodyGrad = ctx.createLinearGradient(cx - bw / 2, cy - bh, cx + bw / 2, cy + bh);
+  bodyGrad.addColorStop(0, '#ffffff');
+  bodyGrad.addColorStop(0.22, car.color);
+  bodyGrad.addColorStop(1, '#11151b');
+
+  // shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.36)';
   ctx.beginPath();
-  if (isFormula) {
-    ctx.roundRect(cx - bw/2 + 10, cy - bh/2, bw - 18, bh, 9);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(cx + bw/2 - 10, cy - 9);
-    ctx.lineTo(cx + bw/2 + 20, cy);
-    ctx.lineTo(cx + bw/2 - 10, cy + 9);
-    ctx.closePath();
-  } else {
-    ctx.roundRect(cx - bw/2, cy - bh/2, bw, bh, 9);
-  }
+  ctx.ellipse(cx, cy + bh / 2 + 9, bw * 0.48, 8, 0, 0, Math.PI * 2);
   ctx.fill();
+
+  // sports-car silhouette
+  ctx.fillStyle = bodyGrad;
+  ctx.beginPath();
+  ctx.moveTo(cx - bw / 2, cy + bh * 0.22);
+  ctx.bezierCurveTo(cx - bw * 0.42, cy - bh * 0.28, cx - bw * 0.24, cy - bh * 0.62, cx - bw * 0.02, cy - bh * 0.62);
+  ctx.bezierCurveTo(cx + bw * 0.22, cy - bh * 0.62, cx + bw * 0.36, cy - bh * 0.2, cx + bw / 2, cy + bh * 0.15);
+  ctx.bezierCurveTo(cx + bw * 0.42, cy + bh * 0.48, cx - bw * 0.38, cy + bh * 0.48, cx - bw / 2, cy + bh * 0.22);
+  ctx.closePath();
+  ctx.fill();
+
   if (paint) {
     const img = new Image();
     img.onload = () => {
@@ -263,53 +269,59 @@ function _drawCarPreview(canvas, car) {
       const ctx2 = canvas.getContext('2d');
       ctx2.save();
       ctx2.translate(cx, cy);
-      ctx2.rotate(-0.08);
-      ctx2.globalAlpha = 0.92;
+      ctx2.rotate(-0.06);
+      ctx2.globalAlpha = 0.86;
       ctx2.globalCompositeOperation = 'source-over';
-      ctx2.drawImage(img, -bw / 2 - 6, -bh / 2 - 8, bw + 28, bh + 20);
+      ctx2.drawImage(img, -bw / 2, -bh / 2 - 8, bw, bh + 20);
       ctx2.globalAlpha = 1;
-      ctx2.strokeStyle = '#ffffff';
-      ctx2.lineWidth = 2;
-      ctx2.strokeRect(-bw / 2 - 2, -bh / 2 - 4, bw + 20, bh + 12);
       ctx2.restore();
     };
     if (!car._skipPaint) img.src = paint;
   }
 
-  // cockpit
-  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  // glass canopy
+  const glass = ctx.createLinearGradient(cx - 18, cy - bh, cx + 34, cy);
+  glass.addColorStop(0, 'rgba(150,210,255,0.78)');
+  glass.addColorStop(1, 'rgba(3,8,16,0.84)');
+  ctx.fillStyle = glass;
   ctx.beginPath();
-  ctx.roundRect(cx - 4, cy - bh/2 + 3, 28, isFormula ? 14 : 18, 5);
+  ctx.ellipse(cx + 12, cy - bh * 0.28, isFormula ? 22 : 28, isFormula ? 8 : 11, -0.02, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = '#111';
-  ctx.fillRect(cx - bw/2 - 12, cy - 2, 20, 4);
-  if (isFormula) {
-    ctx.fillRect(cx + bw/2 - 2, cy - 14, 26, 5);
-    ctx.fillRect(cx + bw/2 - 2, cy + 9, 26, 5);
-    ctx.fillRect(cx - bw/2 - 18, cy - 16, 22, 6);
-    ctx.fillRect(cx - bw/2 - 18, cy + 10, 22, 6);
-  }
-
-  ctx.strokeStyle = '#ffd84a';
+  // aero / stripe
+  ctx.strokeStyle = isFormula ? '#f7f7f7' : '#ffd84a';
   ctx.lineWidth = 3;
   ctx.beginPath();
-  ctx.moveTo(cx - bw/2 + 14, cy);
-  ctx.lineTo(cx + bw/2 + (isFormula ? 14 : -8), cy);
+  ctx.moveTo(cx - bw * 0.42, cy + bh * 0.02);
+  ctx.bezierCurveTo(cx - bw * 0.1, cy - bh * 0.18, cx + bw * 0.18, cy - bh * 0.1, cx + bw * 0.42, cy + bh * 0.02);
   ctx.stroke();
 
+  ctx.fillStyle = '#0a0d10';
+  ctx.beginPath();
+  ctx.roundRect(cx - bw * 0.54, cy + bh * 0.12, 18, 5, 3);
+  ctx.roundRect(cx + bw * 0.36, cy + bh * 0.08, 24, 5, 3);
+  ctx.fill();
+  if (isFormula) {
+    ctx.fillRect(cx + bw / 2 - 2, cy - 13, 25, 5);
+    ctx.fillRect(cx - bw / 2 - 16, cy - 12, 24, 5);
+  }
+
   // wheels
-  ctx.fillStyle = '#111';
-  const wheelW = isHeavy ? 24 : isLight ? 14 : 18;
-  const wheelH = isHeavy ? 14 : isLight ? 8 : 10;
+  const wheelR = isHeavy ? 13 : isLight ? 9 : 11;
   [
-    [cx - bw/2 + 4,  cy - bh/2 - 5],
-    [cx + bw/2 - 20, cy - bh/2 - 5],
-    [cx - bw/2 + 4,  cy + bh/2 - 5],
-    [cx + bw/2 - 20, cy + bh/2 - 5],
+    [cx - bw * 0.34, cy + bh * 0.36],
+    [cx + bw * 0.34, cy + bh * 0.36],
   ].forEach(([x, y]) => {
+    ctx.fillStyle = '#050505';
     ctx.beginPath();
-    ctx.roundRect(x, y, wheelW, wheelH, 4);
+    ctx.arc(x, y, wheelR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = car.color;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.fillStyle = '#b8c0c8';
+    ctx.beginPath();
+    ctx.arc(x, y, wheelR * 0.38, 0, Math.PI * 2);
     ctx.fill();
   });
   ctx.restore();

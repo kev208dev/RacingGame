@@ -18,10 +18,11 @@ function buildSourceCenterline(trace, sourceSize, scale = 3.1, targetStep = 34) 
     y: (y - cy) * scale,
   }));
 
+  const rounded = roundControls(controls);
   const out = [];
-  for (let i = 0; i < controls.length; i++) {
-    const a = controls[i];
-    const b = controls[(i + 1) % controls.length];
+  for (let i = 0; i < rounded.length; i++) {
+    const a = rounded[i];
+    const b = rounded[(i + 1) % rounded.length];
     const len = Math.hypot(b.x - a.x, b.y - a.y);
     const steps = Math.max(2, Math.ceil(len / targetStep));
     for (let j = 0; j < steps; j++) {
@@ -34,6 +35,28 @@ function buildSourceCenterline(trace, sourceSize, scale = 3.1, targetStep = 34) 
   }
 
   return out;
+}
+
+function roundControls(controls) {
+  if (controls.length < 4) return controls;
+  let pts = controls;
+  for (let pass = 0; pass < 2; pass++) {
+    const nextPts = [];
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i];
+      const b = pts[(i + 1) % pts.length];
+      nextPts.push({
+        x: a.x * 0.78 + b.x * 0.22,
+        y: a.y * 0.78 + b.y * 0.22,
+      });
+      nextPts.push({
+        x: a.x * 0.22 + b.x * 0.78,
+        y: a.y * 0.22 + b.y * 0.78,
+      });
+    }
+    pts = nextPts;
+  }
+  return pts;
 }
 
 function offsetWalls(center, width) {
@@ -164,7 +187,7 @@ export const TRACKS = [
     difficulty: '보통',
     desc: 'Mexico City Grand Prix 공식 페이지 맵 방향 그대로 적용',
     character: '긴 메인 스트레이트 + Foro Sol 스타디움 섹션',
-    width: 118,
+    width: 138,
     scale: 3.0,
     startBackOffset: 150,
     sourceSize: { width: 1940, height: 1082 },
@@ -187,13 +210,9 @@ export const TRACKS = [
       sourceUrl: 'https://f1-circuits.com/circuits/autodromo-hermanos-rodriguez',
     },
     trace: [
-      [323, 83], [505, 83], [715, 84], [960, 84], [1230, 84], [1508, 84],
-      [1668, 84], [1697, 178], [1766, 207], [1711, 241], [1688, 370],
-      [1608, 575], [1518, 820], [1482, 871], [1518, 914], [1435, 1005],
-      [1379, 965], [1378, 646], [1261, 566], [1218, 512], [1080, 512],
-      [1017, 497], [984, 430], [826, 380], [641, 375], [421, 375],
-      [398, 265], [360, 228], [330, 238], [303, 270], [225, 252],
-      [192, 224], [224, 117], [323, 83],
+      [320, 110], [1580, 110], [1710, 250], [1600, 560], [1460, 900],
+      [1365, 780], [1310, 595], [1080, 505], [760, 430], [420, 405],
+      [240, 260], [320, 110],
     ],
   }),
   makeOfficialCircuit({
@@ -203,7 +222,7 @@ export const TRACKS = [
     difficulty: '보통',
     desc: 'Australian Grand Prix 공식 페이지 맵 방향 그대로 적용',
     character: '호수 주변 고속 리듬 + 빠른 9-10번 코너',
-    width: 116,
+    width: 136,
     scale: 2.75,
     startBackOffset: 160,
     sourceSize: { width: 1940, height: 1083 },
@@ -226,12 +245,9 @@ export const TRACKS = [
       sourceUrl: 'https://f1-circuits.com/circuits/albert-park-circuit',
     },
     trace: [
-      [532, 850], [770, 846], [1016, 840], [1216, 834], [1342, 827],
-      [1335, 725], [1462, 745], [1635, 790], [1745, 750], [1804, 632],
-      [1695, 548], [1500, 530], [1200, 555], [1110, 500], [980, 360],
-      [855, 180], [660, 96], [520, 145], [320, 210], [185, 230],
-      [178, 285], [250, 360], [430, 420], [550, 540], [674, 590],
-      [560, 750], [300, 780], [532, 850],
+      [520, 850], [1340, 825], [1750, 700], [1620, 520], [1180, 520],
+      [850, 180], [520, 145], [185, 230], [380, 420], [620, 560],
+      [900, 720], [520, 850],
     ],
   }),
   makeOfficialCircuit({
@@ -241,7 +257,7 @@ export const TRACKS = [
     difficulty: '어려움',
     desc: 'Spanish Grand Prix 공식 페이지 맵 방향 그대로 적용',
     character: '긴 메인 스트레이트 + Turn 3 고속 우코너',
-    width: 94,
+    width: 132,
     scale: 2.7,
     startBackOffset: 170,
     sourceSize: { width: 1935, height: 1080 },
@@ -264,10 +280,9 @@ export const TRACKS = [
       sourceUrl: 'https://f1-circuits.com/circuits/circuit-de-barcelona-catalunya',
     },
     trace: [
-      [296, 790], [610, 790], [930, 789], [1245, 788], [1510, 787],
-      [1815, 787], [1850, 760], [1840, 390], [1540, 293], [1468, 430],
-      [1595, 510], [1678, 630], [1472, 545], [1045, 480], [955, 275],
-      [850, 330], [760, 585], [535, 650], [260, 455], [296, 790],
+      [295, 790], [1810, 790], [1840, 395], [1540, 295], [1440, 460],
+      [1660, 625], [1480, 710], [1060, 480], [955, 275], [825, 340],
+      [735, 630], [520, 650], [260, 455], [295, 790],
     ],
   }),
   makeOfficialCircuit({
@@ -277,7 +292,7 @@ export const TRACKS = [
     difficulty: '어려움',
     desc: 'United States Grand Prix 공식 페이지 맵 방향 그대로 적용',
     character: '가파른 Turn 1 + Maggotts/Becketts식 고속 연속 코너',
-    width: 112,
+    width: 136,
     scale: 2.65,
     startBackOffset: 165,
     sourceSize: { width: 1935, height: 1080 },
@@ -300,12 +315,10 @@ export const TRACKS = [
       sourceUrl: 'https://f1-circuits.com/circuits/circuit-of-the-americas',
     },
     trace: [
-      [676, 1010], [625, 820], [675, 720], [790, 640], [875, 555],
-      [950, 470], [1085, 425], [1215, 486], [1322, 430], [1360, 368],
-      [1418, 425], [1600, 420], [1840, 145], [1620, 190], [1350, 235],
-      [742, 252], [790, 440], [826, 455], [760, 475], [705, 340],
-      [620, 345], [660, 625], [590, 665], [490, 625], [390, 430],
-      [100, 500], [300, 740], [540, 1018], [676, 1010],
+      [675, 1010], [615, 820], [760, 640], [1000, 470], [1220, 485],
+      [1450, 415], [1840, 145], [1350, 235], [740, 255], [790, 450],
+      [635, 360], [655, 620], [510, 650], [390, 430], [100, 500],
+      [300, 740], [540, 1018], [675, 1010],
     ],
   }),
   makeOfficialCircuit({
@@ -315,7 +328,7 @@ export const TRACKS = [
     difficulty: '어려움',
     desc: 'Hungarian Grand Prix 공식 페이지 맵 방향 그대로 적용',
     character: '좁고 비틀린 중저속 코너 + 추월이 어려운 흐름',
-    width: 110,
+    width: 132,
     scale: 2.85,
     startBackOffset: 145,
     sourceSize: { width: 1935, height: 1080 },
@@ -338,10 +351,9 @@ export const TRACKS = [
       sourceUrl: 'https://f1-circuits.com/circuits/hungaroring',
     },
     trace: [
-      [615, 70], [710, 225], [735, 470], [808, 500], [870, 372],
-      [1050, 330], [1340, 292], [1452, 128], [1570, 155], [1535, 420],
-      [1395, 560], [1460, 700], [1225, 965], [800, 940], [815, 725],
-      [740, 700], [675, 900], [620, 900], [615, 70],
+      [615, 70], [725, 470], [860, 385], [1180, 330], [1480, 135],
+      [1550, 390], [1400, 570], [1450, 700], [1225, 965], [800, 940],
+      [730, 710], [650, 900], [615, 70],
     ],
   }),
 ];

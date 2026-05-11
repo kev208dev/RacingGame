@@ -30,7 +30,7 @@ export function updateTiming(timing, car, track, now) {
     [sl.x1, sl.y1], [sl.x2, sl.y2]
   );
 
-  if (startCrossed) {
+  if (startCrossed && !car.offTrack) {
     if (!timing.started) {
       // first crossing — start lap
       timing.started   = true;
@@ -43,6 +43,8 @@ export function updateTiming(timing, car, track, now) {
     } else {
       // complete lap
       const lapMs = now - timing.lapStart;
+      const sectorsOk = timing._sectorPassed.slice(0, track.sectors.length).every(Boolean);
+      if (!sectorsOk || lapMs < 15000) return event;
       const isNew = !timing.bestLap || lapMs < timing.bestLap;
       if (isNew) timing.bestLap = lapMs;
       timing.lapTimes.push(lapMs);

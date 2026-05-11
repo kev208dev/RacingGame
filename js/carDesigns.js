@@ -47,6 +47,7 @@ export function createCarDesign(type = 'formula_red') {
 
   const factory = factories[type] || factories.formula_red;
   const car = factory();
+  addBoostFlameTo(car);
   car.userData.designType = type;
   return car;
 }
@@ -119,37 +120,104 @@ function addTaperedBlockTo(group, name, size, pos, mat, frontScale = 0.4, rearSc
 }
 
 function addWheelTo(group, name, x, z, radius, width, tireMat, rimMat, y = 0.48) {
+  const isRearWheel = z < 0;
+  const visualRadius = radius * (isRearWheel ? 1.58 : 1.16);
+  const visualWidth = width * (isRearWheel ? 1.58 : 1.22);
   const wheel = new THREE.Group();
   wheel.name = name;
   wheel.position.set(x, y, z);
   wheel.rotation.z = Math.PI / 2;
 
-  const tire = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, width, 32), tireMat);
+  const pivot = new THREE.Group();
+  pivot.name = name + '_pivot';
+  wheel.add(pivot);
+  wheel.userData.spinPivot = pivot;
+  wheel.userData.baseY = y;
+
+  const tire = new THREE.Mesh(new THREE.CylinderGeometry(visualRadius, visualRadius, visualWidth, 32), tireMat);
   tire.name = 'black tire';
   tire.castShadow = true;
   tire.receiveShadow = true;
-  wheel.add(tire);
+  pivot.add(tire);
 
-  const rim = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.58, radius * 0.58, width + 0.025, 20), rimMat);
+  const rim = new THREE.Mesh(new THREE.CylinderGeometry(visualRadius * 0.58, visualRadius * 0.58, visualWidth + 0.035, 20), rimMat);
   rim.name = 'colored wheel rim';
   rim.castShadow = true;
   rim.receiveShadow = true;
-  wheel.add(rim);
+  pivot.add(rim);
 
   for (let i = 0; i < 8; i++) {
-    const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.045, radius * 1.25, 0.035), rimMat);
+    const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.055, visualRadius * 1.25, 0.04), rimMat);
     spoke.name = 'wheel spoke';
     spoke.rotation.z = (Math.PI / 8) * i;
     spoke.castShadow = true;
-    wheel.add(spoke);
+    pivot.add(spoke);
   }
 
   group.add(wheel);
+
+  const arm = new THREE.Mesh(
+    new THREE.BoxGeometry(Math.max(0.8, Math.abs(x) * 0.9), 0.07, 0.07),
+    tireMat
+  );
+  arm.name = name + ' visible suspension arm';
+  arm.position.set(x * 0.45, y + 0.03, z);
+  arm.castShadow = true;
+  group.add(arm);
+
   return wheel;
 }
 
 function addSuspensionArmTo(group, name, x, z, angle, mat) {
   return addBoxTo(group, name, [0.07, 0.07, 1.05], [x, 0.52, z], mat, [0, angle, 0]);
+}
+
+function addBoostFlameTo(group) {
+  const flame = new THREE.Group();
+  flame.name = 'boostflame';
+  flame.position.set(0, 0.62, -2.65);
+  flame.visible = false;
+
+  const outerMat = new THREE.MeshBasicMaterial({
+    color: 0xff4a08,
+    transparent: true,
+    opacity: 0.48,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const innerMat = new THREE.MeshBasicMaterial({
+    color: 0xfff1a8,
+    transparent: true,
+    opacity: 0.82,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const glowMat = new THREE.MeshBasicMaterial({
+    color: 0xff1f00,
+    transparent: true,
+    opacity: 0.22,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+
+  const outer = new THREE.Mesh(new THREE.ConeGeometry(0.34, 1.55, 18), outerMat);
+  outer.name = 'flameouter';
+  outer.rotation.x = -Math.PI / 2;
+  flame.add(outer);
+
+  const inner = new THREE.Mesh(new THREE.ConeGeometry(0.18, 1.15, 18), innerMat);
+  inner.name = 'flameinner';
+  inner.rotation.x = -Math.PI / 2;
+  inner.position.z = -0.12;
+  flame.add(inner);
+
+  const glow = new THREE.Mesh(new THREE.SphereGeometry(0.52, 18, 12), glowMat);
+  glow.name = 'flameglow';
+  glow.scale.set(1.1, 0.55, 1.8);
+  glow.position.z = -0.42;
+  flame.add(glow);
+
+  group.add(flame);
 }
 
 function createFormulaRedCarModel() {

@@ -90,24 +90,40 @@ export function updateSmoke(pool, dt) {
 
 // ── drift light trails (single buffered geometry that grows) ─────────
 export function createSkidBuffer(scene, capSegments = 400) {
-  const positions = new Float32Array(capSegments * 2 * 3);
+  const positions = new Float32Array(capSegments * 4 * 3);
+  const colors = new Float32Array(capSegments * 4 * 3);
+  const indices = new Uint16Array(capSegments * 6);
+  for (let i = 0; i < capSegments; i++) {
+    const v = i * 4;
+    const n = i * 6;
+    indices[n + 0] = v;
+    indices[n + 1] = v + 1;
+    indices[n + 2] = v + 2;
+    indices[n + 3] = v + 2;
+    indices[n + 4] = v + 1;
+    indices[n + 5] = v + 3;
+  }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  geo.setIndex(new THREE.BufferAttribute(indices, 1));
   geo.setDrawRange(0, 0);
-  const mat = new THREE.LineBasicMaterial({
-    color: 0x6ee7ff,
+  const mat = new THREE.MeshBasicMaterial({
+    vertexColors: true,
     transparent: true,
-    opacity: 0.88,
+    opacity: 0.82,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
+    side: THREE.DoubleSide,
   });
-  const mesh = new THREE.LineSegments(geo, mat);
+  const mesh = new THREE.Mesh(geo, mat);
   mesh.renderOrder = 1;
   scene.add(mesh);
 
   return {
     mesh,
     positions,
+    colors,
     capSegments,
     head: 0,        // next segment slot
     count: 0,       // segments currently filled
@@ -116,24 +132,32 @@ export function createSkidBuffer(scene, capSegments = 400) {
       this.count = 0;
       geo.setDrawRange(0, 0);
     },
-    appendTrail(ax, az, bx, bz, halfWidth = 1.4) {
+    appendTrail(ax, az, bx, bz, halfWidth = 1.4, color = 0x6ee7ff) {
       const dx = bx - ax, dz = bz - az;
       const dl = Math.hypot(dx, dz) || 1;
-      const px = dz / dl * halfWidth * 0.22;
-      const pz = -dx / dl * halfWidth * 0.22;
-      const jitter = (Math.random() - 0.5) * 0.8;
-      const i = this.head * 6;
+      const px = dz / dl * halfWidth * 0.5;
+      const pz = -dx / dl * halfWidth * 0.5;
+      const i = this.head * 12;
       const arr = positions;
-      arr[i+0] = ax + px + jitter; arr[i+1] = 0.42; arr[i+2] = az + pz - jitter;
-      arr[i+3] = bx - px - jitter; arr[i+4] = 0.42; arr[i+5] = bz - pz + jitter;
+      arr[i+0] = ax + px; arr[i+1] = 0.54; arr[i+2] = az + pz;
+      arr[i+3] = ax - px; arr[i+4] = 0.54; arr[i+5] = az - pz;
+      arr[i+6] = bx + px; arr[i+7] = 0.54; arr[i+8] = bz + pz;
+      arr[i+9] = bx - px; arr[i+10] = 0.54; arr[i+11] = bz - pz;
+      const c = new THREE.Color(color);
+      for (let k = 0; k < 4; k++) {
+        colors[i + k * 3 + 0] = c.r;
+        colors[i + k * 3 + 1] = c.g;
+        colors[i + k * 3 + 2] = c.b;
+      }
 
       this.head = (this.head + 1) % this.capSegments;
       if (this.count < this.capSegments) this.count++;
       geo.attributes.position.needsUpdate = true;
-      geo.setDrawRange(0, this.count * 2);
+      geo.attributes.color.needsUpdate = true;
+      geo.setDrawRange(0, this.count * 6);
     },
-    appendQuad(ax, az, bx, bz, halfWidth = 1.4) {
-      this.appendTrail(ax, az, bx, bz, halfWidth);
+    appendQuad(ax, az, bx, bz, halfWidth = 1.4, color = 0x6ee7ff) {
+      this.appendTrail(ax, az, bx, bz, halfWidth, color);
     },
   };
 }
@@ -217,14 +241,14 @@ export function drawSpeedLines(ctx, lines, kmh, w, h, dt, cameraMode = 'chase') 
     return;
   }
   // Activate above 60 km/h so the player feels speed sooner.
-  if (kmh < 105) {
+  if (kmh < 65) {
     for (const p of lines) p.life = 0;
     return;
   }
-  const intensity = Math.min(1, (kmh - 105) / 240);
+  const intensity = Math.min(1, (kmh - 65) / 230);
   const cx = w * 0.5, cy = h * 0.62;
-  const speedScale = 900 + intensity * 1700;
-  const spawnRate  = 45 + intensity * 115;
+  const speedScale = 1100 + intensity * 2300;
+  const spawnRate  = 70 + intensity * 170;
 
   // Spawn fresh particles
   let toSpawn = spawnRate * dt;
@@ -237,9 +261,9 @@ export function drawSpeedLines(ctx, lines, kmh, w, h, dt, cameraMode = 'chase') 
     p.y = cy + Math.sin(a) * r0;
     p.vx = Math.cos(a) * speedScale;
     p.vy = Math.sin(a) * speedScale;
-    p.len = 18 + Math.random() * 26;
-    p.alpha = 0.08 + Math.random() * 0.14;
-    p.life  = 0.28;
+    p.len = 24 + Math.random() * 38;
+    p.alpha = 0.10 + Math.random() * 0.18;
+    p.life  = 0.34;
     toSpawn -= 1;
   }
 
@@ -259,7 +283,7 @@ export function drawSpeedLines(ctx, lines, kmh, w, h, dt, cameraMode = 'chase') 
     const tx = -dx / dl * p.len;
     const ty = -dy / dl * p.len;
     ctx.strokeStyle = `rgba(190,220,255,${p.alpha * intensity})`;
-    ctx.lineWidth = 0.8 + intensity * 0.8;
+    ctx.lineWidth = 1.0 + intensity * 1.2;
     ctx.beginPath();
     ctx.moveTo(p.x, p.y);
     ctx.lineTo(p.x + tx, p.y + ty);
@@ -270,14 +294,14 @@ export function drawSpeedLines(ctx, lines, kmh, w, h, dt, cameraMode = 'chase') 
 
 // ── FOV pump (camera lerps from base FOV up to base+boost) ───────────
 export function updateFovPump(camera, kmh, maxKmh, boostActive, dt) {
-  const baseFov  = 62;
-  const speedFovBoost = 20;
-  const boostFov = 86;
+  const baseFov  = 66;
+  const speedFovBoost = 28;
+  const boostFov = 94;
   const t = Math.min(1, kmh / maxKmh);
   // Quadratic so the pump kicks in harder at high speed.
   let target = baseFov + (t * t) * speedFovBoost;
   if (boostActive) target = Math.max(target, boostFov);
-  const k = 1 - Math.exp(-4.6 * dt);
+  const k = 1 - Math.exp(-5.4 * dt);
   camera.fov += (target - camera.fov) * k;
   camera.updateProjectionMatrix();
 }

@@ -1,4 +1,4 @@
-import { clamp, pointInPolygon } from '../utils/math.js';
+import { clamp } from '../utils/math.js';
 
 // 1 game-unit / sec  ==  1 km/h on the speedometer.
 const SPEED_FACTOR = 1.0;
@@ -24,24 +24,30 @@ export function updatePhysics(car, input, dt, track) {
 
   // ── boost state machine ──
   _updateBoost(car, input, dt);
+  _updateDrs(car, track, dt);
 
   // ── derived car limits (boost-modulated) ──
   const boostPower = clamp(car.boostPower || 0, 0, 1);
-  const maxSpeed  = car.maxSpeed * SPEED_FACTOR * (1 + ((car.boostSpeedMult || 1.23) - 1) * boostPower);
-  const massFactor = Math.pow(1200 / Math.max(650, car.mass || 1200), 0.36);
-  const baseAccel = (58 + car.maxTorque * 0.155) * massFactor * (1 + ((car.boostAccelMult || 1.35) - 1) * boostPower);
+  const drsPower = clamp(car.drsPower || 0, 0, 1);
+  const maxSpeed  = car.maxSpeed * SPEED_FACTOR
+    * (1 + ((car.boostSpeedMult || 1.23) - 1) * boostPower)
+    * (1 + 0.16 * drsPower);
+  const massFactor = Math.pow(1200 / Math.max(650, car.mass || 1200), 0.28);
+  const baseAccel = (40 + car.maxTorque * 0.105) * massFactor
+    * (1 + ((car.boostAccelMult || 1.35) - 1) * boostPower)
+    * (1 + 0.22 * drsPower);
   const brakeRate = baseAccel * 1.28 * Math.pow(1250 / Math.max(700, car.mass || 1250), 0.1);
   const reverseTop = maxSpeed * 0.30;
-  const turnPower = 1.82;
+  const turnPower = 1.42;
 
   car.gear = clamp(car.gear || 1, 1, 6);
   const accelRate = baseAccel * GEAR_ACCEL[car.gear];
 
   // ── steering ── (negate so D = right turn)
   const speedRatio  = clamp(car.speed / maxSpeed, 0, 1);
-  const maxWheel    = 0.78 - speedRatio * 0.30;
+  const maxWheel    = 0.72 - speedRatio * 0.28;
   const targetWheel = -input.steer * maxWheel;
-  car.steerAngle += (targetWheel - car.steerAngle) * Math.min(dt * 7.5, 1);
+  car.steerAngle += (targetWheel - car.steerAngle) * Math.min(dt * 5.4, 1);
 
   const fwdX     = Math.cos(car.angle);
   const fwdY     = Math.sin(car.angle);
@@ -88,7 +94,7 @@ export function updatePhysics(car, input, dt, track) {
   car.speed = Math.hypot(car.vx, car.vy);
   if (car.speed > 0.5) {
     const dirSign  = fwdSpeed >= 0 ? 1 : -1;
-    const turnGain = (0.45 + speedRatio * 0.55) * turnPower;
+    const turnGain = (0.36 + speedRatio * 0.50) * turnPower;
     car.angle += car.steerAngle * turnGain * dirSign * dt;
   }
 
@@ -101,7 +107,7 @@ export function updatePhysics(car, input, dt, track) {
     const fSpeed = car.vx * fx + car.vy * fy;
     sSpeed = car.vx * sx + car.vy * sy;
     // Looser grip while handbraking → bigger drift.
-    const decay  = input.handbrake ? 0.38 : (3.45 + car.grip * 1.05);
+    const decay  = input.handbrake ? 0.32 : (4.4 + car.grip * 1.25);
     const sNew   = sSpeed * Math.exp(-decay * dt);
     car.vx = fx * fSpeed + sx * sNew;
     car.vy = fy * fSpeed + sy * sNew;
@@ -160,56 +166,47 @@ export function updatePhysics(car, input, dt, track) {
 // Car corners (mesh-local x, z) — match wheel positions in car.js so the
 // hitbox actually covers what the player sees on screen.
 const CAR_CORNERS = [
-  [ 12,  9],  // FL
-  [ 12, -9],  // FR
-  [-10,  9],  // RL
-  [-10, -9],  // RR
+  [ 14,  12],  // FL
+  [ 14, -12],  // FR
+  [-12,  12],  // RL
+  [-12, -12],  // RR
 ];
 
-// Iteratively push the car back onto the track until none of its 4 corners
-// is on the wrong side of either boundary, or we give up after 3 tries.
 function _resolveCollision(car, nextX, nextY, track) {
   let fx = nextX, fy = nextY;
   const a  = car.angle;
   const ca = Math.cos(a), sa = Math.sin(a);
+  const halfTrack = (track.width || 100) / 2;
+  const guardrailOffset = halfTrack + 18;
+  const maxDist = Math.max(18, guardrailOffset - 4);
 
   let collided = false;
   let aggrNx  = 0, aggrNy = 0;
 
-  for (let iter = 0; iter < 3; iter++) {
-    let bestPushDx = 0, bestPushDy = 0, bestMag = 0;
-    let bestNx = 0,    bestNy = 0;
+  for (let iter = 0; iter < 2; iter++) {
+    let pushX = 0, pushY = 0, pushCount = 0;
     let anyOff = false;
 
     for (const [lx, lz] of CAR_CORNERS) {
       const cx = fx + lx * ca + lz * sa;
       const cy = fy + lx * sa - lz * ca;
-      const inOuter = pointInPolygon(cx, cy, track.outerBoundary);
-      const inInner = pointInPolygon(cx, cy, track.innerBoundary);
-      if (inOuter && !inInner) continue;       // this corner is fine
+      const hit = _closestCenterlineSegment(cx, cy, track.centerLine || []);
+      if (!hit || hit.dist <= maxDist) continue;
+
       anyOff = true;
-      const wallBoundary = !inOuter ? track.outerBoundary : track.innerBoundary;
-      const hit = _closestSegment(cx, cy, wallBoundary);
-      if (!hit) continue;
-      // inward normal — direction the corner needs to move
-      const wnx = -hit.nx, wny = -hit.ny;
-      const dist = Math.hypot(cx - hit.px, cy - hit.py);
-      const pushDist = dist + 0.6;          // small buffer past edge
-      const dx = wnx * pushDist;
-      const dy = wny * pushDist;
-      const mag = Math.hypot(dx, dy);
-      if (mag > bestMag) {
-        bestMag = mag;
-        bestPushDx = dx; bestPushDy = dy;
-        bestNx = wnx;    bestNy = wny;
-      }
+      const excess = hit.dist - maxDist + 0.8;
+      const nx = hit.dx / (hit.dist || 1);
+      const ny = hit.dy / (hit.dist || 1);
+      pushX -= nx * excess;
+      pushY -= ny * excess;
+      aggrNx -= nx;
+      aggrNy -= ny;
+      pushCount++;
     }
 
     if (!anyOff) break;
-    fx += bestPushDx;
-    fy += bestPushDy;
-    aggrNx = bestNx;
-    aggrNy = bestNy;
+    fx += pushX / Math.max(1, pushCount);
+    fy += pushY / Math.max(1, pushCount);
     collided = true;
   }
 
@@ -219,19 +216,22 @@ function _resolveCollision(car, nextX, nextY, track) {
     car.offTrack = true;
 
     // reflect the wall-normal component of velocity
-    if (aggrNx || aggrNy) {
-      const vn = car.vx * aggrNx + car.vy * aggrNy;
+    const nl = Math.hypot(aggrNx, aggrNy) || 1;
+    const nx = aggrNx / nl;
+    const ny = aggrNy / nl;
+    if (Number.isFinite(nx) && Number.isFinite(ny)) {
+      const vn = car.vx * nx + car.vy * ny;
       if (vn < 0) {
-        car.vx -= vn * aggrNx * 1.55;
-        car.vy -= vn * aggrNy * 1.55;
+        car.vx -= vn * nx * 1.12;
+        car.vy -= vn * ny * 1.12;
       }
     }
     // friction along the wall slide
-    car.vx *= 0.80;
-    car.vy *= 0.80;
+    car.vx *= 0.70;
+    car.vy *= 0.70;
 
     car.lastWallHit = {
-      x: fx, y: fy, nx: aggrNx, ny: aggrNy,
+      x: fx, y: fy, nx, ny,
       impactSpeed: car.speed,
       totalSpeed: car.speed,
       time: performance.now(),
@@ -258,12 +258,26 @@ function _updateBoost(car, input, dt) {
   car.boostPower = (car.boostPower || 0) + (target - (car.boostPower || 0)) * (1 - Math.exp(-response * dt));
 }
 
-function _closestSegment(x, y, boundary) {
+function _updateDrs(car, track, dt) {
+  const hit = _closestCenterlineSegment(car.x, car.y, track.centerLine || []);
+  let active = false;
+  if (hit && car.speed > 85 && !car.drifting && !car.offTrack) {
+    const fwdX = Math.cos(car.angle);
+    const fwdY = Math.sin(car.angle);
+    const headingAlign = Math.abs(fwdX * hit.tx + fwdY * hit.ty);
+    active = hit.straightness > 0.985 && headingAlign > 0.88 && hit.dist < (track.width || 100) * 0.34;
+  }
+  car.drsActive = active;
+  const target = active ? 1 : 0;
+  car.drsPower = (car.drsPower || 0) + (target - (car.drsPower || 0)) * (1 - Math.exp(-(active ? 3.5 : 4.8) * dt));
+}
+
+function _closestCenterlineSegment(x, y, centerLine) {
   let best = null;
   let bestD2 = Infinity;
-  for (let i = 0; i < boundary.length; i++) {
-    const [x1, y1] = boundary[i];
-    const [x2, y2] = boundary[(i + 1) % boundary.length];
+  for (let i = 0; i < centerLine.length; i++) {
+    const [x1, y1] = centerLine[i];
+    const [x2, y2] = centerLine[(i + 1) % centerLine.length];
     const ex = x2 - x1, ey = y2 - y1;
     const len2 = ex * ex + ey * ey;
     if (len2 < 1e-6) continue;
@@ -273,8 +287,14 @@ function _closestSegment(x, y, boundary) {
     const d2 = ddx * ddx + ddy * ddy;
     if (d2 < bestD2) {
       bestD2 = d2;
-      const dlen = Math.sqrt(d2) || 1e-6;
-      best = { px, py, nx: ddx / dlen, ny: ddy / dlen };
+      const len = Math.sqrt(len2) || 1;
+      const prev = centerLine[(i - 4 + centerLine.length) % centerLine.length];
+      const next = centerLine[(i + 5) % centerLine.length];
+      const vx = next[0] - prev[0];
+      const vy = next[1] - prev[1];
+      const vl = Math.hypot(vx, vy) || 1;
+      const straightness = Math.abs((ex / len) * (vx / vl) + (ey / len) * (vy / vl));
+      best = { px, py, dx: ddx, dy: ddy, dist: Math.sqrt(d2), tx: ex / len, ty: ey / len, straightness };
     }
   }
   return best;

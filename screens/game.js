@@ -304,7 +304,7 @@ export function updateGame(dt, now) {
 
   // ── FOV pump (visual speed sensation) ──
   const kmh = car.speed * KMH_PER_UNIT;
-  updateFovPump(camera3d, kmh, car.maxSpeed, !!car.boosting, dt);
+  updateFovPump(camera3d, kmh, car.maxSpeed, !!car.boosting || !!car.drsActive, dt);
 
   // ── render ──
   renderer.render(scene, camera3d);
@@ -328,19 +328,28 @@ function _emitDriftFx(dt) {
     const wx = car.x + rearOffset * cs - sideSign * sideOffset * sn;
     const wy = car.y + rearOffset * sn + sideSign * sideOffset * cs;
     const w3z = -wy;
-    if (Math.random() < 0.22) spawnSmoke(smokePool, wx, 2.4, w3z, 0x79e7ff);
     const key = sideSign < 0 ? '_lastSkidL' : '_lastSkidR';
     const prev = car[key];
     if (prev) {
       const dx = wx - prev.x, dz = w3z - prev.z;
       if (dx*dx + dz*dz > 1.2) {
-        skidBuf.appendTrail(prev.x, prev.z, wx, w3z, 1.8);
+        skidBuf.appendTrail(prev.x, prev.z, wx, w3z, 4.6, _driftTrailColor());
         car[key] = { x: wx, z: w3z };
       }
     } else {
       car[key] = { x: wx, z: w3z };
     }
   }
+}
+
+function _driftTrailColor() {
+  const palettes = [
+    [0x35f5ff, 0x00c7ff, 0x9ffcff],
+    [0xff3b18, 0xff8a00, 0xffd166],
+    [0xb85cff, 0x7c3cff, 0xff4dff],
+  ];
+  const palette = palettes[Math.abs((carData?.id || '').split('').reduce((a, ch) => a + ch.charCodeAt(0), 0)) % palettes.length];
+  return palette[Math.floor(Math.random() * palette.length)];
 }
 
 function _scheduleResults(ev) {
@@ -551,6 +560,8 @@ function _resetCar() {
   car.boostTimer = 0;
   car.boostPower = 0;
   car.boosting = false;
+  car.drsActive = false;
+  car.drsPower = 0;
   car.lastWallHit = null;
   if (skidBuf) skidBuf.reset();
   // Re-create timing so the new lap starts cleanly when the line is crossed.

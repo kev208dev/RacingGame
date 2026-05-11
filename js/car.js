@@ -46,6 +46,8 @@ export function createCar(carData, startPos) {
     boostTimer: 0,
     boostPower: 0,
     boosting: false,
+    drsActive: false,
+    drsPower: 0,
     lastWallHit: null,
     _acc: 0, _shiftTimer: 0,
     _prevFwdSpeed: 0,
@@ -66,10 +68,11 @@ export function createCar3D(carData = {}) {
 
   const wheelGroups = [];
   model.traverse(child => {
-    const isWheelGroup = child.isGroup && child.name.toLowerCase().includes('wheel');
+    const childName = child.name.toLowerCase();
+    const isWheelGroup = child.isGroup && childName.includes('wheel') && !childName.includes('_pivot');
     if (isWheelGroup) {
-      child.spinGroup = child;
-      child.baseY = child.position.y;
+      child.spinPivot = child.userData.spinPivot || child.children.find(c => c.isGroup && c.name.toLowerCase().includes('_pivot'));
+      child.baseY = child.userData.baseY ?? child.position.y;
       child.sideSign = child.position.x < 0 ? 1 : -1;
       child.axleSign = child.position.z > 0 ? 1 : -1;
       wheelGroups.push(child);
@@ -79,9 +82,7 @@ export function createCar3D(carData = {}) {
   root.wheelGroups = wheelGroups;
   root.body        = model;
   root.castShadow  = true;
-  root._roll       = 0;
-  root._pitch      = 0;
-  root._heave      = 0;
+  root._lastWheelTime = performance.now();
 
   return root;
 }
@@ -92,42 +93,88 @@ export function updateCar3D(mesh3d, car, input) {
   mesh3d.position.set(car.x, 0, -car.y);
   mesh3d.rotation.y = car.angle;
 
-  // wheel spin (around the wheel axle = Z in spinGroup local frame)
-  const spinRate = car.speed * 0.05;
+  const speedSign = Math.sign(car.vx * Math.cos(car.angle) + car.vy * Math.sin(car.angle)) || 1;
+  const speed = car.speed;
+  const speedN = Math.min(1, speed / 210);
+
   const now = performance.now();
-  const speedN = Math.min(1, car.speed / 210);
+  const wheelDt = Math.min(0.05, Math.max(0, (now - (mesh3d._lastWheelTime || now)) / 1000));
+  mesh3d._lastWheelTime = now;
+  const spinRate = speed * 2.2 * wheelDt * speedSign;
   for (const wg of (mesh3d.wheelGroups || [])) {
-    if (wg.spinGroup) wg.spinGroup.rotation.z -= spinRate;
-    const roadBuzz = Math.sin(now * 0.011 + wg.sideSign * 1.7 + wg.axleSign * 0.9) * 0.12 * speedN;
-    const loadTransfer = (input?.brake || 0) * wg.axleSign * -0.18 + (input?.throttle || 0) * wg.axleSign * 0.08;
-    wg.position.y = (wg.baseY || 5) + roadBuzz + loadTransfer;
+    if (wg.spinPivot) wg.spinPivot.rotation.y += spinRate;
+  }
+
+
+  const throttle = input ? (input.throttle || 0) : 0;
+  const brake    = input ? (input.brake    || 0) : 0;
+
+  const a = car.angle;
+  const ca = Math.cos(a), sa = Math.sin(a);
+
+  if (!mesh3d._susState) {
+    const initY = (mesh3d.wheelGroups?.[0]?.position?.y) ?? 0.48;
+    mesh3d._susState = {
+      wheels: {
+        fl: { y: initY }, fr: { y: initY },
+        rl: { y: initY }, rr: { y: initY },
+      },
+      pitch: 0, roll: 0,
+    };
+  }
+
+  const sus = mesh3d._susState;
+  const baseRef = mesh3d.wheelGroups?.[0]?.baseY ?? mesh3d.wheelGroups?.[0]?.position?.y ?? 0.48;
+
+  const corners = [
+    { key: 'fl', lx: 12, lz: 9 },
+    { key: 'fr', lx: 12, lz: -9 },
+    { key: 'rl', lx: -10, lz: 9 },
+    { key: 'rr', lx: -10, lz: -9 },
+  ];
+
+  for (const c of corners) {
+    const w = sus.wheels[c.key];
+    if (!w) continue;
+    const wx = car.x + c.lx * ca + c.lz * sa;
+    const wy = car.y + c.lx * sa - c.lz * ca;
+    const roadH = Math.sin(wx * 0.003 + wy * 0.005) * 0.04
+                + Math.sin(wx * 0.009 - wy * 0.007) * 0.02;
+    const brakeDive = brake * (c.lx > 0 ? -0.95 : 0.42);
+    const accelSquat = throttle * (c.lx > 0 ? 0.22 : -0.68);
+    const cornerLoad = -car.steerAngle * speedN * (c.lz > 0 ? 1 : -1) * 0.24;
+    const driftPress = car.drifting ? (c.lx < 0 ? -1.15 : -0.55) : 0;
+    const targetY = baseRef + roadH + brakeDive + accelSquat + cornerLoad + driftPress;
+    w.y += (targetY - w.y) * 0.22;
+  }
+
+  const fAvg = (sus.wheels.fl.y + sus.wheels.fr.y) / 2;
+  const rAvg = (sus.wheels.rl.y + sus.wheels.rr.y) / 2;
+  const lAvg = (sus.wheels.fl.y + sus.wheels.rl.y) / 2;
+  const rAvg2 = (sus.wheels.fr.y + sus.wheels.rr.y) / 2;
+
+  if (mesh3d.body) {
+    const avgY = (fAvg + rAvg) / 2;
+    const driftDrop = car.drifting ? 0.72 : 0;
+    mesh3d.body.position.y = avgY - baseRef - driftDrop;
+    const targetPitch = (rAvg - fAvg) * 0.02 + throttle * 0.018 - brake * 0.048;
+    const driftLean = car.drifting ? -Math.sign(car.sideSpeed || car.steerAngle || 1) * 0.13 : 0;
+    const targetRoll = (rAvg2 - lAvg) * 0.02 - car.steerAngle * speed * 0.00135 + driftLean;
+    mesh3d.body.rotation.z += (targetPitch - mesh3d.body.rotation.z) * 0.20;
+    mesh3d.body.rotation.x += (targetRoll - mesh3d.body.rotation.x) * 0.20;
+  }
+
+  let wi = 0;
+  for (const wg of (mesh3d.wheelGroups || [])) {
+    const c = corners[wi];
+    if (c) wg.position.y = sus.wheels[c.key].y;
+    wi++;
   }
 
   // front-wheel steer
   if (mesh3d.wheelGroups) {
-    mesh3d.wheelGroups[0].rotation.y = car.steerAngle * 1.2;  // FL
-    mesh3d.wheelGroups[1].rotation.y = car.steerAngle * 1.2;  // FR
-  }
-
-  // ── suspension (visual only) ──
-  if (mesh3d.body) {
-    // Pitch: nose dives on brake, lifts on throttle.
-    const throttle = input ? (input.throttle || 0) : 0;
-    const brake    = input ? (input.brake    || 0) : 0;
-    const pitchTarget = throttle * 0.012 - brake * 0.028 + (car.boostPower || 0) * 0.006;
-    mesh3d._pitch += (pitchTarget - mesh3d._pitch) * 0.08;
-    mesh3d.body.rotation.z = mesh3d._pitch;
-
-    // Roll: body leans opposite the turn (centrifugal effect).
-    // car.steerAngle is negative for D (right turn), so -steerAngle is positive
-    // → rotation.x positive → top of body tilts toward +Z (= car's left side).
-    const speedClamp = Math.min(car.speed, 280);
-    const rollTarget = -car.steerAngle * speedClamp * 0.00105;
-    mesh3d._roll += (rollTarget - mesh3d._roll) * 0.09;
-    mesh3d.body.rotation.x = mesh3d._roll;
-    const heaveTarget = Math.sin(now * 0.008) * 0.05 * speedN - brake * 0.04;
-    mesh3d._heave += (heaveTarget - mesh3d._heave) * 0.06;
-    mesh3d.body.position.y = mesh3d._heave;
+    const frontWheels = mesh3d.wheelGroups.filter(w => w.position.z > 0);
+    for (const wg of frontWheels) wg.rotation.y = car.steerAngle * 0.9;
   }
 
   // brake lights
@@ -137,9 +184,9 @@ export function updateCar3D(mesh3d, car, input) {
       c.material.emissive.setHex(braking ? 0xff2222 : 0x441111);
     }
     if (c.name === 'boostflame') {
-      const on = !!car.boosting;
+      const on = !!car.boosting || !!car.drsActive;
       c.visible = on;
-      const power = car.boostPower ?? (on ? 1 : 0);
+      const power = Math.max(car.boostPower || 0, (car.drsPower || 0) * 0.55);
       const base = 2.45 * (car.flameScale || 1) * (0.50 + power * 0.95);
       const flicker = 0.88 + Math.random() * 0.22;
       c.scale.set(base * flicker, base * (0.92 + Math.random() * 0.12), base * (0.88 + Math.random() * 0.18));
