@@ -317,15 +317,17 @@ export function scatterProps(scene, track) {
   };
 
   // ── dense F1-style corridor: tall fencing, boards and grandstands on both sides ──
-  for (let i = 0; i < cl.length; i++) {
+  const propStride = Math.max(1, Math.ceil(cl.length / 240));
+  for (let i = 0; i < cl.length; i += propStride) {
+    const visualIndex = Math.floor(i / propStride);
     const [cx, cy] = cl[i];
-    const [nx, ny] = cl[(i + 1) % cl.length];
+    const [nx, ny] = cl[(i + propStride) % cl.length];
     const tx = nx - cx, ty = ny - cy;
     const tl = Math.hypot(tx, ty) || 1;
     const px =  ty / tl;            // outward perpendicular
     const py = -tx / tl;
     const segRot = Math.atan2(ty, tx);
-    if (i % 3 === 0) {
+    if (visualIndex % 3 === 0) {
       for (const side of [-1, 1]) {
         const off = trackW / 2 + 44;
         const sx = cx + side * px * off;
@@ -333,7 +335,7 @@ export function scatterProps(scene, track) {
         placeTrackside(makeCatchFence(82), sx, sy, segRot, 48);
       }
     }
-    if (i % 8 === 0) {
+    if (visualIndex % 8 === 0) {
       for (const side of [-1, 1]) {
         const off = trackW / 2 + 124;
         const sx = cx + side * px * off;
@@ -341,7 +343,7 @@ export function scatterProps(scene, track) {
         placeTrackside(makeBillboard(), sx, sy, segRot + (side > 0 ? Math.PI / 2 : -Math.PI / 2), 36);
       }
     }
-    if (i % 12 === 0) {
+    if (visualIndex % 12 === 0) {
       for (const side of [-1, 1]) {
         const off = trackW / 2 + 265;
         const sx = cx + side * px * off;
@@ -349,8 +351,8 @@ export function scatterProps(scene, track) {
         placeTrackside(makeCrowdWall(170), sx, sy, segRot + (side > 0 ? Math.PI : 0), 120);
       }
     }
-    if (i % 28 === 0) {
-      const side = i % 40 === 0 ? 1 : -1;
+    if (visualIndex % 28 === 0) {
+      const side = visualIndex % 40 === 0 ? 1 : -1;
       const off = trackW / 2 + 430;
       const sx = cx + side * px * off;
       const sy = cy + side * py * off;
@@ -359,13 +361,13 @@ export function scatterProps(scene, track) {
       placeTrackside(gs, sx, sy, segRot + (side > 0 ? Math.PI : 0), 160);
     }
     // Trees set farther back so the scene no longer reads as pure grassland.
-    if (i % 15 === 0 && Math.random() < 0.35) {
+    if (visualIndex % 15 === 0 && Math.random() < 0.35) {
       const off = trackW / 2 + 170 + Math.random() * 90;
       const sx = cx + px * off;
       const sy = cy + py * off;
       placeTrackside(makeTree(0.9 + Math.random() * 0.8), sx, sy, Math.random() * Math.PI * 2);
     }
-    if (i % 24 === 0 && Math.random() < 0.25) {
+    if (visualIndex % 24 === 0 && Math.random() < 0.25) {
       const off = trackW / 2 + 190 + Math.random() * 90;
       const sx = cx - px * off;
       const sy = cy - py * off;
@@ -374,9 +376,9 @@ export function scatterProps(scene, track) {
   }
 
   // ── tire stacks outside the barrier only, never on the racing surface ──
-  for (let i = 0; i < cl.length; i += 16) {
+  for (let i = 0; i < cl.length; i += propStride * 16) {
     const [cx, cy] = cl[i];
-    const [nx, ny] = cl[(i + 1) % cl.length];
+    const [nx, ny] = cl[(i + propStride) % cl.length];
     const tx = nx - cx, ty = ny - cy;
     const tl = Math.hypot(tx, ty) || 1;
     const px =  ty / tl, py = -tx / tl;
@@ -440,9 +442,9 @@ export function scatterProps(scene, track) {
   }
 
   // ── marshal posts every ~30 centerline points, on the outer side ──
-  for (let i = 8; i < cl.length; i += 30) {
+  for (let i = 8; i < cl.length; i += propStride * 30) {
     const [cx, cy] = cl[i];
-    const [nx, ny] = cl[(i + 1) % cl.length];
+    const [nx, ny] = cl[(i + propStride) % cl.length];
     const tx = nx - cx, ty = ny - cy;
     const tl = Math.hypot(tx, ty) || 1;
     const px =  ty / tl, py = -tx / tl;

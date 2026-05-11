@@ -334,8 +334,7 @@ function _emitDriftFx(dt) {
     if (prev) {
       const dx = wx - prev.x, dz = w3z - prev.z;
       if (dx*dx + dz*dz > 1.2) {
-        skidBuf.appendQuad(prev.x, prev.z, wx, w3z, 1.8);
-        if (Math.random() < 0.38) spawnSparks(sparkPool, wx, 1.2, w3z, 2);
+        skidBuf.appendTrail(prev.x, prev.z, wx, w3z, 1.8);
         car[key] = { x: wx, z: w3z };
       }
     } else {

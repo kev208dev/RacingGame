@@ -138,14 +138,15 @@ function _applyRoadCamber(geo) {
 function _addRoadMarkings(grp, track) {
   const cl = track.centerLine || [];
   const half = (track.width || 100) / 2;
-  for (let i = 0; i < cl.length; i++) {
+  const stride = _visualStride(cl, 220);
+  for (let i = 0; i < cl.length; i += stride) {
     const [x1, y1] = cl[i];
-    const [x2, y2] = cl[(i + 1) % cl.length];
+    const [x2, y2] = cl[(i + stride) % cl.length];
     const dx = x2 - x1, dy = y2 - y1;
     const len = Math.hypot(dx, dy);
     if (len < 1) continue;
     const px = dy / len, py = -dx / len;
-    if (i % 2 === 0) {
+    if (Math.floor(i / stride) % 2 === 0) {
       _addLine(grp, x1, y1, x2, y2, 0xf4f0df, 2.2, 0.36);
     }
     for (const side of [-1, 1]) {
@@ -174,9 +175,10 @@ function _segAngle(x1, y1, x2, y2) {
 function _addKerbStripes(grp, boundary, yOffset, width) {
   const matA = new THREE.MeshLambertMaterial({ color: 0xcc1111 });
   const matB = new THREE.MeshLambertMaterial({ color: 0xeeeeee });
-  for (let i = 0; i < boundary.length; i++) {
+  const stride = _visualStride(boundary, 220);
+  for (let i = 0; i < boundary.length; i += stride) {
     const [x1, y1] = boundary[i];
-    const [x2, y2] = boundary[(i + 1) % boundary.length];
+    const [x2, y2] = boundary[(i + stride) % boundary.length];
     const len = Math.hypot(x2 - x1, y2 - y1);
     if (len < 0.5) continue;
     const cx = (x1 + x2) / 2;
@@ -203,9 +205,10 @@ function _addGuardrail(grp, boundary, height, thickness, color) {
   const wallMat = new THREE.MeshLambertMaterial({ color });
   const stripeMat = new THREE.MeshLambertMaterial({ color: 0xff3333 });
   const postMat = new THREE.MeshLambertMaterial({ color: 0x2a2a2a });
-  for (let i = 0; i < boundary.length; i++) {
+  const stride = _visualStride(boundary, 180);
+  for (let i = 0; i < boundary.length; i += stride) {
     const [x1, y1] = boundary[i];
-    const [x2, y2] = boundary[(i + 1) % boundary.length];
+    const [x2, y2] = boundary[(i + stride) % boundary.length];
     const len = Math.hypot(x2 - x1, y2 - y1);
     if (len < 0.5) continue;
     const cx = (x1 + x2) / 2;
@@ -237,6 +240,10 @@ function _addGuardrail(grp, boundary, height, thickness, color) {
       grp.add(post);
     }
   }
+}
+
+function _visualStride(points, targetSegments) {
+  return Math.max(1, Math.ceil((points?.length || 1) / targetSegments));
 }
 
 function _addStartGrid(grp, startPos) {

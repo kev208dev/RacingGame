@@ -10,9 +10,14 @@ import * as THREE from 'three';
 export function createSmokePool(scene, count = 80) {
   const geo = new THREE.PlaneGeometry(8, 8);
   geo.rotateX(-Math.PI / 2);
+  const smokeTex = _makeSmokeTexture();
   const mat = new THREE.MeshBasicMaterial({
-    color: 0xeeeeee, transparent: true, opacity: 0.0,
+    color: 0xeeeeee,
+    map: smokeTex,
+    transparent: true,
+    opacity: 0.0,
     depthWrite: false,
+    alphaTest: 0.02,
   });
   const pool = [];
   for (let i = 0; i < count; i++) {
@@ -28,6 +33,23 @@ export function createSmokePool(scene, count = 80) {
     });
   }
   return pool;
+}
+
+function _makeSmokeTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  const g = ctx.createRadialGradient(64, 64, 8, 64, 64, 62);
+  g.addColorStop(0, 'rgba(255,255,255,0.95)');
+  g.addColorStop(0.42, 'rgba(255,255,255,0.55)');
+  g.addColorStop(0.76, 'rgba(255,255,255,0.14)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 128, 128);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
 }
 
 export function spawnSmoke(pool, x, y, z, color = 0xeeeeee) {
@@ -94,7 +116,7 @@ export function createSkidBuffer(scene, capSegments = 400) {
       this.count = 0;
       geo.setDrawRange(0, 0);
     },
-    appendQuad(ax, az, bx, bz, halfWidth = 1.4) {
+    appendTrail(ax, az, bx, bz, halfWidth = 1.4) {
       const dx = bx - ax, dz = bz - az;
       const dl = Math.hypot(dx, dz) || 1;
       const px = dz / dl * halfWidth * 0.22;
@@ -109,6 +131,9 @@ export function createSkidBuffer(scene, capSegments = 400) {
       if (this.count < this.capSegments) this.count++;
       geo.attributes.position.needsUpdate = true;
       geo.setDrawRange(0, this.count * 2);
+    },
+    appendQuad(ax, az, bx, bz, halfWidth = 1.4) {
+      this.appendTrail(ax, az, bx, bz, halfWidth);
     },
   };
 }
