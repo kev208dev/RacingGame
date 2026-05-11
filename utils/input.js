@@ -1,9 +1,22 @@
 export const keys = {};
 const justPressed = {};
 const justReleased = {};
+let lastShiftTapAt = 0;
+const SHIFT_DOUBLE_TAP_MS = 360;
 
 window.addEventListener('keydown', e => {
-  if (!keys[e.code]) justPressed[e.code] = true;
+  if (!keys[e.code]) {
+    justPressed[e.code] = true;
+    if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+      const now = performance.now();
+      if (now - lastShiftTapAt <= SHIFT_DOUBLE_TAP_MS) {
+        justPressed.ShiftDouble = true;
+        lastShiftTapAt = 0;
+      } else {
+        lastShiftTapAt = now;
+      }
+    }
+  }
   keys[e.code] = true;
   if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) {
     e.preventDefault();
@@ -36,8 +49,9 @@ export function getInput() {
     handbrake:    !!keys['Space'],
     boost:        !!(keys['ShiftLeft'] || keys['ShiftRight']),
     boostJust:    wasJustPressed('ShiftLeft') || wasJustPressed('ShiftRight'),
-    gearUp:       wasJustPressed('KeyE'),
-    gearDown:     wasJustPressed('KeyQ'),
+    boostDouble:  wasJustPressed('ShiftDouble'),
+    gearUp:       wasJustPressed('KeyQ'),
+    gearDown:     wasJustPressed('KeyE'),
     autoToggle:   wasJustPressed('KeyT'),
     engineToggle: wasJustPressed('KeyJ'),
     parkingBrake: wasJustPressed('KeyP'),

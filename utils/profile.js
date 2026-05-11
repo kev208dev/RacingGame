@@ -8,6 +8,8 @@ import { safeNickname, validateNickname } from './nicknameFilter.js';
 const TABLE = 'player_profiles';
 const DEFAULT_OWNED = ['apex_gt3', 'feather_sprint'];
 const DEFAULT_THEME = '#2ec4b6';
+const SUPER_ACCOUNT_EMAILS = new Set(['kev208ev@gmail.com']);
+const ALL_CAR_IDS = CAR_DATA.map(car => car.id);
 
 let profile = null;
 let loading = false;
@@ -67,6 +69,7 @@ export function getDisplayProfile() {
 }
 
 export function isOwned(carId) {
+  if (isSuperAccount()) return ALL_CAR_IDS.includes(carId);
   if (!getCurrentUser()) return DEFAULT_OWNED.includes(carId);
   return !!profile?.owned_car_ids?.includes(carId);
 }
@@ -188,7 +191,17 @@ async function ensureProfile(user) {
     .eq('user_id', user.id)
     .maybeSingle();
   if (error) throw error;
-  if (data) return normalizeProfile(data);
+  if (data) {
+    const normalized = normalizeProfile(data);
+    if (isSuperAccount(user) && !ALL_CAR_IDS.every(id => normalized.owned_car_ids.includes(id))) {
+      await getSupabase()
+        .from(TABLE)
+        .update({ owned_car_ids: ALL_CAR_IDS, starter_claimed: true })
+        .eq('user_id', user.id);
+      return { ...normalized, owned_car_ids: ALL_CAR_IDS, starter_claimed: true };
+    }
+    return normalized;
+  }
 
   const local = getPlayerProfile();
   const nickname = safeNickname(
@@ -202,9 +215,9 @@ async function ensureProfile(user) {
       nickname,
       theme_color: DEFAULT_THEME,
       coins: 0,
-      owned_car_ids: DEFAULT_OWNED,
+      owned_car_ids: isSuperAccount(user) ? ALL_CAR_IDS : DEFAULT_OWNED,
       completed_missions: [],
-      starter_claimed: false,
+      starter_claimed: isSuperAccount(user),
     })
     .select('*')
     .single();
@@ -213,15 +226,21 @@ async function ensureProfile(user) {
 }
 
 function normalizeProfile(row) {
+  const owned = Array.isArray(row.owned_car_ids) ? row.owned_car_ids : DEFAULT_OWNED;
   return {
     ...row,
     nickname: safeNickname(row.nickname, 'Driver'),
     theme_color: normalizeColor(row.theme_color) || DEFAULT_THEME,
     coins: Number(row.coins || 0),
-    owned_car_ids: Array.isArray(row.owned_car_ids) ? row.owned_car_ids : DEFAULT_OWNED,
+    owned_car_ids: isSuperAccount() ? ALL_CAR_IDS : owned,
     completed_missions: Array.isArray(row.completed_missions) ? row.completed_missions : [],
-    starter_claimed: !!row.starter_claimed,
+    starter_claimed: isSuperAccount() || !!row.starter_claimed,
   };
+}
+
+function isSuperAccount(user = getCurrentUser()) {
+  const email = String(user?.email || '').trim().toLowerCase();
+  return SUPER_ACCOUNT_EMAILS.has(email);
 }
 
 function normalizeColor(value) {

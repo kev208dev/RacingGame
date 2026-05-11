@@ -5,9 +5,9 @@ const SPEED_FACTOR = 1.0;
 export const KMH_PER_UNIT = 1 / SPEED_FACTOR;
 
 // Per-gear "top speed" — speed at which RPM hits maxRpm in that gear.
-const GEAR_TOP = [0, 60, 105, 155, 215, 275, 340];
+const GEAR_TOP = [0, 48, 82, 120, 162, 208, 258, 305, 355];
 // Acceleration multiplier per gear (low gears = more torque).
-const GEAR_ACCEL = [0, 1.06, 0.94, 0.82, 0.70, 0.58, 0.48];
+const GEAR_ACCEL = [0, 1.12, 1.02, 0.92, 0.80, 0.68, 0.57, 0.48, 0.40];
 
 const SHIFT_UP_RPM   = 0.92; // ratio of maxRpm to auto-upshift
 const SHIFT_DOWN_RPM = 0.32; // ratio of maxRpm to auto-downshift
@@ -23,24 +23,24 @@ export function updatePhysics(car, input, dt, track) {
   }
 
   // ── boost state machine ──
+  _updateDrs(car, input, track, dt);
   _updateBoost(car, input, dt);
-  _updateDrs(car, track, dt);
 
   // ── derived car limits (boost-modulated) ──
   const boostPower = clamp(car.boostPower || 0, 0, 1);
   const drsPower = clamp(car.drsPower || 0, 0, 1);
   const maxSpeed  = car.maxSpeed * SPEED_FACTOR
     * (1 + ((car.boostSpeedMult || 1.23) - 1) * boostPower)
-    * (1 + 0.16 * drsPower);
+    * (1 + 0.28 * drsPower);
   const massFactor = Math.pow(1200 / Math.max(650, car.mass || 1200), 0.28);
   const baseAccel = (40 + car.maxTorque * 0.105) * massFactor
     * (1 + ((car.boostAccelMult || 1.35) - 1) * boostPower)
-    * (1 + 0.22 * drsPower);
+    * (1 + 0.38 * drsPower);
   const brakeRate = baseAccel * 1.28 * Math.pow(1250 / Math.max(700, car.mass || 1250), 0.1);
   const reverseTop = maxSpeed * 0.30;
-  const turnPower = 1.42;
+  const turnPower = input.handbrake ? 1.86 : 1.42;
 
-  car.gear = clamp(car.gear || 1, 1, 6);
+  car.gear = clamp(car.gear || 1, 1, 8);
   const accelRate = baseAccel * GEAR_ACCEL[car.gear];
 
   // ── steering ── (negate so D = right turn)
@@ -53,10 +53,10 @@ export function updatePhysics(car, input, dt, track) {
   const fwdY     = Math.sin(car.angle);
   const fwdSpeed = car.vx * fwdX + car.vy * fwdY;
 
-  // ── shift inputs (E/Q always work; auto-switch to manual on use) ──
+  // ── shift inputs (Q up / E down; auto-switch to manual on use) ──
   if (input.gearUp) {
     car.transmission = 'manual';
-    if (car.gear < 6) car.gear += 1;
+    if (car.gear < 8) car.gear += 1;
   }
   if (input.gearDown) {
     car.transmission = 'manual';
@@ -107,13 +107,13 @@ export function updatePhysics(car, input, dt, track) {
     const fSpeed = car.vx * fx + car.vy * fy;
     sSpeed = car.vx * sx + car.vy * sy;
     // Looser grip while handbraking → bigger drift.
-    const decay  = input.handbrake ? 0.32 : (4.4 + car.grip * 1.25);
+    const decay  = input.handbrake ? 0.12 : (4.4 + car.grip * 1.25);
     const sNew   = sSpeed * Math.exp(-decay * dt);
     car.vx = fx * fSpeed + sx * sNew;
     car.vy = fy * fSpeed + sy * sNew;
   }
   car.sideSpeed = sSpeed;
-  car.drifting  = (input.handbrake && Math.abs(sSpeed) > 6 && car.speed > 25);
+  car.drifting  = (input.handbrake && Math.abs(sSpeed) > 2.5 && car.speed > 16);
   if (car.drifting) {
     const driftIntensity = clamp(Math.abs(sSpeed) / 45, 0.25, 1.15);
     car.boostMeter = Math.min(100, (car.boostMeter || 0) + dt * (car.boostChargeRate || 14) * 0.48 * driftIntensity);
@@ -147,7 +147,7 @@ export function updatePhysics(car, input, dt, track) {
   const upRpm   = car.maxRpm * SHIFT_UP_RPM;
   const downRpm = car.maxRpm * SHIFT_DOWN_RPM;
   if (car.transmission !== 'manual') {
-    if (car.rpm > upRpm   && car.gear < 6) car.gear += 1;
+    if (car.rpm > upRpm   && car.gear < 8) car.gear += 1;
     if (car.rpm < downRpm && car.gear > 1) car.gear -= 1;
   } else {
     if (car.rpm >= car.maxRpm * 1.02) {
@@ -249,8 +249,12 @@ function _updateBoost(car, input, dt) {
 
   const cost = car.boostCost || 38;
   if (input.boostJust && car.boostMeter >= cost && car.boostTimer <= 0) {
-    car.boostMeter = Math.max(0, car.boostMeter - cost);
     car.boostTimer = car.boostDuration || 1.45;
+    car._boostDrainPerSec = cost / Math.max(0.25, car.boostTimer);
+  }
+  if (car.boostTimer > 0) {
+    car.boostMeter = Math.max(0, car.boostMeter - (car._boostDrainPerSec || cost) * dt);
+    if (car.boostMeter <= 0) car.boostTimer = 0;
   }
   car.boosting = car.boostTimer > 0;
   const target = car.boosting ? 1 : 0;
@@ -258,18 +262,36 @@ function _updateBoost(car, input, dt) {
   car.boostPower = (car.boostPower || 0) + (target - (car.boostPower || 0)) * (1 - Math.exp(-response * dt));
 }
 
-function _updateDrs(car, track, dt) {
+function _updateDrs(car, input, track, dt) {
+  car.superBoostMeter = clamp(car.superBoostMeter ?? 100, 0, 100);
+  car.drsTimer = Math.max(0, (car.drsTimer || 0) - dt);
   const hit = _closestCenterlineSegment(car.x, car.y, track.centerLine || []);
-  let active = false;
-  if (hit && car.speed > 85 && !car.drifting && !car.offTrack) {
+  let available = false;
+  if (hit && car.speed > 65 && !car.drifting && !car.offTrack) {
     const fwdX = Math.cos(car.angle);
     const fwdY = Math.sin(car.angle);
     const headingAlign = Math.abs(fwdX * hit.tx + fwdY * hit.ty);
-    active = hit.straightness > 0.985 && headingAlign > 0.88 && hit.dist < (track.width || 100) * 0.34;
+    available = hit.straightness > 0.975 && headingAlign > 0.82 && hit.dist < (track.width || 100) * 0.38;
   }
+  if (available && input.boostDouble && car.superBoostMeter > 8) {
+    car.drsTimer = 2.35;
+  }
+  if (!available) {
+    car.drsTimer = 0;
+    car.superBoostMeter = Math.min(100, car.superBoostMeter + dt * 18);
+  }
+  let active = available && car.drsTimer > 0 && car.superBoostMeter > 0;
+  if (active) {
+    car.superBoostMeter = Math.max(0, car.superBoostMeter - 42 * dt);
+    if (car.superBoostMeter <= 0) {
+      car.drsTimer = 0;
+      active = false;
+    }
+  }
+  car.drsAvailable = available;
   car.drsActive = active;
   const target = active ? 1 : 0;
-  car.drsPower = (car.drsPower || 0) + (target - (car.drsPower || 0)) * (1 - Math.exp(-(active ? 3.5 : 4.8) * dt));
+  car.drsPower = (car.drsPower || 0) + (target - (car.drsPower || 0)) * (1 - Math.exp(-(active ? 5.0 : 5.8) * dt));
 }
 
 function _closestCenterlineSegment(x, y, centerLine) {

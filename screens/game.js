@@ -100,20 +100,20 @@ export function initGame(cd, tr, resultsCb, menuCb) {
 
   if (!renderer) {
     renderer = new THREE.WebGLRenderer({ canvas: threeCanvas, antialias: true });
-    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.enabled = false;
     renderer.shadowMap.type    = THREE.PCFSoftShadowMap;
   }
   renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
 
   // ── scene ──
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x87ceeb);
-  scene.fog        = new THREE.Fog(0x87ceeb, 1500, 7000);
+  scene.fog        = new THREE.Fog(0x87ceeb, 9000, 22000);
 
   // ── camera ──
   camera3d = new THREE.PerspectiveCamera(
-    64, window.innerWidth / window.innerHeight, 1, 12000
+    64, window.innerWidth / window.innerHeight, 1, 26000
   );
   const sa = tr.startPos.angle;
   _camPos.set(
@@ -134,8 +134,8 @@ export function initGame(cd, tr, resultsCb, menuCb) {
   scene.add(new THREE.AmbientLight(0xffffff, 0.7));
   const sun = new THREE.DirectionalLight(0xfff5dc, 1.1);
   sun.position.set(400, 700, -300);
-  sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.castShadow = false;
+  sun.shadow.mapSize.set(1024, 1024);
   sun.shadow.camera.near   = 10;
   sun.shadow.camera.far    = 1500;
   sun.shadow.camera.left   = -400;
@@ -164,7 +164,7 @@ export function initGame(cd, tr, resultsCb, menuCb) {
 
   // ── effects ──
   smokePool  = createSmokePool(scene, 80);
-  skidBuf    = createSkidBuffer(scene, 400);
+  skidBuf    = createSkidBuffer(scene, 850);
   sparkPool  = createSparkPool(scene, 40);
   shake      = makeShake();
   speedLines = makeSpeedLines(60);
@@ -280,7 +280,7 @@ export function updateGame(dt, now) {
   }
 
   // ── effects: drift smoke + skid marks ──
-  _emitDriftFx(dt);
+  _emitDriftFx(dt, driveInput);
 
   // ── effects: wall hit sparks + screen shake + thud ──
   if (car.lastWallHit && car.lastWallHit.time !== lastWallHitId) {
@@ -312,15 +312,24 @@ export function updateGame(dt, now) {
 }
 
 // ── drift smoke + skid mark emission ─────────────────────────
-function _emitDriftFx(dt) {
-  if (!car.drifting || car.speed < 25) return;
+function _emitDriftFx(dt, driveInput) {
+  const visualDrift = car.drifting || (
+    driveInput?.handbrake
+    && car.speed > 18
+    && (Math.abs(car.steerAngle || 0) > 0.025 || Math.abs(car.sideSpeed || 0) > 2.5)
+  );
+  if (!visualDrift) {
+    delete car._lastSkidL;
+    delete car._lastSkidR;
+    return;
+  }
   // World positions of rear wheels (from car frame, mesh local coords).
   const a = car.angle;
   const cs = Math.cos(a), sn = Math.sin(a);
   // rear wheels: x=-10 (back), z=±9 (sides) in mesh-local; in physics 2D the
   // sides correspond to perpendicular ±9 from car heading.
-  const rearOffset = -10;
-  const sideOffset = 9;
+  const rearOffset = -7.6;
+  const sideOffset = 7.2;
   for (const sideSign of [-1, 1]) {
     // mesh-local (-10, 0, sideSign*9). Convert to world-physics 2D:
     //   world x = car.x + rearOffset*cos(a) - sideSign*sideOffset*sin(a)
@@ -332,8 +341,8 @@ function _emitDriftFx(dt) {
     const prev = car[key];
     if (prev) {
       const dx = wx - prev.x, dz = w3z - prev.z;
-      if (dx*dx + dz*dz > 1.2) {
-        skidBuf.appendTrail(prev.x, prev.z, wx, w3z, 4.6, _driftTrailColor());
+      if (dx*dx + dz*dz > 0.35) {
+        skidBuf.appendTrail(prev.x, prev.z, wx, w3z, 1.15, _driftTrailColor());
         car[key] = { x: wx, z: w3z };
       }
     } else {
@@ -560,7 +569,10 @@ function _resetCar() {
   car.boostTimer = 0;
   car.boostPower = 0;
   car.boosting = false;
+  car.superBoostMeter = 100;
+  car.drsAvailable = false;
   car.drsActive = false;
+  car.drsTimer = 0;
   car.drsPower = 0;
   car.lastWallHit = null;
   if (skidBuf) skidBuf.reset();

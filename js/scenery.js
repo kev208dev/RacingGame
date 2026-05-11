@@ -46,8 +46,8 @@ function makeGrandstand() {
     step.castShadow = true;
     step.receiveShadow = true;
     g.add(step);
-    for (let j = -48; j <= 48; j += 3) {
-      if (Math.random() < 0.1) continue;
+    for (let j = -48; j <= 48; j += 7) {
+      if (Math.random() < 0.18) continue;
       const p = new THREE.Mesh(new THREE.BoxGeometry(2.0, 1.8, 1.8), crowdMats[Math.floor(Math.random() * crowdMats.length)]);
       p.position.set(j * 2.0, h + 1.2, -i * d - 2.0);
       g.add(p);
@@ -127,8 +127,8 @@ function makeCrowdWall(length = 180) {
   roof.position.set(0, 48, -5);
   roof.rotation.x = -0.08;
   g.add(roof);
-  for (let row = 0; row < 4; row++) {
-    for (let x = -length / 2 + 8; x < length / 2 - 8; x += 8) {
+  for (let row = 0; row < 3; row++) {
+    for (let x = -length / 2 + 8; x < length / 2 - 8; x += 16) {
       const p = new THREE.Mesh(new THREE.BoxGeometry(4.5, 2.6, 1.8), crowdMats[(row + Math.floor((x + length / 2) / 8)) % crowdMats.length]);
       p.position.set(x, 31 + row * 3.6, -5.8);
       g.add(p);
@@ -317,7 +317,7 @@ export function scatterProps(scene, track) {
   };
 
   // ── dense F1-style corridor: tall fencing, boards and grandstands on both sides ──
-  const propStride = Math.max(1, Math.ceil(cl.length / 240));
+  const propStride = Math.max(2, Math.ceil(cl.length / 120));
   for (let i = 0; i < cl.length; i += propStride) {
     const visualIndex = Math.floor(i / propStride);
     const [cx, cy] = cl[i];
@@ -327,7 +327,7 @@ export function scatterProps(scene, track) {
     const px =  ty / tl;            // outward perpendicular
     const py = -tx / tl;
     const segRot = Math.atan2(ty, tx);
-    if (visualIndex % 3 === 0) {
+    if (visualIndex % 4 === 0) {
       for (const side of [-1, 1]) {
         const off = trackW / 2 + 44;
         const sx = cx + side * px * off;
@@ -335,7 +335,7 @@ export function scatterProps(scene, track) {
         placeTrackside(makeCatchFence(82), sx, sy, segRot, 48);
       }
     }
-    if (visualIndex % 8 === 0) {
+    if (visualIndex % 10 === 0) {
       for (const side of [-1, 1]) {
         const off = trackW / 2 + 124;
         const sx = cx + side * px * off;
@@ -343,22 +343,22 @@ export function scatterProps(scene, track) {
         placeTrackside(makeBillboard(), sx, sy, segRot + (side > 0 ? Math.PI / 2 : -Math.PI / 2), 36);
       }
     }
-    if (visualIndex % 12 === 0) {
+    if (visualIndex % 18 === 0) {
       for (const side of [-1, 1]) {
-        const off = trackW / 2 + 265;
+        const off = trackW / 2 + 205;
         const sx = cx + side * px * off;
         const sy = cy + side * py * off;
-        placeTrackside(makeCrowdWall(170), sx, sy, segRot + (side > 0 ? Math.PI : 0), 120);
+        placeTrackside(makeCrowdWall(190), sx, sy, segRot + (side > 0 ? Math.PI : 0), 92);
       }
     }
-    if (visualIndex % 28 === 0) {
+    if (visualIndex % 38 === 0) {
       const side = visualIndex % 40 === 0 ? 1 : -1;
-      const off = trackW / 2 + 430;
+      const off = trackW / 2 + 315;
       const sx = cx + side * px * off;
       const sy = cy + side * py * off;
       const gs = makeGrandstand();
-      gs.scale.setScalar(0.95);
-      placeTrackside(gs, sx, sy, segRot + (side > 0 ? Math.PI : 0), 160);
+      gs.scale.setScalar(1.15);
+      placeTrackside(gs, sx, sy, segRot + (side > 0 ? Math.PI : 0), 118);
     }
     // Trees set farther back so the scene no longer reads as pure grassland.
     if (visualIndex % 15 === 0 && Math.random() < 0.35) {
@@ -399,13 +399,13 @@ export function scatterProps(scene, track) {
     // Bigger main grandstand blocks around start/finish.
     for (const side of [-1, 1]) {
       for (let k = 0; k < 4; k++) {
-        const longOff = (k - 1.5) * 145;
-        const sideOff = side * (trackW / 2 + 420);
+        const longOff = (k - 1.5) * 185;
+        const sideOff = side * (trackW / 2 + 285);
         const wx = sp.x + fwdX * longOff + perpX * sideOff;
         const wy = sp.y + fwdY * longOff + perpY * sideOff;
         const gs = makeGrandstand();
-        gs.scale.setScalar(1.05);
-        placeTrackside(gs, wx, wy, sa + (side > 0 ? Math.PI : 0), 170);
+        gs.scale.setScalar(1.28);
+        placeTrackside(gs, wx, wy, sa + (side > 0 ? Math.PI : 0), 112);
       }
     }
     // Pit garages on the inner side of start

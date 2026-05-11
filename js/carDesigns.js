@@ -47,6 +47,7 @@ export function createCarDesign(type = 'formula_red') {
 
   const factory = factories[type] || factories.formula_red;
   const car = factory();
+  addCurvedSportsShellTo(car, type);
   addBoostFlameTo(car);
   car.userData.designType = type;
   return car;
@@ -123,16 +124,17 @@ function addWheelTo(group, name, x, z, radius, width, tireMat, rimMat, y = 0.48)
   const isRearWheel = z < 0;
   const visualRadius = radius * (isRearWheel ? 1.58 : 1.16);
   const visualWidth = width * (isRearWheel ? 1.58 : 1.22);
+  const wheelY = Math.max(y, visualRadius + 0.12);
   const wheel = new THREE.Group();
   wheel.name = name;
-  wheel.position.set(x, y, z);
+  wheel.position.set(x, wheelY, z);
   wheel.rotation.z = Math.PI / 2;
 
   const pivot = new THREE.Group();
   pivot.name = name + '_pivot';
   wheel.add(pivot);
   wheel.userData.spinPivot = pivot;
-  wheel.userData.baseY = y;
+  wheel.userData.baseY = wheelY;
 
   const tire = new THREE.Mesh(new THREE.CylinderGeometry(visualRadius, visualRadius, visualWidth, 32), tireMat);
   tire.name = 'black tire';
@@ -161,11 +163,65 @@ function addWheelTo(group, name, x, z, radius, width, tireMat, rimMat, y = 0.48)
     tireMat
   );
   arm.name = name + ' visible suspension arm';
-  arm.position.set(x * 0.45, y + 0.03, z);
+  arm.position.set(x * 0.45, wheelY + 0.03, z);
   arm.castShadow = true;
   group.add(arm);
 
   return wheel;
+}
+
+function addCurvedSportsShellTo(group, type) {
+  const colorByType = {
+    formula_red: 0xe11218,
+    gt_silver: 0xdce4e8,
+    cyber_black: 0x15181c,
+    rally_blue: 0x1565c0,
+    muscle_orange: 0xf57c00,
+    hyper_purple: 0x7b1fa2,
+    buggy_yellow: 0xffc400,
+    classic_green: 0x1b7f3a,
+  };
+  const paint = new THREE.MeshStandardMaterial({
+    color: colorByType[type] || 0xdce4e8,
+    roughness: 0.26,
+    metalness: 0.32,
+  });
+  const glass = new THREE.MeshStandardMaterial({
+    color: 0x071018,
+    roughness: 0.12,
+    metalness: 0.18,
+    transparent: true,
+    opacity: 0.76,
+  });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x080808, roughness: 0.48, metalness: 0.25 });
+
+  const body = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 16), paint);
+  body.name = 'smooth curved main body shell';
+  body.position.set(0, 0.98, 0.02);
+  body.scale.set(type === 'formula_red' ? 0.95 : 1.36, 0.24, type === 'formula_red' ? 2.18 : 2.05);
+  body.castShadow = true;
+  body.receiveShadow = true;
+  group.add(body);
+
+  const hood = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 12), paint);
+  hood.name = 'smooth curved hood shell';
+  hood.position.set(0, 1.08, 1.22);
+  hood.scale.set(type === 'formula_red' ? 0.44 : 1.04, 0.12, 1.0);
+  hood.castShadow = true;
+  group.add(hood);
+
+  const cabin = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 12), glass);
+  cabin.name = 'smooth curved glass canopy';
+  cabin.position.set(0, 1.32, -0.42);
+  cabin.scale.set(type === 'formula_red' ? 0.52 : 0.86, 0.28, 0.82);
+  cabin.castShadow = true;
+  group.add(cabin);
+
+  const lip = new THREE.Mesh(new THREE.BoxGeometry(type === 'formula_red' ? 2.2 : 2.65, 0.08, 0.22), dark);
+  lip.name = 'smooth black rear diffuser lip';
+  lip.position.set(0, 0.56, -2.32);
+  lip.castShadow = true;
+  group.add(lip);
 }
 
 function addSuspensionArmTo(group, name, x, z, angle, mat) {

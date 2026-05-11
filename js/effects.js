@@ -108,16 +108,22 @@ export function createSkidBuffer(scene, capSegments = 400) {
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   geo.setIndex(new THREE.BufferAttribute(indices, 1));
   geo.setDrawRange(0, 0);
+  geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), 20000);
+  geo.boundingBox = new THREE.Box3(
+    new THREE.Vector3(-20000, -20, -20000),
+    new THREE.Vector3(20000, 20, 20000)
+  );
   const mat = new THREE.MeshBasicMaterial({
     vertexColors: true,
     transparent: true,
-    opacity: 0.82,
+    opacity: 0.96,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
     side: THREE.DoubleSide,
   });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.renderOrder = 1;
+  mesh.frustumCulled = false;
   scene.add(mesh);
 
   return {
@@ -125,36 +131,53 @@ export function createSkidBuffer(scene, capSegments = 400) {
     positions,
     colors,
     capSegments,
-    head: 0,        // next segment slot
-    count: 0,       // segments currently filled
+    segments: [],
     reset() {
-      this.head = 0;
-      this.count = 0;
+      this.segments.length = 0;
       geo.setDrawRange(0, 0);
     },
-    appendTrail(ax, az, bx, bz, halfWidth = 1.4, color = 0x6ee7ff) {
-      const dx = bx - ax, dz = bz - az;
-      const dl = Math.hypot(dx, dz) || 1;
-      const px = dz / dl * halfWidth * 0.5;
-      const pz = -dx / dl * halfWidth * 0.5;
-      const i = this.head * 12;
-      const arr = positions;
-      arr[i+0] = ax + px; arr[i+1] = 0.54; arr[i+2] = az + pz;
-      arr[i+3] = ax - px; arr[i+4] = 0.54; arr[i+5] = az - pz;
-      arr[i+6] = bx + px; arr[i+7] = 0.54; arr[i+8] = bz + pz;
-      arr[i+9] = bx - px; arr[i+10] = 0.54; arr[i+11] = bz - pz;
-      const c = new THREE.Color(color);
-      for (let k = 0; k < 4; k++) {
-        colors[i + k * 3 + 0] = c.r;
-        colors[i + k * 3 + 1] = c.g;
-        colors[i + k * 3 + 2] = c.b;
+    appendTrail(ax, az, bx, bz, headHalfWidth = 2.2, color = 0x6ee7ff) {
+      this.segments.push({ ax, az, bx, bz, headHalfWidth, color });
+      while (this.segments.length > this.capSegments) this.segments.shift();
+      this._rebuild();
+    },
+    _rebuild() {
+      const count = this.segments.length;
+      if (!count) {
+        geo.setDrawRange(0, 0);
+        return;
       }
+      for (let s = 0; s < count; s++) {
+        const seg = this.segments[s];
+        const dx = seg.bx - seg.ax;
+        const dz = seg.bz - seg.az;
+        const dl = Math.hypot(dx, dz) || 1;
+        const nx = dz / dl;
+        const nz = -dx / dl;
+        const denom = Math.max(1, count - 1);
+        const t0 = s / denom;
+        const t1 = Math.min(1, (s + 1) / denom);
+        const tailWidth = Math.max(0.14, seg.headHalfWidth * 0.055);
+        const w0 = tailWidth + (seg.headHalfWidth - tailWidth) * Math.pow(t0, 9.5);
+        const w1 = tailWidth + (seg.headHalfWidth - tailWidth) * Math.pow(t1, 9.5);
+        const i = s * 12;
+        const c = new THREE.Color(seg.color);
+        const startGlow = 0.16 + 0.84 * Math.pow(t0, 3.2);
+        const endGlow = 0.16 + 0.84 * Math.pow(t1, 3.2);
 
-      this.head = (this.head + 1) % this.capSegments;
-      if (this.count < this.capSegments) this.count++;
+        positions[i+0] = seg.ax + nx * w0; positions[i+1] = 0.86; positions[i+2] = seg.az + nz * w0;
+        positions[i+3] = seg.ax - nx * w0; positions[i+4] = 0.86; positions[i+5] = seg.az - nz * w0;
+        positions[i+6] = seg.bx + nx * w1; positions[i+7] = 0.86; positions[i+8] = seg.bz + nz * w1;
+        positions[i+9] = seg.bx - nx * w1; positions[i+10] = 0.86; positions[i+11] = seg.bz - nz * w1;
+
+        colors[i+0] = c.r * startGlow; colors[i+1] = c.g * startGlow; colors[i+2] = c.b * startGlow;
+        colors[i+3] = c.r * startGlow; colors[i+4] = c.g * startGlow; colors[i+5] = c.b * startGlow;
+        colors[i+6] = c.r * endGlow; colors[i+7] = c.g * endGlow; colors[i+8] = c.b * endGlow;
+        colors[i+9] = c.r * endGlow; colors[i+10] = c.g * endGlow; colors[i+11] = c.b * endGlow;
+      }
       geo.attributes.position.needsUpdate = true;
       geo.attributes.color.needsUpdate = true;
-      geo.setDrawRange(0, this.count * 6);
+      geo.setDrawRange(0, count * 6);
     },
     appendQuad(ax, az, bx, bz, halfWidth = 1.4, color = 0x6ee7ff) {
       this.appendTrail(ax, az, bx, bz, halfWidth, color);

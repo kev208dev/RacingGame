@@ -46,7 +46,10 @@ export function createCar(carData, startPos) {
     boostTimer: 0,
     boostPower: 0,
     boosting: false,
+    superBoostMeter: 100,
+    drsAvailable: false,
     drsActive: false,
+    drsTimer: 0,
     drsPower: 0,
     lastWallHit: null,
     _acc: 0, _shiftTimer: 0,
@@ -140,10 +143,14 @@ export function updateCar3D(mesh3d, car, input) {
     const wy = car.y + c.lx * sa - c.lz * ca;
     const roadH = Math.sin(wx * 0.003 + wy * 0.005) * 0.04
                 + Math.sin(wx * 0.009 - wy * 0.007) * 0.02;
-    const brakeDive = brake * (c.lx > 0 ? -0.95 : 0.42);
-    const accelSquat = throttle * (c.lx > 0 ? 0.22 : -0.68);
-    const cornerLoad = -car.steerAngle * speedN * (c.lz > 0 ? 1 : -1) * 0.24;
-    const driftPress = car.drifting ? (c.lx < 0 ? -1.15 : -0.55) : 0;
+    const brakeDive = brake * (c.lx > 0 ? -0.42 : 0.16);
+    const accelSquat = throttle * (c.lx > 0 ? 0.10 : -0.30);
+    const turnSide = Math.sign(car.steerAngle || 0);
+    const outsideSide = -turnSide;
+    const wheelSide = c.lz > 0 ? 1 : -1;
+    const turnLoad = Math.abs(car.steerAngle || 0) * speedN * 0.34;
+    const cornerLoad = wheelSide === outsideSide ? -turnLoad : 0;
+    const driftPress = car.drifting && wheelSide === outsideSide ? (c.lx < 0 ? -0.34 : -0.18) : 0;
     const targetY = baseRef + roadH + brakeDive + accelSquat + cornerLoad + driftPress;
     w.y += (targetY - w.y) * 0.22;
   }
@@ -155,20 +162,19 @@ export function updateCar3D(mesh3d, car, input) {
 
   if (mesh3d.body) {
     const avgY = (fAvg + rAvg) / 2;
-    const driftDrop = car.drifting ? 0.72 : 0;
+    const driftDrop = car.drifting ? 0.22 : 0;
     mesh3d.body.position.y = avgY - baseRef - driftDrop;
     const targetPitch = (rAvg - fAvg) * 0.02 + throttle * 0.018 - brake * 0.048;
-    const driftLean = car.drifting ? -Math.sign(car.sideSpeed || car.steerAngle || 1) * 0.13 : 0;
-    const targetRoll = (rAvg2 - lAvg) * 0.02 - car.steerAngle * speed * 0.00135 + driftLean;
+    const driftLean = car.drifting ? -Math.sign(car.sideSpeed || car.steerAngle || 1) * 0.045 : 0;
+    const targetRoll = (rAvg2 - lAvg) * 0.02 - car.steerAngle * speed * 0.00062 + driftLean;
     mesh3d.body.rotation.z += (targetPitch - mesh3d.body.rotation.z) * 0.20;
     mesh3d.body.rotation.x += (targetRoll - mesh3d.body.rotation.x) * 0.20;
   }
 
-  let wi = 0;
   for (const wg of (mesh3d.wheelGroups || [])) {
-    const c = corners[wi];
-    if (c) wg.position.y = sus.wheels[c.key].y;
-    wi++;
+    // Keep tires planted. Suspension now moves only the body so the wheels do
+    // not visibly bounce into/out of the road surface.
+    wg.position.y = wg.baseY ?? baseRef;
   }
 
   // front-wheel steer
@@ -186,7 +192,7 @@ export function updateCar3D(mesh3d, car, input) {
     if (c.name === 'boostflame') {
       const on = !!car.boosting || !!car.drsActive;
       c.visible = on;
-      const power = Math.max(car.boostPower || 0, (car.drsPower || 0) * 0.55);
+      const power = Math.max(car.boostPower || 0, car.drsPower || 0);
       const base = 2.45 * (car.flameScale || 1) * (0.50 + power * 0.95);
       const flicker = 0.88 + Math.random() * 0.22;
       c.scale.set(base * flicker, base * (0.92 + Math.random() * 0.12), base * (0.88 + Math.random() * 0.18));

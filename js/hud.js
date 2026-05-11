@@ -52,8 +52,9 @@ export function drawHUD(ctx, car, timing, canvasW, canvasH, track, ghost = null)
     ctx.fillText('DRIFT!', 180, barY + 55);
   }
 
-  // boost meter
-  _boostMeter(ctx, car, 180, barY + 88, canvasW * 0.24, 12);
+  // boost meters
+  _boostMeter(ctx, car, 180, barY + 82, canvasW * 0.24, 10);
+  _superBoostMeter(ctx, car, 180, barY + 106, canvasW * 0.24, 8);
 
   // live lap timer (top-center)
   if (timing.started && timing.lapStart !== null) {
@@ -62,6 +63,13 @@ export function drawHUD(ctx, car, timing, canvasW, canvasH, track, ghost = null)
     ctx.fillStyle = 'rgba(255,255,255,0.92)';
     ctx.textAlign = 'center';
     ctx.fillText(formatTime(elapsed), canvasW / 2, 36);
+  }
+
+  if (track?.name) {
+    ctx.font = 'bold 15px system-ui';
+    ctx.fillStyle = 'rgba(255,255,255,0.82)';
+    ctx.textAlign = 'center';
+    ctx.fillText(track.name, canvasW / 2, 64);
   }
 
   // lap times
@@ -302,14 +310,15 @@ function _rpmBar(ctx, ratio, x, y, w, h) {
 }
 
 function _boostMeter(ctx, car, x, y, w, h) {
-  const meter = Math.max(0, Math.min(100, car.boostMeter || 0)) / 100;
+  const rawMeter = car.boostMeter || 0;
+  const meter = Math.max(0, Math.min(100, rawMeter)) / 100;
   // background
   ctx.fillStyle = '#222';
   ctx.fillRect(x, y, w, h);
   // fill (green at low, gold at high, magenta when actively boosting)
   let col = '#5acdb3';
   if (meter > 0.66) col = '#f0c060';
-  if (car.boosting)  col = '#e040ff';
+  if (car.boosting) col = '#e040ff';
   ctx.fillStyle = col;
   ctx.fillRect(x, y, w * meter, h);
   // outline
@@ -326,6 +335,26 @@ function _boostMeter(ctx, car, x, y, w, h) {
     ctx.fillStyle = '#9be9a8';
     ctx.textAlign = 'right';
     ctx.fillText('SHIFT', x + w, y - 2);
+  }
+}
+
+function _superBoostMeter(ctx, car, x, y, w, h) {
+  const rawMeter = car.superBoostMeter ?? 100;
+  const meter = Math.max(0, Math.min(100, rawMeter)) / 100;
+  ctx.fillStyle = '#111820';
+  ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = car.drsActive ? '#53f7ff' : car.drsAvailable ? '#32d3ff' : '#355566';
+  ctx.fillRect(x, y, w * meter, h);
+  ctx.strokeStyle = car.drsAvailable ? '#7eefff' : '#3d4b55';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x, y, w, h);
+  ctx.font = '10px monospace';
+  ctx.fillStyle = car.drsAvailable ? '#9ff8ff' : '#7b8b92';
+  ctx.textAlign = 'left';
+  ctx.fillText('SUPER', x, y - 2);
+  if (car.drsAvailable && !car.drsActive && rawMeter > 8) {
+    ctx.textAlign = 'right';
+    ctx.fillText('SHIFT x2', x + w, y - 2);
   }
 }
 
