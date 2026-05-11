@@ -296,8 +296,20 @@ export function scatterProps(scene, track) {
 
   const isOnTrack = (x, y) =>
     pointInPolygon(x, y, track.outerBoundary) && !pointInPolygon(x, y, track.innerBoundary);
-  const placeTrackside = (obj, x, y, rot = 0) => {
-    if (isOnTrack(x, y)) return false;
+
+  const footprintHitsTrack = (x, y, radius = 24) => {
+    if (isOnTrack(x, y)) return true;
+    const samples = Math.max(8, Math.ceil(radius / 18));
+    for (let i = 0; i < samples; i++) {
+      const a = (i / samples) * Math.PI * 2;
+      if (isOnTrack(x + Math.cos(a) * radius, y + Math.sin(a) * radius)) return true;
+      if (isOnTrack(x + Math.cos(a) * radius * 0.55, y + Math.sin(a) * radius * 0.55)) return true;
+    }
+    return false;
+  };
+
+  const placeTrackside = (obj, x, y, rot = 0, clearance = 24) => {
+    if (footprintHitsTrack(x, y, clearance)) return false;
     obj.position.set(x, 0, -y);
     obj.rotation.y = rot;
     propsGroup.add(obj);
@@ -315,36 +327,36 @@ export function scatterProps(scene, track) {
     const segRot = Math.atan2(ty, tx);
     if (i % 3 === 0) {
       for (const side of [-1, 1]) {
-        const off = trackW / 2 + 18;
+        const off = trackW / 2 + 44;
         const sx = cx + side * px * off;
         const sy = cy + side * py * off;
-        placeTrackside(makeCatchFence(82), sx, sy, segRot);
+        placeTrackside(makeCatchFence(82), sx, sy, segRot, 48);
       }
     }
     if (i % 8 === 0) {
       for (const side of [-1, 1]) {
-        const off = trackW / 2 + 72;
+        const off = trackW / 2 + 124;
         const sx = cx + side * px * off;
         const sy = cy + side * py * off;
-        placeTrackside(makeBillboard(), sx, sy, segRot + (side > 0 ? Math.PI / 2 : -Math.PI / 2));
+        placeTrackside(makeBillboard(), sx, sy, segRot + (side > 0 ? Math.PI / 2 : -Math.PI / 2), 36);
       }
     }
     if (i % 12 === 0) {
       for (const side of [-1, 1]) {
-        const off = trackW / 2 + 155;
+        const off = trackW / 2 + 265;
         const sx = cx + side * px * off;
         const sy = cy + side * py * off;
-        placeTrackside(makeCrowdWall(170), sx, sy, segRot + (side > 0 ? Math.PI : 0));
+        placeTrackside(makeCrowdWall(170), sx, sy, segRot + (side > 0 ? Math.PI : 0), 120);
       }
     }
     if (i % 28 === 0) {
       const side = i % 40 === 0 ? 1 : -1;
-      const off = trackW / 2 + 245;
+      const off = trackW / 2 + 430;
       const sx = cx + side * px * off;
       const sy = cy + side * py * off;
       const gs = makeGrandstand();
       gs.scale.setScalar(0.95);
-      placeTrackside(gs, sx, sy, segRot + (side > 0 ? Math.PI : 0));
+      placeTrackside(gs, sx, sy, segRot + (side > 0 ? Math.PI : 0), 160);
     }
     // Trees set farther back so the scene no longer reads as pure grassland.
     if (i % 15 === 0 && Math.random() < 0.35) {
@@ -369,11 +381,11 @@ export function scatterProps(scene, track) {
     const tl = Math.hypot(tx, ty) || 1;
     const px =  ty / tl, py = -tx / tl;
     if (Math.random() > 0.55) continue;
-    const off = trackW / 2 + 34;
+    const off = trackW / 2 + 72;
     const side = Math.random() < 0.5 ? -1 : 1;
     const sx = cx + side * px * off;
     const sy = cy + side * py * off;
-    placeTrackside(makeTireStack(), sx, sy, Math.atan2(ty, tx));
+    placeTrackside(makeTireStack(), sx, sy, Math.atan2(ty, tx), 20);
   }
 
   // ── grandstands ONLY clustered around start/finish ──
@@ -386,33 +398,33 @@ export function scatterProps(scene, track) {
     for (const side of [-1, 1]) {
       for (let k = 0; k < 4; k++) {
         const longOff = (k - 1.5) * 145;
-        const sideOff = side * (trackW / 2 + 220);
+        const sideOff = side * (trackW / 2 + 420);
         const wx = sp.x + fwdX * longOff + perpX * sideOff;
         const wy = sp.y + fwdY * longOff + perpY * sideOff;
         const gs = makeGrandstand();
         gs.scale.setScalar(1.05);
-        placeTrackside(gs, wx, wy, sa + (side > 0 ? Math.PI : 0));
+        placeTrackside(gs, wx, wy, sa + (side > 0 ? Math.PI : 0), 170);
       }
     }
     // Pit garages on the inner side of start
     const pits = makePitGarages();
-    const pitsX = sp.x - fwdX * 100 + perpX * (trackW / 2 + 145) * -1;
-    const pitsY = sp.y - fwdY * 100 + perpY * (trackW / 2 + 145) * -1;
-    placeTrackside(pits, pitsX, pitsY, sa);
+    const pitsX = sp.x - fwdX * 100 + perpX * (trackW / 2 + 285) * -1;
+    const pitsY = sp.y - fwdY * 100 + perpY * (trackW / 2 + 285) * -1;
+    placeTrackside(pits, pitsX, pitsY, sa, 150);
 
     const pitWall = makePitWall(190);
-    const pitWallX = sp.x + fwdX * 12 + perpX * (trackW / 2 + 24) * -1;
-    const pitWallY = sp.y + fwdY * 12 + perpY * (trackW / 2 + 24) * -1;
-    placeTrackside(pitWall, pitWallX, pitWallY, sa);
+    const pitWallX = sp.x + fwdX * 12 + perpX * (trackW / 2 + 88) * -1;
+    const pitWallY = sp.y + fwdY * 12 + perpY * (trackW / 2 + 88) * -1;
+    placeTrackside(pitWall, pitWallX, pitWallY, sa, 96);
 
     // Flag poles flanking the start line
     for (const side of [-1, 1]) {
       for (let k = 0; k < 4; k++) {
         const lo = (k - 1.5) * 60;
-        const so = side * (trackW / 2 + 58);
+        const so = side * (trackW / 2 + 108);
         const wx = sp.x + fwdX * lo + perpX * so;
         const wy = sp.y + fwdY * lo + perpY * so;
-        placeTrackside(makeFlagPole(), wx, wy, sa + (side > 0 ? Math.PI : 0));
+        placeTrackside(makeFlagPole(), wx, wy, sa + (side > 0 ? Math.PI : 0), 16);
       }
     }
   }
@@ -434,9 +446,9 @@ export function scatterProps(scene, track) {
     const tx = nx - cx, ty = ny - cy;
     const tl = Math.hypot(tx, ty) || 1;
     const px =  ty / tl, py = -tx / tl;
-    const off = trackW / 2 + 70;
+    const off = trackW / 2 + 118;
     const sx = cx + px * off, sy = cy + py * off;
-    placeTrackside(makeMarshalPost(), sx, sy, Math.atan2(ty, tx));
+    placeTrackside(makeMarshalPost(), sx, sy, Math.atan2(ty, tx), 18);
   }
 
   return propsGroup;
