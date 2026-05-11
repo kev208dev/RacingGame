@@ -7,7 +7,7 @@ import { createTiming, updateTiming } from '../js/timing.js';
 import { getInput }       from '../utils/input.js';
 import { startEngine, stopEngine, updateEngineSound, resumeContext, playLapDing, playWallThud } from '../js/audio.js';
 import { formatTime } from '../utils/math.js';
-import { saveBestLap, addLapHistory, getBestSectors, saveBestSectors, getBestGhost, saveBestGhost, getPaintColor } from '../utils/storage.js';
+import { saveBestLap, addLapHistory, getBestSectors, saveBestSectors, getBestGhost, saveBestGhost } from '../utils/storage.js';
 import {
   createSmokePool, spawnSmoke, updateSmoke,
   createSkidBuffer,
@@ -17,6 +17,7 @@ import {
   updateFovPump,
 } from '../js/effects.js';
 import { scatterProps, updateScenery } from '../js/scenery.js';
+import { awardMissions } from '../utils/profile.js';
 
 // ── Three.js renderer (persists across retries) ──────────────
 let renderer = null;
@@ -34,7 +35,8 @@ let onMenu    = null;
 let running   = false;
 let hudCanvas = null;
 let hudCtx    = null;
-let cameraMode = 'chase'; // 'chase' | 'high'
+let cameraMode = 'chase'; // 'chase' | 'hood' | 'high'
+const CAMERA_MODES = ['chase', 'hood', 'high'];
 
 // fx
 let smokePool = null;
@@ -209,7 +211,7 @@ export function updateGame(dt, now) {
   resumeContext();
 
   if (input.cameraToggle) {
-    cameraMode = (cameraMode === 'chase') ? 'high' : 'chase';
+    cameraMode = CAMERA_MODES[(CAMERA_MODES.indexOf(cameraMode) + 1) % CAMERA_MODES.length];
   }
   if (input.reset)  _resetCar();
   if (input.escape) { stopGame(); if (onMenu) onMenu(); return; }
@@ -257,8 +259,13 @@ export function updateGame(dt, now) {
     lapBannerText  = formatTime(event.lapMs);
     lapBannerSub   = isNew ? '🏆 NEW BEST LAP' : 'LAP COMPLETE';
     lapBannerNew   = isNew;
-    lapBannerTimer = 1.8;
+    lapBannerTimer = 2.4;
     pendingResults = { ...event };
+    awardMissions(track.id, event.lapMs)
+      .then(rewards => {
+        if (pendingResults === event || pendingResults?.lapMs === event.lapMs) pendingResults.rewards = rewards;
+      })
+      .catch(() => {});
     _scheduleResults({ ...event });
     playLapDing(isNew);
   }
@@ -321,20 +328,14 @@ function _emitDriftFx(dt) {
     const wx = car.x + rearOffset * cs - sideSign * sideOffset * sn;
     const wy = car.y + rearOffset * sn + sideSign * sideOffset * cs;
     const w3z = -wy;
-    // Smoke puff occasionally (don't spawn every frame)
-    if (Math.random() < 0.55) {
-      const paintColor = getPaintColor(carData.id);
-      const smokeColor = paintColor ? parseInt(paintColor.slice(1), 16) : 0xeeeeee;
-      spawnSmoke(smokePool, wx, 3, w3z, smokeColor);
-    }
-    // Skid mark: append a quad from the previous wheel position to the current.
+    if (Math.random() < 0.22) spawnSmoke(smokePool, wx, 2.4, w3z, 0x79e7ff);
     const key = sideSign < 0 ? '_lastSkidL' : '_lastSkidR';
     const prev = car[key];
     if (prev) {
-      // Only append if moved a noticeable amount (avoids tons of zero-len quads)
       const dx = wx - prev.x, dz = w3z - prev.z;
       if (dx*dx + dz*dz > 1.2) {
-        skidBuf.appendQuad(prev.x, prev.z, wx, w3z, 1.2);
+        skidBuf.appendQuad(prev.x, prev.z, wx, w3z, 1.8);
+        if (Math.random() < 0.38) spawnSparks(sparkPool, wx, 1.2, w3z, 2);
         car[key] = { x: wx, z: w3z };
       }
     } else {
@@ -364,9 +365,11 @@ function _showResults(ev) {
 
 // ── chase camera (framerate-independent smoothing) ──────────
 function _updateCamera(dt) {
-  const DIST       = cameraMode === 'high' ? 0   : 92;
-  const HEIGHT     = cameraMode === 'high' ? 380 : 38;
-  const LOOK_AHEAD = cameraMode === 'high' ? 20 : 58;
+  const isHigh = cameraMode === 'high';
+  const isHood = cameraMode === 'hood';
+  const DIST       = isHigh ? 0 : isHood ? -8 : 104;
+  const HEIGHT     = isHigh ? 380 : isHood ? 13.5 : 46;
+  const LOOK_AHEAD = isHigh ? 20 : isHood ? 155 : 64;
 
   let dA = car.angle - _camAngle;
   while (dA >  Math.PI) dA -= Math.PI * 2;
@@ -382,7 +385,7 @@ function _updateCamera(dt) {
   const tz = -(car.y - sn * DIST);
 
   const lx = car.x + cs * LOOK_AHEAD;
-  const ly = cameraMode === 'high' ? 0 : 12;
+  const ly = isHigh ? 0 : isHood ? 10.5 : 14;
   const lz = -(car.y + sn * LOOK_AHEAD);
 
   const posK  = 1 - Math.exp(-12.0 * dt);

@@ -1,4 +1,5 @@
 import { getSupabase } from './supabaseClient.js';
+import { safeNickname } from './nicknameFilter.js';
 
 const API_BASE = '';
 const PROFILE_KEY = 'racing_player_profile';
@@ -6,6 +7,7 @@ const TABLE = 'leaderboard_records';
 
 let channel = null;
 const listeners = new Set();
+let identityOverride = null;
 
 function randomId() {
   const bytes = new Uint32Array(2);
@@ -26,6 +28,7 @@ function saveProfile(profile) {
 }
 
 export function getPlayerProfile() {
+  if (identityOverride?.id && identityOverride?.name) return identityOverride;
   let profile = loadProfile();
   if (!profile?.id) {
     profile = {
@@ -39,10 +42,16 @@ export function getPlayerProfile() {
 
 export function setPlayerName(name) {
   const profile = getPlayerProfile();
-  const nextName = String(name || '').trim().slice(0, 24);
+  const nextName = safeNickname(name, profile.name || 'Driver');
   profile.name = nextName || profile.name;
   saveProfile(profile);
   return profile;
+}
+
+export function setLeaderboardIdentity(identity) {
+  identityOverride = identity?.id && identity?.name
+    ? { id: identity.id, name: safeNickname(identity.name, 'Driver') }
+    : null;
 }
 
 export async function fetchLeaderboard(carId, trackId, limit = 10) {
@@ -71,7 +80,7 @@ export async function submitLeaderboard(car, track, lapData) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       playerId: profile.id,
-      playerName: profile.name,
+      playerName: safeNickname(profile.name, 'Driver'),
       carId: car.id,
       carName: car.name,
       trackId: track.id,
@@ -154,7 +163,7 @@ async function submitSupabaseLeaderboard(profile, car, track, lapData) {
     .from(TABLE)
     .upsert({
       player_id: profile.id,
-      player_name: profile.name,
+      player_name: safeNickname(profile.name, 'Driver'),
       car_id: car.id,
       car_name: car.name,
       track_id: track.id,

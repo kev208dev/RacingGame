@@ -36,31 +36,41 @@ html, body {
   -webkit-background-clip: text; -webkit-text-fill-color: transparent;
 }
 .screen-header .subtitle { color: #8b949e; margin-top: 6px; font-size: 1rem; }
-.player-bar {
-  display: flex;
-  align-items: end;
-  justify-content: center;
-  gap: 10px;
-  margin-top: 18px;
+.profile-widget { position: fixed; top: 16px; right: 16px; z-index: 55; }
+.profile-chip {
+  min-width: 176px; height: 42px;
+  display: grid; grid-template-columns: 14px 1fr auto;
+  align-items: center; gap: 9px;
+  border: 1px solid rgba(255,255,255,0.16);
+  border-radius: 999px; background: rgba(13,17,23,0.86);
+  color: #fff; padding: 0 14px; cursor: pointer; font-weight: 800;
 }
-.player-name-field {
-  display: grid;
-  gap: 5px;
-  text-align: left;
-  color: #8b949e;
-  font-size: 0.72rem;
-  font-weight: 700;
+.profile-dot { width: 12px; height: 12px; border-radius: 50%; background: #2ec4b6; }
+.profile-chip b { color: #ffd166; font-size: 0.8rem; }
+.profile-panel {
+  position: absolute; top: 50px; right: 0; width: 318px;
+  border: 1px solid #30363d; border-radius: 12px;
+  background: #151b23; padding: 16px;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.45);
 }
-.player-name-field input {
-  width: 190px;
-  height: 36px;
-  border-radius: 8px;
-  border: 1px solid #30363d;
-  background: #0d1117;
-  color: #fff;
-  padding: 0 11px;
-  font-size: 0.9rem;
+.profile-panel-head {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 12px;
 }
+.profile-auth-box, .profile-field { display: grid; gap: 7px; margin-bottom: 12px; }
+.profile-auth-box input, .profile-field input {
+  height: 36px; border-radius: 8px; border: 1px solid #30363d;
+  background: #0d1117; color: #fff; padding: 0 11px;
+}
+.profile-field span, .profile-auth-box span, .profile-note {
+  color: #8b949e; font-size: 0.76rem;
+}
+.profile-wallet {
+  height: 42px; display: flex; align-items: center; justify-content: space-between;
+  border-radius: 8px; background: #0d1117; padding: 0 12px; margin-bottom: 12px;
+}
+.profile-wallet b { color: #ffd166; }
+.profile-note { margin-top: 10px; line-height: 1.4; }
 
 /* ── car select ── */
 .category-tabs {
@@ -73,10 +83,17 @@ html, body {
 }
 .cat-tab.active { background: #2ec4b6; color: #0d1117; }
 
+.home-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 22px;
+  width: min(1320px, calc(100vw - 32px));
+  min-height: 0;
+}
 .car-grid {
   display: flex; gap: 20px; flex-wrap: wrap;
-  justify-content: center; padding: 0 24px;
-  overflow-y: auto; max-height: 45vh;
+  justify-content: center; padding: 0 4px 8px;
+  overflow-y: auto; max-height: 52vh;
 }
 
 .car-card {
@@ -141,6 +158,12 @@ html, body {
   margin-top: auto;
 }
 .car-desc { color: #8b949e; font-size: 0.9rem; flex: 1; padding-right: 20px; }
+.menu-credits {
+  color: #6f7886;
+  font-size: 0.76rem;
+  padding: 0 16px 14px;
+  text-align: center;
+}
 
 /* ── track select ── */
 .track-grid {
@@ -229,36 +252,12 @@ html, body {
 }
 .leaderboard-title { font-size: 1rem; font-weight: 800; }
 .leaderboard-subtitle { color: #8b949e; font-size: 0.78rem; margin-top: 3px; }
-.leaderboard-profile { display: flex; gap: 8px; }
-.leaderboard-profile input {
-  width: 150px; height: 34px;
-  border-radius: 8px; border: 1px solid #30363d;
-  background: #0d1117; color: #fff;
-  padding: 0 10px; font-size: 0.86rem;
-}
 .btn-small {
   height: 34px;
   padding: 0 14px;
   font-size: 0.82rem;
 }
 .hidden { display: none !important; }
-.auth-box {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.auth-box input {
-  height: 34px;
-  width: 180px;
-  border-radius: 8px;
-  border: 1px solid #30363d;
-  background: #0d1117;
-  color: #fff;
-  padding: 0 10px;
-  font-size: 0.82rem;
-}
-.auth-box span,
 .paint-bar span {
   color: #8b949e;
   font-size: 0.76rem;
@@ -295,6 +294,23 @@ html, body {
   font-size: 0.72rem;
   font-weight: 700;
 }
+.car-buy { margin-top: 8px; width: 100%; }
+.car-buy:disabled { opacity: 0.48; cursor: not-allowed; }
+.home-leaderboard {
+  align-self: stretch; background: #151b23; border: 1px solid #30363d;
+  border-radius: 12px; padding: 16px; min-height: 360px;
+}
+.home-board-head { display: grid; gap: 10px; margin-bottom: 12px; }
+.home-board-head strong { display: block; font-size: 1rem; }
+.home-board-head span { color: #8b949e; font-size: 0.78rem; }
+#home-leaderboard-track {
+  height: 36px; border-radius: 8px; border: 1px solid #30363d;
+  background: #0d1117; color: #fff; padding: 0 10px; font-weight: 700;
+}
+.global-leaderboard-list.compact .global-leaderboard-row {
+  grid-template-columns: 36px 1fr auto; min-height: 38px;
+}
+.global-leaderboard-list.compact .global-leaderboard-meta { display: none; }
 .leaderboard-list {
   list-style: none;
   display: flex; flex-direction: column; gap: 6px;
@@ -358,10 +374,6 @@ html, body {
     flex-direction: column;
     align-items: stretch;
   }
-  .leaderboard-profile input {
-    width: 100%;
-    flex: 1;
-  }
   .results-actions {
     flex-direction: column;
   }
@@ -369,14 +381,13 @@ html, body {
   .results-actions .btn-secondary {
     width: 100%;
   }
-  .player-bar {
-    align-items: stretch;
-    flex-direction: column;
-    padding: 0 24px;
+  .home-layout {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+    width: calc(100vw - 24px);
   }
-  .player-name-field input,
-  .player-bar .btn-secondary {
-    width: 100%;
+  .profile-panel {
+    width: min(318px, calc(100vw - 32px));
   }
   .global-leaderboard-row {
     grid-template-columns: 32px 1fr auto;
@@ -421,6 +432,48 @@ html, body {
   padding: 32px;
 }
 #help-overlay.hidden { display: none; }
+#starter-roulette-overlay {
+  position: fixed; inset: 0; z-index: 70;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.82); padding: 24px;
+}
+#starter-roulette-overlay.hidden { display: none; }
+.roulette-box {
+  width: min(560px, 100%);
+  background: #151b23;
+  border: 2px solid #30363d;
+  border-radius: 16px;
+  padding: 28px;
+  text-align: center;
+}
+.roulette-box h2 {
+  font-size: 1.6rem;
+  letter-spacing: 2px;
+  color: #ffd166;
+}
+.roulette-box p,
+.roulette-result {
+  color: #8b949e;
+  margin-top: 6px;
+}
+.roulette-reels {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin: 22px 0;
+}
+.roulette-reel {
+  min-height: 86px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  border: 1px solid #30363d;
+  background: #0d1117;
+  color: #fff;
+  font-weight: 900;
+  padding: 10px;
+}
 #leaderboard-overlay {
   position: fixed; inset: 0; z-index: 58;
   background: rgba(0,0,0,0.78);

@@ -1,12 +1,12 @@
 import { CAR_DATA } from '../data/cars.js';
 import { clearPaintJob, getPaintJob, savePaintJob } from '../utils/storage.js';
-import { getCurrentUser, isLoggedIn, onAuthChange, sendMagicLink, signOut } from '../utils/auth.js';
 import { isCarUnlocked, unlockProgressText, unlockText } from '../utils/unlocks.js';
+import { getProfile, onProfileChange, purchaseCar } from '../utils/profile.js';
 
 let selectedIndex    = 0;
 let selectedCategory = 'All';
 let onSelect         = null;
-let authUnsub        = null;
+let profileUnsub     = null;
 
 const CATEGORIES = ['All', 'GT3', 'Lightweight', 'Prototype', 'Road Car', 'Heavyweight', 'Formula'];
 
@@ -14,7 +14,7 @@ export function initCarSelect(cb) {
   onSelect         = cb;
   selectedIndex    = 0;
   selectedCategory = 'All';
-  if (!authUnsub) authUnsub = onAuthChange(() => _render());
+  if (!profileUnsub) profileUnsub = onProfileChange(() => _render());
   _render();
 }
 
@@ -26,7 +26,6 @@ function _filtered() {
 }
 
 function _render() {
-  _wireAuthPanel();
   _wirePaintPanel();
   if (_isLocked(CAR_DATA[selectedIndex])) {
     const firstOpen = CAR_DATA.findIndex(car => !_isLocked(car));
@@ -69,10 +68,11 @@ function _render() {
     card.appendChild(previewDiv);
     card.insertAdjacentHTML('beforeend', `
       <div class="car-name">${car.name}</div>
-      <span class="car-badge">${locked ? 'TIME LOCK' : car.category}</span>
+      <span class="car-badge">${locked ? 'SHOP' : car.rarity || car.category}</span>
       <div class="car-tags">
         <span>${car.driveType}</span>
         <span>${car.power} hp</span>
+        <span>${locked ? `${Number(car.price || 0).toLocaleString()} C` : 'OWNED'}</span>
         ${getPaintJob(car.id) ? '<span>PHOTO PAINT</span>' : ''}
       </div>
       <div class="car-spec">
@@ -86,10 +86,28 @@ function _render() {
     if (locked) {
       const lock = document.createElement('div');
       lock.className = 'car-lock';
+      const profile = getProfile();
+      const price = Number(car.price || 0);
+      const canBuy = !!profile && (profile.coins || 0) >= price;
       lock.innerHTML = `
         <b>${unlockText(car)}</b>
         <span>${unlockProgressText(car)}</span>
+        <button class="btn-secondary btn-small car-buy" type="button">${canBuy ? '구매' : '잠김'}</button>
       `;
+      const buy = lock.querySelector('.car-buy');
+      buy.disabled = !canBuy;
+      buy.addEventListener('click', async event => {
+        event.stopPropagation();
+        try {
+          buy.textContent = '구매 중...';
+          await purchaseCar(car);
+          selectedIndex = idx;
+          _render();
+        } catch (error) {
+          buy.textContent = error?.message === 'login-required' ? '로그인 필요' : '코인 부족';
+          setTimeout(() => _render(), 900);
+        }
+      });
       card.appendChild(lock);
     }
 
@@ -120,36 +138,7 @@ function _render() {
 }
 
 function _isLocked(car) {
-  return !isCarUnlocked(car);
-}
-
-function _wireAuthPanel() {
-  const email = document.getElementById('auth-email');
-  const login = document.getElementById('btn-auth-login');
-  const logout = document.getElementById('btn-auth-logout');
-  const status = document.getElementById('auth-status');
-  const user = getCurrentUser();
-  if (status) status.textContent = user ? `${user.email} 로그인됨` : '로그인은 랭킹 계정용';
-  if (email) email.classList.toggle('hidden', !!user);
-  if (login) {
-    login.classList.toggle('hidden', !!user);
-    login.onclick = async () => {
-      if (status) status.textContent = '로그인 메일 보내는 중...';
-      try {
-        await sendMagicLink(email?.value || '');
-        if (status) status.textContent = '메일의 로그인 링크를 확인하세요.';
-      } catch {
-        if (status) status.textContent = '로그인 메일 전송 실패';
-      }
-    };
-  }
-  if (logout) {
-    logout.classList.toggle('hidden', !user);
-    logout.onclick = async () => {
-      await signOut();
-      _render();
-    };
-  }
+  return !car || !isCarUnlocked(car);
 }
 
 function _wirePaintPanel() {

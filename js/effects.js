@@ -66,18 +66,20 @@ export function updateSmoke(pool, dt) {
   }
 }
 
-// ── skid marks (single buffered geometry that grows) ─────────────────
+// ── drift light trails (single buffered geometry that grows) ─────────
 export function createSkidBuffer(scene, capSegments = 400) {
-  // Each segment is two triangles (quad) → 6 vertices, 18 floats.
-  const positions = new Float32Array(capSegments * 6 * 3);
+  const positions = new Float32Array(capSegments * 2 * 3);
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   geo.setDrawRange(0, 0);
-  const mat = new THREE.MeshBasicMaterial({
-    color: 0x101010, transparent: true, opacity: 0.65,
+  const mat = new THREE.LineBasicMaterial({
+    color: 0x6ee7ff,
+    transparent: true,
+    opacity: 0.88,
+    blending: THREE.AdditiveBlending,
     depthWrite: false,
   });
-  const mesh = new THREE.Mesh(geo, mat);
+  const mesh = new THREE.LineSegments(geo, mat);
   mesh.renderOrder = 1;
   scene.add(mesh);
 
@@ -93,26 +95,20 @@ export function createSkidBuffer(scene, capSegments = 400) {
       geo.setDrawRange(0, 0);
     },
     appendQuad(ax, az, bx, bz, halfWidth = 1.4) {
-      // Compute perpendicular for the quad cross-section.
       const dx = bx - ax, dz = bz - az;
       const dl = Math.hypot(dx, dz) || 1;
-      const px =  dz / dl * halfWidth;
-      const pz = -dx / dl * halfWidth;
-      const i = this.head * 18;
+      const px = dz / dl * halfWidth * 0.22;
+      const pz = -dx / dl * halfWidth * 0.22;
+      const jitter = (Math.random() - 0.5) * 0.8;
+      const i = this.head * 6;
       const arr = positions;
-      // tri 1: A-pl, A-pr, B-pr
-      arr[i+0]  = ax - px; arr[i+1]  = 0.05; arr[i+2]  = az - pz;
-      arr[i+3]  = ax + px; arr[i+4]  = 0.05; arr[i+5]  = az + pz;
-      arr[i+6]  = bx + px; arr[i+7]  = 0.05; arr[i+8]  = bz + pz;
-      // tri 2: A-pl, B-pr, B-pl
-      arr[i+9]  = ax - px; arr[i+10] = 0.05; arr[i+11] = az - pz;
-      arr[i+12] = bx + px; arr[i+13] = 0.05; arr[i+14] = bz + pz;
-      arr[i+15] = bx - px; arr[i+16] = 0.05; arr[i+17] = bz - pz;
+      arr[i+0] = ax + px + jitter; arr[i+1] = 0.42; arr[i+2] = az + pz - jitter;
+      arr[i+3] = bx - px - jitter; arr[i+4] = 0.42; arr[i+5] = bz - pz + jitter;
 
       this.head = (this.head + 1) % this.capSegments;
       if (this.count < this.capSegments) this.count++;
       geo.attributes.position.needsUpdate = true;
-      geo.setDrawRange(0, this.count * 6);
+      geo.setDrawRange(0, this.count * 2);
     },
   };
 }

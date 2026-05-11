@@ -7,7 +7,7 @@ export const KMH_PER_UNIT = 1 / SPEED_FACTOR;
 // Per-gear "top speed" — speed at which RPM hits maxRpm in that gear.
 const GEAR_TOP = [0, 60, 105, 155, 215, 275, 340];
 // Acceleration multiplier per gear (low gears = more torque).
-const GEAR_ACCEL = [0, 1.85, 1.45, 1.10, 0.88, 0.72, 0.58];
+const GEAR_ACCEL = [0, 1.06, 0.94, 0.82, 0.70, 0.58, 0.48];
 
 const SHIFT_UP_RPM   = 0.92; // ratio of maxRpm to auto-upshift
 const SHIFT_DOWN_RPM = 0.32; // ratio of maxRpm to auto-downshift
@@ -28,20 +28,20 @@ export function updatePhysics(car, input, dt, track) {
   // ── derived car limits (boost-modulated) ──
   const boostPower = clamp(car.boostPower || 0, 0, 1);
   const maxSpeed  = car.maxSpeed * SPEED_FACTOR * (1 + ((car.boostSpeedMult || 1.23) - 1) * boostPower);
-  const massFactor = Math.pow(1200 / Math.max(650, car.mass || 1200), 0.24);
-  const baseAccel = (130 + car.maxTorque * 0.32) * massFactor * (1 + ((car.boostAccelMult || 1.35) - 1) * boostPower);
-  const brakeRate = baseAccel * 1.65 * Math.pow(1250 / Math.max(700, car.mass || 1250), 0.12);
+  const massFactor = Math.pow(1200 / Math.max(650, car.mass || 1200), 0.36);
+  const baseAccel = (58 + car.maxTorque * 0.155) * massFactor * (1 + ((car.boostAccelMult || 1.35) - 1) * boostPower);
+  const brakeRate = baseAccel * 1.28 * Math.pow(1250 / Math.max(700, car.mass || 1250), 0.1);
   const reverseTop = maxSpeed * 0.30;
-  const turnPower = 2.12;
+  const turnPower = 1.82;
 
   car.gear = clamp(car.gear || 1, 1, 6);
   const accelRate = baseAccel * GEAR_ACCEL[car.gear];
 
   // ── steering ── (negate so D = right turn)
   const speedRatio  = clamp(car.speed / maxSpeed, 0, 1);
-  const maxWheel    = 0.68 - speedRatio * 0.28;
+  const maxWheel    = 0.78 - speedRatio * 0.30;
   const targetWheel = -input.steer * maxWheel;
-  car.steerAngle += (targetWheel - car.steerAngle) * Math.min(dt * 12, 1);
+  car.steerAngle += (targetWheel - car.steerAngle) * Math.min(dt * 7.5, 1);
 
   const fwdX     = Math.cos(car.angle);
   const fwdY     = Math.sin(car.angle);
@@ -78,8 +78,8 @@ export function updatePhysics(car, input, dt, track) {
       car.vy -= car.vy * k;
     } else if (input.throttle === 0) {
       if (fwdSpeed > -reverseTop) {
-        car.vx -= fwdX * baseAccel * 0.5 * input.brake * dt;
-        car.vy -= fwdY * baseAccel * 0.5 * input.brake * dt;
+        car.vx -= fwdX * baseAccel * 0.34 * input.brake * dt;
+        car.vy -= fwdY * baseAccel * 0.34 * input.brake * dt;
       }
     }
   }
@@ -101,7 +101,7 @@ export function updatePhysics(car, input, dt, track) {
     const fSpeed = car.vx * fx + car.vy * fy;
     sSpeed = car.vx * sx + car.vy * sy;
     // Looser grip while handbraking → bigger drift.
-    const decay  = input.handbrake ? 0.45 : (3.8 + car.grip * 1.2);
+    const decay  = input.handbrake ? 0.38 : (3.45 + car.grip * 1.05);
     const sNew   = sSpeed * Math.exp(-decay * dt);
     car.vx = fx * fSpeed + sx * sNew;
     car.vy = fy * fSpeed + sy * sNew;
@@ -110,13 +110,13 @@ export function updatePhysics(car, input, dt, track) {
   car.drifting  = (input.handbrake && Math.abs(sSpeed) > 6 && car.speed > 25);
   if (car.drifting) {
     const driftIntensity = clamp(Math.abs(sSpeed) / 45, 0.25, 1.15);
-    car.boostMeter = Math.min(100, (car.boostMeter || 0) + dt * (car.boostChargeRate || 14) * driftIntensity);
+    car.boostMeter = Math.min(100, (car.boostMeter || 0) + dt * (car.boostChargeRate || 14) * 0.48 * driftIntensity);
   }
 
   // ── drag + rolling ──
   car.speed = Math.hypot(car.vx, car.vy);
   if (car.speed > 0.05) {
-    const dragDec = car.speed * car.speed * 0.0028 + 1.5;
+    const dragDec = car.speed * car.speed * 0.00265 + 1.05;
     const k       = Math.min((dragDec * dt) / car.speed, 1);
     car.vx -= car.vx * k;
     car.vy -= car.vy * k;

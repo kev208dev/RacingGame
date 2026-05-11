@@ -3,6 +3,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { createReadStream, existsSync, readFileSync } from 'node:fs';
 import { extname, join, normalize, resolve } from 'node:path';
 import { networkInterfaces } from 'node:os';
+import { safeNickname } from './utils/nicknameFilter.js';
 
 loadEnvFile('.env.local');
 loadEnvFile('.env');
@@ -226,7 +227,7 @@ async function handlePostLeaderboard(req, res) {
   const now = Date.now();
   const record = {
     playerId,
-    playerName: cleanText(body.playerName, 'Driver'),
+    playerName: safeNickname(cleanText(body.playerName, 'Driver'), 'Driver'),
     carId,
     carName: cleanText(body.carName, carId),
     trackId,

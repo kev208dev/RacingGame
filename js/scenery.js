@@ -315,7 +315,7 @@ export function scatterProps(scene, track) {
     const segRot = Math.atan2(ty, tx);
     if (i % 3 === 0) {
       for (const side of [-1, 1]) {
-        const off = trackW / 2 + 12;
+        const off = trackW / 2 + 18;
         const sx = cx + side * px * off;
         const sy = cy + side * py * off;
         placeTrackside(makeCatchFence(82), sx, sy, segRot);
@@ -323,7 +323,7 @@ export function scatterProps(scene, track) {
     }
     if (i % 8 === 0) {
       for (const side of [-1, 1]) {
-        const off = trackW / 2 + 34;
+        const off = trackW / 2 + 72;
         const sx = cx + side * px * off;
         const sy = cy + side * py * off;
         placeTrackside(makeBillboard(), sx, sy, segRot + (side > 0 ? Math.PI / 2 : -Math.PI / 2));
@@ -331,7 +331,7 @@ export function scatterProps(scene, track) {
     }
     if (i % 12 === 0) {
       for (const side of [-1, 1]) {
-        const off = trackW / 2 + 84;
+        const off = trackW / 2 + 155;
         const sx = cx + side * px * off;
         const sy = cy + side * py * off;
         placeTrackside(makeCrowdWall(170), sx, sy, segRot + (side > 0 ? Math.PI : 0));
@@ -339,7 +339,7 @@ export function scatterProps(scene, track) {
     }
     if (i % 28 === 0) {
       const side = i % 40 === 0 ? 1 : -1;
-      const off = trackW / 2 + 130;
+      const off = trackW / 2 + 245;
       const sx = cx + side * px * off;
       const sy = cy + side * py * off;
       const gs = makeGrandstand();
@@ -369,7 +369,7 @@ export function scatterProps(scene, track) {
     const tl = Math.hypot(tx, ty) || 1;
     const px =  ty / tl, py = -tx / tl;
     if (Math.random() > 0.55) continue;
-    const off = trackW / 2 + 22;
+    const off = trackW / 2 + 34;
     const side = Math.random() < 0.5 ? -1 : 1;
     const sx = cx + side * px * off;
     const sy = cy + side * py * off;
@@ -386,7 +386,7 @@ export function scatterProps(scene, track) {
     for (const side of [-1, 1]) {
       for (let k = 0; k < 4; k++) {
         const longOff = (k - 1.5) * 145;
-        const sideOff = side * (trackW / 2 + 98);
+        const sideOff = side * (trackW / 2 + 220);
         const wx = sp.x + fwdX * longOff + perpX * sideOff;
         const wy = sp.y + fwdY * longOff + perpY * sideOff;
         const gs = makeGrandstand();
@@ -396,20 +396,20 @@ export function scatterProps(scene, track) {
     }
     // Pit garages on the inner side of start
     const pits = makePitGarages();
-    const pitsX = sp.x - fwdX * 100 + perpX * (trackW / 2 + 30) * -1;
-    const pitsY = sp.y - fwdY * 100 + perpY * (trackW / 2 + 30) * -1;
+    const pitsX = sp.x - fwdX * 100 + perpX * (trackW / 2 + 145) * -1;
+    const pitsY = sp.y - fwdY * 100 + perpY * (trackW / 2 + 145) * -1;
     placeTrackside(pits, pitsX, pitsY, sa);
 
     const pitWall = makePitWall(190);
-    const pitWallX = sp.x + fwdX * 12 + perpX * (trackW / 2 + 7) * -1;
-    const pitWallY = sp.y + fwdY * 12 + perpY * (trackW / 2 + 7) * -1;
+    const pitWallX = sp.x + fwdX * 12 + perpX * (trackW / 2 + 24) * -1;
+    const pitWallY = sp.y + fwdY * 12 + perpY * (trackW / 2 + 24) * -1;
     placeTrackside(pitWall, pitWallX, pitWallY, sa);
 
     // Flag poles flanking the start line
     for (const side of [-1, 1]) {
       for (let k = 0; k < 4; k++) {
         const lo = (k - 1.5) * 60;
-        const so = side * (trackW / 2 + 32);
+        const so = side * (trackW / 2 + 58);
         const wx = sp.x + fwdX * lo + perpX * so;
         const wy = sp.y + fwdY * lo + perpY * so;
         placeTrackside(makeFlagPole(), wx, wy, sa + (side > 0 ? Math.PI : 0));
@@ -434,7 +434,7 @@ export function scatterProps(scene, track) {
     const tx = nx - cx, ty = ny - cy;
     const tl = Math.hypot(tx, ty) || 1;
     const px =  ty / tl, py = -tx / tl;
-    const off = trackW / 2 + 36;
+    const off = trackW / 2 + 70;
     const sx = cx + px * off, sy = cy + py * off;
     placeTrackside(makeMarshalPost(), sx, sy, Math.atan2(ty, tx));
   }

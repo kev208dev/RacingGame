@@ -2,6 +2,7 @@ import { getSupabase } from './supabaseClient.js';
 
 let currentUser = null;
 const listeners = new Set();
+const AUTH_REDIRECT_URL = 'https://kev208dev.github.io/RacingGame/';
 
 export async function initAuth() {
   const { data } = await getSupabase().auth.getUser();
@@ -34,7 +35,8 @@ export async function sendMagicLink(email) {
   const { error } = await getSupabase().auth.signInWithOtp({
     email: clean,
     options: {
-      emailRedirectTo: window.location.origin + window.location.pathname,
+      emailRedirectTo: getRedirectUrl(),
+      shouldCreateUser: true,
     },
   });
   if (error) throw error;
@@ -47,4 +49,10 @@ export async function signOut() {
 
 function notify() {
   for (const fn of listeners) fn(currentUser);
+}
+
+function getRedirectUrl() {
+  const base = new URL('./', window.location.href).href;
+  const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+  return isLocal ? AUTH_REDIRECT_URL : base;
 }

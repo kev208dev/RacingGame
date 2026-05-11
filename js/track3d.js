@@ -12,7 +12,7 @@ function _buildTrackGroup(track) {
   // ── ground — muted paddock/asphalt apron instead of endless grass ──
   const groundGeo = new THREE.PlaneGeometry(15000, 15000);
   groundGeo.rotateX(-Math.PI / 2);
-  const groundMat = new THREE.MeshLambertMaterial({ color: 0x4f554d });
+  const groundMat = _makeGroundMaterial();
   const ground    = new THREE.Mesh(groundGeo, groundMat);
   ground.position.set(0, -0.3, 0);
   ground.receiveShadow = true;
@@ -38,11 +38,14 @@ function _buildTrackGroup(track) {
 
   const trackGeo = new THREE.ShapeGeometry(shape, 8);
   trackGeo.rotateX(-Math.PI / 2);
-  const trackMat = new THREE.MeshLambertMaterial({ color: 0x2f3032 });
+  _applyRoadCamber(trackGeo);
+  const trackMat = _makeRoadMaterial();
   const trackMesh = new THREE.Mesh(trackGeo, trackMat);
   trackMesh.position.y = 0;
   trackMesh.receiveShadow = true;
   grp.add(trackMesh);
+
+  _addRoadMarkings(grp, track);
 
   // ── kerb stripes (alternating red/white) ──
   _addKerbStripes(grp, track.outerBoundary, 0.25, 5);
@@ -66,6 +69,99 @@ function _buildTrackGroup(track) {
   _addStartGrid(grp, track.startPos);
 
   return grp;
+}
+
+function _makeRoadMaterial() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 512;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#8d8676';
+  ctx.fillRect(0, 0, 512, 512);
+  for (let i = 0; i < 9000; i++) {
+    const v = 110 + Math.random() * 85;
+    ctx.fillStyle = `rgba(${v},${v},${v * 0.92},${0.08 + Math.random() * 0.15})`;
+    ctx.fillRect(Math.random() * 512, Math.random() * 512, 1 + Math.random() * 2, 1 + Math.random() * 2);
+  }
+  ctx.strokeStyle = 'rgba(45,45,45,0.22)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 42; i++) {
+    ctx.beginPath();
+    let x = Math.random() * 512;
+    let y = Math.random() * 512;
+    ctx.moveTo(x, y);
+    for (let j = 0; j < 5; j++) {
+      x += (Math.random() - 0.5) * 38;
+      y += (Math.random() - 0.5) * 38;
+      ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(34, 34);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return new THREE.MeshLambertMaterial({ color: 0xd3c8ad, map: tex });
+}
+
+function _makeGroundMaterial() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#4d5a45';
+  ctx.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 4000; i++) {
+    const green = 70 + Math.random() * 55;
+    ctx.fillStyle = `rgba(${green * 0.75},${green},${green * 0.58},0.14)`;
+    ctx.fillRect(Math.random() * 256, Math.random() * 256, 2, 2);
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(60, 60);
+  return new THREE.MeshLambertMaterial({ color: 0x6f765f, map: tex });
+}
+
+function _applyRoadCamber(geo) {
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const z = pos.getZ(i);
+    const y = Math.sin(x * 0.006 + z * 0.004) * 0.7
+      + Math.sin(x * 0.018 - z * 0.011) * 0.22;
+    pos.setY(i, y);
+  }
+  pos.needsUpdate = true;
+  geo.computeVertexNormals();
+}
+
+function _addRoadMarkings(grp, track) {
+  const cl = track.centerLine || [];
+  const half = (track.width || 100) / 2;
+  for (let i = 0; i < cl.length; i++) {
+    const [x1, y1] = cl[i];
+    const [x2, y2] = cl[(i + 1) % cl.length];
+    const dx = x2 - x1, dy = y2 - y1;
+    const len = Math.hypot(dx, dy);
+    if (len < 1) continue;
+    const px = dy / len, py = -dx / len;
+    if (i % 2 === 0) {
+      _addLine(grp, x1, y1, x2, y2, 0xf4f0df, 2.2, 0.36);
+    }
+    for (const side of [-1, 1]) {
+      const off = half - 9;
+      _addLine(
+        grp,
+        x1 + side * px * off,
+        y1 + side * py * off,
+        x2 + side * px * off,
+        y2 + side * py * off,
+        0xfaf8ee,
+        1.5,
+        0.38
+      );
+    }
+  }
 }
 
 // For a 2D segment (x1,y1)→(x2,y2), returns the Y rotation that aligns a

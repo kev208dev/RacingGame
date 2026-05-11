@@ -22,24 +22,45 @@
   <!-- 2D HUD overlay -->
   <canvas id="hud-canvas"></canvas>
 
+  <div id="profile-widget" class="profile-widget">
+    <button id="btn-profile-open" class="profile-chip" type="button">
+      <span id="profile-dot" class="profile-dot"></span>
+      <span id="profile-chip-name">Guest</span>
+      <b id="profile-chip-coins">0</b>
+    </button>
+    <div id="profile-panel" class="profile-panel hidden">
+      <div class="profile-panel-head">
+        <strong>MY GARAGE</strong>
+        <button id="btn-profile-close" class="btn-icon" aria-label="닫기">×</button>
+      </div>
+      <div id="profile-auth-box" class="profile-auth-box">
+        <input id="auth-email" type="email" placeholder="이메일 로그인" autocomplete="email" />
+        <button class="btn-secondary btn-small" id="btn-auth-login">로그인 링크 받기</button>
+        <button class="btn-secondary btn-small hidden" id="btn-auth-logout">로그아웃</button>
+        <span id="auth-status">로그인하면 코인과 차량을 저장합니다.</span>
+      </div>
+      <label class="profile-field">
+        <span>닉네임</span>
+        <input id="profile-nickname" maxlength="24" autocomplete="nickname" />
+      </label>
+      <label class="profile-field">
+        <span>프로필 테마</span>
+        <input id="profile-theme" type="color" value="#2ec4b6" />
+      </label>
+      <div class="profile-wallet">
+        <span>COINS</span>
+        <b id="profile-coins">0</b>
+      </div>
+      <button class="btn-primary btn-small" id="btn-profile-save">프로필 저장</button>
+      <div class="profile-note" id="profile-note">게스트는 기본 차량만 사용할 수 있습니다.</div>
+    </div>
+  </div>
+
   <!-- UI screens -->
   <div id="screen-carselect" class="screen active">
     <div class="screen-header">
       <h1>RACING SANDBOX</h1>
       <p class="subtitle">차량을 선택하세요</p>
-      <div class="player-bar">
-        <label class="player-name-field">
-          <span>닉네임</span>
-          <input id="player-name" maxlength="24" autocomplete="nickname" />
-        </label>
-        <div class="auth-box" id="auth-box">
-          <input id="auth-email" type="email" placeholder="이메일 로그인" autocomplete="email" />
-          <button class="btn-secondary btn-small" id="btn-auth-login">로그인</button>
-          <button class="btn-secondary btn-small hidden" id="btn-auth-logout">로그아웃</button>
-          <span id="auth-status">고성능 차량 잠김</span>
-        </div>
-        <button class="btn-secondary btn-small" id="btn-open-leaderboard">랭킹보드</button>
-      </div>
     </div>
     <div class="category-tabs" id="cat-tabs"></div>
     <div class="paint-bar">
@@ -48,11 +69,25 @@
       <button class="btn-secondary btn-small" id="btn-paint-clear">도색 지우기</button>
       <span id="paint-status">선택한 차량에 이미지 도색을 적용합니다.</span>
     </div>
-    <div class="car-grid" id="car-grid"></div>
+    <div class="home-layout">
+      <div class="car-grid" id="car-grid"></div>
+      <aside class="home-leaderboard">
+        <div class="home-board-head">
+          <div>
+            <strong>LIVE RANKING</strong>
+            <span id="home-leaderboard-status">서버 연결 중...</span>
+          </div>
+          <select id="home-leaderboard-track" aria-label="메인 랭킹 맵 선택"></select>
+        </div>
+        <ol class="global-leaderboard-list compact" id="home-leaderboard-list"></ol>
+        <button class="btn-secondary btn-small" id="btn-open-leaderboard">전체 보기</button>
+      </aside>
+    </div>
     <div class="screen-footer">
       <div class="car-desc" id="car-desc"></div>
       <button class="btn-primary" id="btn-to-track">트랙 선택 →</button>
     </div>
+    <div class="menu-credits">Created by Lee Chaeho · Test Play: Son Taeyoung, Jeong Uigyeom, Lee Ruwon</div>
   </div>
 
   <div id="screen-trackselect" class="screen">
@@ -78,10 +113,6 @@
             <div class="leaderboard-title">온라인 랭킹</div>
             <div class="leaderboard-subtitle" id="leaderboard-subtitle">--</div>
           </div>
-          <div class="leaderboard-profile">
-            <input id="leaderboard-name" maxlength="24" aria-label="플레이어 이름" />
-            <button class="btn-secondary btn-small" id="btn-save-name">저장</button>
-          </div>
         </div>
         <ol class="leaderboard-list" id="leaderboard-list"></ol>
         <div class="leaderboard-status" id="leaderboard-status">서버 연결 중...</div>
@@ -98,7 +129,7 @@
     <span>W/S: 가속·브레이크</span><span>A/D: 조향</span>
     <span>SPACE: 드리프트</span><span>SHIFT: 부스트</span>
     <span>E/Q: 기어 ↑↓</span><span>T: 자동/수동</span>
-    <span>R: 리셋</span><span>C: 카메라</span><span>ESC: 메뉴</span>
+    <span>R: 리셋</span><span>C: 체이스/보넷/탑뷰</span><span>ESC: 메뉴</span>
   </div>
 
   <!-- Help button (always available, opens controls modal) -->
@@ -128,7 +159,7 @@
         <tr><td><kbd>E</kbd> / <kbd>Q</kbd></td><td>기어 업 / 다운 (수동 모드 자동 전환)</td></tr>
         <tr><td><kbd>T</kbd></td><td>자동 ↔ 수동 변속 토글</td></tr>
         <tr><td><kbd>R</kbd></td><td>차량 리셋 (스타트 라인으로)</td></tr>
-        <tr><td><kbd>C</kbd></td><td>카메라 시점 전환 (체이스 / 탑뷰)</td></tr>
+        <tr><td><kbd>C</kbd></td><td>카메라 시점 전환 (체이스 / 보넷 / 탑뷰)</td></tr>
         <tr><td><kbd>ESC</kbd></td><td>메뉴로 나가기</td></tr>
       </table>
       <h3>기능 안내</h3>
@@ -139,6 +170,20 @@
         <li><b>벽 충돌</b> — 4개 바퀴 모두 트랙 안쪽으로 유지. 빠른 충돌은 화면 흔들림 + 스파크</li>
       </ul>
       <button class="btn-primary" id="btn-help-close">닫기</button>
+    </div>
+  </div>
+
+  <div id="starter-roulette-overlay" class="hidden">
+    <div class="roulette-box">
+      <h2>BACCARAT JACKPOT</h2>
+      <p>새 계정 보너스 차량</p>
+      <div class="roulette-reels">
+        <div class="roulette-reel" id="roulette-reel-1">?</div>
+        <div class="roulette-reel" id="roulette-reel-2">?</div>
+        <div class="roulette-reel" id="roulette-reel-3">?</div>
+      </div>
+      <div id="roulette-result" class="roulette-result">세 장이 맞으면 차량을 획득합니다.</div>
+      <button class="btn-primary" id="btn-roulette-spin">돌리기</button>
     </div>
   </div>
 

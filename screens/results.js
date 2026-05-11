@@ -2,7 +2,6 @@ import { formatTime } from '../utils/math.js';
 import {
   fetchLeaderboard,
   getPlayerProfile,
-  setPlayerName,
   submitLeaderboard,
   subscribeLeaderboard,
 } from '../utils/leaderboard.js';
@@ -20,8 +19,6 @@ export function initResults(data, car, track, retryCb, menuCb) {
   const listEl    = document.getElementById('leaderboard-list');
   const statusEl  = document.getElementById('leaderboard-status');
   const subtitleEl = document.getElementById('leaderboard-subtitle');
-  const nameEl    = document.getElementById('leaderboard-name');
-  const saveNameBtn = document.getElementById('btn-save-name');
 
   if (titleEl) {
     titleEl.textContent = data.isNew ? '🏆 신기록!' : '랩 완주';
@@ -45,10 +42,20 @@ export function initResults(data, car, track, retryCb, menuCb) {
       `;
       sectorsEl.appendChild(row);
     });
+    if (data.rewards?.length) {
+      const reward = data.rewards.reduce((sum, mission) => sum + mission.reward, 0);
+      const row = document.createElement('div');
+      row.className = 'sector-row reward-row';
+      row.innerHTML = `
+        <span class="sector-label">미션</span>
+        <span class="sector-time best">+${reward.toLocaleString()} coins</span>
+        <span class="sector-best">${data.rewards.length}개 완료</span>
+      `;
+      sectorsEl.appendChild(row);
+    }
   }
 
   if (subtitleEl) subtitleEl.textContent = car && track ? `${track.name} 전체 랭킹 / ${car.name}` : '--';
-  if (nameEl) nameEl.value = getPlayerProfile().name;
   _renderLeaderboard(listEl, null);
   _setStatus(statusEl, '기록을 서버에 업로드 중...');
 
@@ -62,24 +69,6 @@ export function initResults(data, car, track, retryCb, menuCb) {
     });
   } else {
     _setStatus(statusEl, '차량/트랙 정보가 없어 온라인 랭킹을 불러오지 못했습니다.');
-  }
-
-  if (saveNameBtn) {
-    saveNameBtn.onclick = async () => {
-      const profile = setPlayerName(nameEl?.value || '');
-      if (nameEl) nameEl.value = profile.name;
-      const playerNameEl = document.getElementById('player-name');
-      if (playerNameEl) playerNameEl.value = profile.name;
-      _setStatus(statusEl, '이름 저장됨. 현재 기록에 반영 중...');
-      try {
-        const result = await submitLeaderboard(car, track, data);
-        if (token !== renderToken) return;
-        _renderLeaderboard(listEl, result.leaderboard);
-        _setStatus(statusEl, result.rank ? `${profile.name} 님 현재 ${result.rank}위` : '이름 저장됨');
-      } catch {
-        _setStatus(statusEl, '이름은 이 브라우저에 저장됐지만 서버 연결은 실패했습니다.');
-      }
-    };
   }
 
   const retryBtn = document.getElementById('btn-retry');
