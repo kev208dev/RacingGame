@@ -24,9 +24,12 @@ function _buildTrackGroup(track) {
   _addGuardrails(grp, track);
 
   const sl = track.startLine;
-  _addFlatLine(grp, sl.x1, sl.y1, sl.x2, sl.y2, 0xffffff, 4.8, 0.24);
+  const slCx = (sl.x1 + sl.x2) / 2;
+  const slCy = (sl.y1 + sl.y2) / 2;
+  const slHeight = _trackHeight(track, 0, slCx, slCy);
+  _addFlatLine(grp, sl.x1, sl.y1, sl.x2, sl.y2, 0xffffff, 4.8, 0.24 + slHeight);
 
-  _addStartGrid(grp, track.startPos);
+  _addStartGrid(grp, track.startPos, track);
   return grp;
 }
 
@@ -92,7 +95,10 @@ function _addRoadMarkings(grp, track) {
     if (_localTurnMax(cl, i, 3) > 0.035) continue;
 
     if (Math.floor(i / stride) % 3 === 0) {
-      _addCenteredDash(grp, x1, y1, x2, y2, 0xf0ece0, 2.0, 0.32, 14);
+      const mx = (x1 + x2) / 2;
+      const my = (y1 + y2) / 2;
+      const h = _trackHeight(track, i, mx, my);
+      _addCenteredDash(grp, x1, y1, x2, y2, 0xf0ece0, 2.0, 0.32 + h, 14);
     }
   }
 }
@@ -117,11 +123,12 @@ function _addKerbStripes(grp, track) {
       if (_localTurnMax(cl, i, 3) > 0.14) continue;
       if (!_offsetVisualIsClear(track, cx, cy, half - 8, i)) continue;
 
+      const h = _trackHeight(track, i, cx, cy);
       const mesh = new THREE.Mesh(
         new THREE.BoxGeometry(Math.min(len, 24), 0.18, 5),
         Math.floor(i / stride) % 2 === 0 ? matA : matB
       );
-      mesh.position.set(cx, 0.18, -cy);
+      mesh.position.set(cx, 0.18 + h, -cy);
       mesh.rotation.y = angle;
       grp.add(mesh);
     }
@@ -138,9 +145,9 @@ function _addGuardrails(grp, track) {
 
   for (const side of [-1, 1]) {
     const rail = _offsetLine(cl, side, off);
-    _addGuardrailStrip(grp, rail, wallMat, 0.7, 4.7);
-    _addGuardrailStrip(grp, rail, stripeMat, 4.75, 5.35);
-    _addGuardrailPosts(grp, rail, postMat, 10);
+    _addGuardrailStrip(grp, rail, wallMat, 0.7, 4.7, track);
+    _addGuardrailStrip(grp, rail, stripeMat, 4.75, 5.35, track);
+    _addGuardrailPosts(grp, rail, postMat, 10, track);
   }
 }
 
@@ -167,7 +174,7 @@ function _addWallRideBanks(grp, track) {
     const outerSide = _curveOuterSide(cl, i, stride);
     if (!outerSide) continue;
     const mat = mats[Math.floor(i / stride) % mats.length];
-    _addWallRideBankSegment(grp, cl, i, stride, outerSide, half, turn, mat);
+    _addWallRideBankSegment(grp, cl, i, stride, outerSide, half, turn, mat, track);
   }
 }
 
@@ -194,7 +201,7 @@ function _makeWallRideBankMaterial(color) {
   });
 }
 
-function _addWallRideBankSegment(grp, cl, i, stride, side, half, turn, mat) {
+function _addWallRideBankSegment(grp, cl, i, stride, side, half, turn, mat, track) {
   const i2 = (i + stride) % cl.length;
   const innerOff = half + 3.5;
   const outerOff = half + 13.0;
@@ -206,17 +213,19 @@ function _addWallRideBankSegment(grp, cl, i, stride, side, half, turn, mat) {
   const a2 = _offsetPoint(cl, i2, innerOff, side);
   const b1 = _offsetPoint(cl, i, outerOff, side);
   const b2 = _offsetPoint(cl, i2, outerOff, side);
+  const h1 = _trackHeight(track, i, a1.x, a1.y);
+  const h2 = _trackHeight(track, i2, a2.x, a2.y);
 
-  const v = (pt, h) => [pt.x, h, -pt.y];
+  const v = (pt, h, ph) => [pt.x, h + ph, -pt.y];
   const verts = [
-    ...v(a1, innerY),
-    ...v(a2, innerY),
-    ...v(b2, outerY),
-    ...v(b1, outerY),
-    ...v(a1, baseY),
-    ...v(a2, baseY),
-    ...v(b2, baseY),
-    ...v(b1, baseY),
+    ...v(a1, innerY, h1),
+    ...v(a2, innerY, h2),
+    ...v(b2, outerY, h2),
+    ...v(b1, outerY, h1),
+    ...v(a1, baseY, h1),
+    ...v(a2, baseY, h2),
+    ...v(b2, baseY, h2),
+    ...v(b1, baseY, h1),
   ];
   const indices = [
     0, 1, 2, 0, 2, 3,
@@ -240,7 +249,8 @@ function _addWallRideBankSegment(grp, cl, i, stride, side, half, turn, mat) {
 function _offsetLine(cl, side, off) {
   const pts = [];
   for (let i = 0; i < cl.length; i++) {
-    pts.push(_offsetPoint(cl, i, off, side));
+    const p = _offsetPoint(cl, i, off, side);
+    pts.push({ x: p.x, y: p.y, i });
   }
   return pts;
 }
@@ -277,12 +287,13 @@ function _offsetPoint(cl, i, off, side) {
   };
 }
 
-function _addGuardrailStrip(grp, pts, mat, y0, y1) {
+function _addGuardrailStrip(grp, pts, mat, y0, y1, track) {
   if (pts.length < 3) return;
   const verts = [];
   const indices = [];
   for (const p of pts) {
-    verts.push(p.x, y0, -p.y, p.x, y1, -p.y);
+    const h = _trackHeight(track, p.i, p.x, p.y);
+    verts.push(p.x, y0 + h, -p.y, p.x, y1 + h, -p.y);
   }
   for (let i = 0; i < pts.length; i++) {
     const a = i * 2;
@@ -300,13 +311,14 @@ function _addGuardrailStrip(grp, pts, mat, y0, y1) {
   grp.add(mesh);
 }
 
-function _addGuardrailPosts(grp, pts, mat, stride) {
+function _addGuardrailPosts(grp, pts, mat, stride, track) {
   for (let i = 0; i < pts.length; i += stride) {
     const p = pts[i];
     const n = pts[(i + 1) % pts.length];
     const angle = Math.atan2(n.y - p.y, n.x - p.x);
+    const h = _trackHeight(track, p.i, p.x, p.y);
     const post = new THREE.Mesh(new THREE.BoxGeometry(0.8, 5.4, 1.6), mat);
-    post.position.set(p.x, 2.7, -p.y);
+    post.position.set(p.x, 2.7 + h, -p.y);
     post.rotation.y = angle;
     post.castShadow = true;
     post.receiveShadow = true;
@@ -338,17 +350,18 @@ function _addCenteredDash(grp, x1, y1, x2, y2, color, thickness, yOff, dashLengt
   grp.add(mesh);
 }
 
-function _addStartGrid(grp, startPos) {
+function _addStartGrid(grp, startPos, track) {
   const a = startPos.angle;
   const cosA = Math.cos(a), sinA = Math.sin(a);
   const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, depthWrite: false });
   for (let i = 0; i < 4; i++) {
     const offset = i * 24;
-    const x = startPos.x - cosA * offset;
-    const z = -(startPos.y - sinA * offset);
+    const wx = startPos.x - cosA * offset;
+    const wy = startPos.y - sinA * offset;
+    const h = _trackHeight(track, 0, wx, wy);
     const geo = new THREE.BoxGeometry(14, 0.08, 6);
     const mesh = new THREE.Mesh(geo, mat);
-    mesh.position.set(x, 0.36, z);
+    mesh.position.set(wx, 0.36 + h, -wy);
     mesh.rotation.y = a;
     mesh.renderOrder = 4;
     grp.add(mesh);
