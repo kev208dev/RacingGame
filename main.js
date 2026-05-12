@@ -467,9 +467,7 @@ const TOAST_DEDUPE_MS = 6000;
 function _wireGlobalCompletionToast() {
   subscribeLapCompletion(event => {
     if (!event) return;
-    const me = getPlayerProfile().id;
-    if (event.playerId === me) return;
-    const key = `${event.playerId}|${event.trackId}|${event.lapMs}`;
+    const key = `${event.playerId}|${event.trackId}|${event.carId}|${event.lapMs}|${event.isLocal ? 'L' : 'R'}`;
     const now = Date.now();
     for (const [k, t] of recentToastKeys) {
       if (now - t > TOAST_DEDUPE_MS) recentToastKeys.delete(k);
@@ -487,7 +485,9 @@ function _showCompletionToast(event) {
   const track = event.trackName || event.trackId || '?';
   const time = formatTime(event.lapMs);
   const theme = _themeColor(event.playerThemeColor);
-  const verb = event.isInsert ? '완주' : '베스트 갱신';
+  let verb;
+  if (event.isLocal) verb = event.isImprovement ? '베스트 갱신 (글로벌 송출)' : '글로벌 송출';
+  else verb = event.isInsert ? '완주' : '베스트 갱신';
   const toast = document.createElement('div');
   toast.className = 'global-toast';
   toast.style.setProperty('--player-theme', theme);

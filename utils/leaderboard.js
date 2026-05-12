@@ -78,7 +78,9 @@ export async function fetchLeaderboard(carId, trackId, limit = 10) {
 export async function submitLeaderboard(car, track, lapData) {
   const profile = getPlayerProfile();
   try {
-    return await submitSupabaseLeaderboard(profile, car, track, lapData);
+    const result = await submitSupabaseLeaderboard(profile, car, track, lapData);
+    _broadcastLocalCompletion(profile, car, track, lapData, !!result?.improved);
+    return result;
   } catch (error) {
     console.warn('Supabase leaderboard submit failed, trying local server API.', error);
   }
@@ -166,6 +168,28 @@ function _teardownIfIdle() {
   if (listeners.size === 0 && completionListeners.size === 0 && channel) {
     getSupabase().removeChannel(channel);
     channel = null;
+  }
+}
+
+function _broadcastLocalCompletion(profile, car, track, lapData, improved) {
+  for (const fn of completionListeners) {
+    try {
+      fn({
+        playerId: profile.id,
+        playerName: profile.name,
+        playerThemeColor: profile.themeColor,
+        carId: car.id,
+        carName: car.name,
+        trackId: track.id,
+        trackName: track.name,
+        lapMs: Number(lapData.lapMs || 0),
+        isInsert: false,
+        isLocal: true,
+        isImprovement: !!improved,
+      });
+    } catch (err) {
+      console.warn('local completion broadcast failed:', err);
+    }
   }
 }
 

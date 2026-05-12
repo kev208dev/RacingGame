@@ -287,9 +287,9 @@ function _resolveCollision(car, nextX, nextY, track) {
 }
 
 function _applyDriftImpulse(car, input, dt) {
-  // Buffer the double-tap intent so steering/speed can ramp up after the
-  // taps — the impulse fires the moment all firing conditions are met.
-  if (input.handbrakeDouble) car.driftImpulsePending = 0.28;
+  // Enter key fires the burst impulse; intent is buffered so steering/speed
+  // can ramp up after the press without losing the input.
+  if (input.driftBurst) car.driftImpulsePending = 0.30;
   car.driftImpulsePending = Math.max(0, (car.driftImpulsePending || 0) - dt);
 
   if (car.driftImpulsePending > 0
@@ -320,7 +320,7 @@ function _applyDriftImpulse(car, input, dt) {
 }
 
 function _applyStraightDriftBrake(car, input, dt, sideSpeed) {
-  if (!input.handbrake || input.handbrakeDouble || car.speed < 8) return;
+  if (!input.handbrake || input.driftBurst || (car.driftImpulsePending || 0) > 0 || car.speed < 8) return;
 
   const steerAmount = Math.abs(input.steer || 0);
   const slipRatio = Math.abs(sideSpeed || 0) / Math.max(1, car.speed || 1);

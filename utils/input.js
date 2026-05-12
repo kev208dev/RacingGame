@@ -2,9 +2,7 @@ export const keys = {};
 const justPressed = {};
 const justReleased = {};
 let lastShiftTapAt = 0;
-let lastSpaceTapAt = 0;
 const SHIFT_DOUBLE_TAP_MS = 360;
-const SPACE_DOUBLE_TAP_MS = 400;
 
 window.addEventListener('keydown', e => {
   if (!keys[e.code]) {
@@ -18,18 +16,9 @@ window.addEventListener('keydown', e => {
         lastShiftTapAt = now;
       }
     }
-    if (e.code === 'Space') {
-      const now = performance.now();
-      if (now - lastSpaceTapAt <= SPACE_DOUBLE_TAP_MS) {
-        justPressed.SpaceDouble = true;
-        lastSpaceTapAt = 0;
-      } else {
-        lastSpaceTapAt = now;
-      }
-    }
   }
   keys[e.code] = true;
-  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) {
+  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','Enter'].includes(e.code)) {
     e.preventDefault();
   }
 });
@@ -59,7 +48,7 @@ export function getInput() {
     steer,
     handbrake:    !!keys['Space'],
     handbrakeJust:   wasJustPressed('Space'),
-    handbrakeDouble: wasJustPressed('SpaceDouble'),
+    driftBurst:      wasJustPressed('Enter') || wasJustPressed('NumpadEnter'),
     boost:        !!(keys['ShiftLeft'] || keys['ShiftRight']),
     boostJust:    wasJustPressed('ShiftLeft') || wasJustPressed('ShiftRight'),
     boostDouble:  wasJustPressed('ShiftDouble'),
