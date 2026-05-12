@@ -263,15 +263,15 @@ export function drawSpeedLines(ctx, lines, kmh, w, h, dt, cameraMode = 'chase') 
     for (const p of lines) p.life = 0;
     return;
   }
-  // Activate above 60 km/h so the player feels speed sooner.
-  if (kmh < 65) {
+  // Activate earlier so the player feels speed sooner.
+  if (kmh < 45) {
     for (const p of lines) p.life = 0;
     return;
   }
-  const intensity = Math.min(1, (kmh - 65) / 230);
+  const intensity = Math.min(1, (kmh - 45) / 190);
   const cx = w * 0.5, cy = h * 0.62;
-  const speedScale = 1100 + intensity * 2300;
-  const spawnRate  = 70 + intensity * 170;
+  const speedScale = 1500 + intensity * 3200;
+  const spawnRate  = 110 + intensity * 260;
 
   // Spawn fresh particles
   let toSpawn = spawnRate * dt;
@@ -284,8 +284,8 @@ export function drawSpeedLines(ctx, lines, kmh, w, h, dt, cameraMode = 'chase') 
     p.y = cy + Math.sin(a) * r0;
     p.vx = Math.cos(a) * speedScale;
     p.vy = Math.sin(a) * speedScale;
-    p.len = 24 + Math.random() * 38;
-    p.alpha = 0.10 + Math.random() * 0.18;
+    p.len = 32 + Math.random() * 50;
+    p.alpha = 0.16 + Math.random() * 0.24;
     p.life  = 0.34;
     toSpawn -= 1;
   }
@@ -318,8 +318,8 @@ export function drawSpeedLines(ctx, lines, kmh, w, h, dt, cameraMode = 'chase') 
 // ── FOV pump (camera lerps from base FOV up to base+boost) ───────────
 export function updateFovPump(camera, kmh, maxKmh, boostActive, dt) {
   const baseFov  = 66;
-  const speedFovBoost = 28;
-  const boostFov = 94;
+  const speedFovBoost = 38;
+  const boostFov = 102;
   const t = Math.min(1, kmh / maxKmh);
   // Quadratic so the pump kicks in harder at high speed.
   let target = baseFov + (t * t) * speedFovBoost;

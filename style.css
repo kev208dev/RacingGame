@@ -414,15 +414,17 @@ html, body {
 }
 .leaderboard-driver {
   min-width: 0;
-  color: #d7dde8;
+  color: var(--player-theme, #d7dde8);
   font-size: 0.88rem;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  text-shadow: 0 0 6px color-mix(in srgb, var(--player-theme, transparent) 45%, transparent);
 }
 .leaderboard-time {
-  color: #fff;
+  color: var(--player-theme, #fff);
   font-family: monospace;
   font-weight: 800;
   font-size: 0.95rem;
+  text-shadow: 0 0 6px color-mix(in srgb, var(--player-theme, transparent) 45%, transparent);
 }
 .leaderboard-empty {
   color: #8b949e;
@@ -632,13 +634,18 @@ html, body {
   white-space: nowrap;
 }
 .global-leaderboard-main {
-  color: #fff;
+  color: var(--player-theme, #fff);
   font-weight: 800;
   font-size: 0.9rem;
+  text-shadow: 0 0 6px color-mix(in srgb, var(--player-theme, transparent) 45%, transparent);
 }
 .global-leaderboard-meta {
-  color: #8b949e;
+  color: color-mix(in srgb, var(--player-theme, #8b949e) 60%, #8b949e);
   font-size: 0.78rem;
+}
+.global-leaderboard-row .leaderboard-time {
+  color: var(--player-theme, #fff);
+  text-shadow: 0 0 6px color-mix(in srgb, var(--player-theme, transparent) 45%, transparent);
 }
 .help-box {
   max-width: 600px; width: 100%;
