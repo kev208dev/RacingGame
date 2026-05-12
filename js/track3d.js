@@ -164,11 +164,24 @@ function _addWallRideBanks(grp, track) {
     const { len } = _segBasis(x1, y1, x2, y2);
     if (len < 8) continue;
 
-    for (const side of [-1, 1]) {
-      const mat = mats[(Math.floor(i / stride) + (side > 0 ? 0 : 1)) % mats.length];
-      _addWallRideBankSegment(grp, cl, i, stride, side, half, turn, mat);
-    }
+    const outerSide = _curveOuterSide(cl, i, stride);
+    if (!outerSide) continue;
+    const mat = mats[Math.floor(i / stride) % mats.length];
+    _addWallRideBankSegment(grp, cl, i, stride, outerSide, half, turn, mat);
   }
+}
+
+function _curveOuterSide(cl, i, stride) {
+  const N = cl.length;
+  const [px, py] = cl[(i - stride + N) % N];
+  const [cx, cy] = cl[i];
+  const [nx, ny] = cl[(i + stride) % N];
+  const ax = cx - px, ay = cy - py;
+  const bx = nx - cx, by = ny - cy;
+  const cross = ax * by - ay * bx;
+  if (cross > 0.0001) return -1;
+  if (cross < -0.0001) return 1;
+  return 0;
 }
 
 function _makeWallRideBankMaterial(color) {
@@ -182,25 +195,28 @@ function _makeWallRideBankMaterial(color) {
 }
 
 function _addWallRideBankSegment(grp, cl, i, stride, side, half, turn, mat) {
-  const [x1, y1] = cl[i];
-  const [x2, y2] = cl[(i + stride) % cl.length];
-  const { px, py } = _segBasis(x1, y1, x2, y2);
+  const i2 = (i + stride) % cl.length;
   const innerOff = half + 3.5;
-  const outerOff = half + 21.0;
+  const outerOff = half + 13.0;
   const innerY = 0.32;
-  const outerY = 2.65 + Math.min(1.15, turn * 2.0);
+  const outerY = 2.05 + Math.min(0.95, turn * 1.6);
   const baseY = 0.08;
 
-  const p = (x, y, off, h) => [x + px * off * side, h, -(y + py * off * side)];
+  const a1 = _offsetPoint(cl, i, innerOff, side);
+  const a2 = _offsetPoint(cl, i2, innerOff, side);
+  const b1 = _offsetPoint(cl, i, outerOff, side);
+  const b2 = _offsetPoint(cl, i2, outerOff, side);
+
+  const v = (pt, h) => [pt.x, h, -pt.y];
   const verts = [
-    ...p(x1, y1, innerOff, innerY),
-    ...p(x2, y2, innerOff, innerY),
-    ...p(x2, y2, outerOff, outerY),
-    ...p(x1, y1, outerOff, outerY),
-    ...p(x1, y1, innerOff, baseY),
-    ...p(x2, y2, innerOff, baseY),
-    ...p(x2, y2, outerOff, baseY),
-    ...p(x1, y1, outerOff, baseY),
+    ...v(a1, innerY),
+    ...v(a2, innerY),
+    ...v(b2, outerY),
+    ...v(b1, outerY),
+    ...v(a1, baseY),
+    ...v(a2, baseY),
+    ...v(b2, baseY),
+    ...v(b1, baseY),
   ];
   const indices = [
     0, 1, 2, 0, 2, 3,
