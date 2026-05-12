@@ -135,6 +135,13 @@ function _renderLeaderboard(listEl, rows) {
   rows.forEach(row => {
     const li = document.createElement('li');
     li.className = 'leaderboard-row' + (row.playerId === me ? ' mine' : '');
+    const color = row.themeColor || '#2ec4b6';
+    li.style.setProperty('--theme-color', color);
+
+    const dot = document.createElement('span');
+    dot.className = 'leaderboard-theme-dot';
+    dot.style.background = color;
+    dot.title = color;
 
     const rank = document.createElement('span');
     rank.className = 'leaderboard-rank';
@@ -148,7 +155,7 @@ function _renderLeaderboard(listEl, rows) {
     time.className = 'leaderboard-time';
     time.textContent = formatTime(row.lapMs);
 
-    li.append(rank, name, time);
+    li.append(dot, rank, name, time);
     listEl.appendChild(li);
   });
 }

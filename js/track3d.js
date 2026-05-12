@@ -144,11 +144,51 @@ function _addGuardrails(grp, track) {
 }
 
 function _offsetLine(cl, side, off) {
-  const pts = [];
-  for (let i = 0; i < cl.length; i++) {
-    pts.push(_offsetPoint(cl, i, off, side));
+  const N = cl.length;
+  if (N < 3) return [];
+  const pts = new Array(N);
+  for (let i = 0; i < N; i++) {
+    pts[i] = _offsetPoint(cl, i, off, side);
   }
-  return pts;
+
+  // Untangle folded segments at sharp inside corners by collapsing
+  // points whose neighbors curl back into themselves, then smoothing.
+  for (let pass = 0; pass < 4; pass++) {
+    let modified = false;
+    for (let i = 0; i < pts.length; i++) {
+      const prev = pts[(i - 1 + pts.length) % pts.length];
+      const curr = pts[i];
+      const next = pts[(i + 1) % pts.length];
+      const ax = curr.x - prev.x;
+      const ay = curr.y - prev.y;
+      const bx = next.x - curr.x;
+      const by = next.y - curr.y;
+      const al = Math.hypot(ax, ay) || 1;
+      const bl = Math.hypot(bx, by) || 1;
+      const dot = (ax * bx + ay * by) / (al * bl);
+      if (dot < -0.15) {
+        pts[i] = {
+          x: (prev.x + next.x) * 0.5,
+          y: (prev.y + next.y) * 0.5,
+        };
+        modified = true;
+      }
+    }
+    if (!modified) break;
+  }
+
+  // Light smoothing pass to soften any remaining sharp kinks
+  const smoothed = new Array(pts.length);
+  for (let i = 0; i < pts.length; i++) {
+    const prev = pts[(i - 1 + pts.length) % pts.length];
+    const curr = pts[i];
+    const next = pts[(i + 1) % pts.length];
+    smoothed[i] = {
+      x: curr.x * 0.62 + (prev.x + next.x) * 0.19,
+      y: curr.y * 0.62 + (prev.y + next.y) * 0.19,
+    };
+  }
+  return smoothed;
 }
 
 function _offsetPoint(cl, i, off, side) {
@@ -175,8 +215,19 @@ function _offsetPoint(cl, i, off, side) {
   }
   mx /= ml;
   my /= ml;
-  const denom = Math.max(0.62, Math.abs(mx * n2.x + my * n2.y));
-  const scale = Math.min(off * 1.02, off / denom);
+
+  // Detect whether this point is on the inside of the bend (concave side).
+  // Cross product of inbound/outbound tangents gives bend direction.
+  const cross = (inDx * outDy - inDy * outDx) / (inLen * outLen);
+  const isInside = cross * side < 0;
+  const minDenom = isInside ? 0.92 : 0.62;
+  const denom = Math.max(minDenom, Math.abs(mx * n2.x + my * n2.y));
+  let scale = Math.min(off * 1.02, off / denom);
+  if (isInside) {
+    // Hard cap so the miter never pushes farther than half the shorter
+    // adjacent segment — this prevents the offset polyline from folding.
+    scale = Math.min(scale, Math.min(inLen, outLen) * 0.5);
+  }
   return {
     x: cx + mx * scale * side,
     y: cy + my * scale * side,

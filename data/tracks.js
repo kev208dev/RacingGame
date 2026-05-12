@@ -40,18 +40,18 @@ function buildSourceCenterline(trace, sourceSize, scale = 3.1, targetStep = 34) 
 function roundControls(controls) {
   if (controls.length < 4) return controls;
   let pts = controls;
-  for (let pass = 0; pass < 2; pass++) {
+  for (let pass = 0; pass < 3; pass++) {
     const nextPts = [];
     for (let i = 0; i < pts.length; i++) {
       const a = pts[i];
       const b = pts[(i + 1) % pts.length];
       nextPts.push({
-        x: a.x * 0.78 + b.x * 0.22,
-        y: a.y * 0.78 + b.y * 0.22,
+        x: a.x * 0.72 + b.x * 0.28,
+        y: a.y * 0.72 + b.y * 0.28,
       });
       nextPts.push({
-        x: a.x * 0.22 + b.x * 0.78,
-        y: a.y * 0.22 + b.y * 0.78,
+        x: a.x * 0.28 + b.x * 0.72,
+        y: a.y * 0.28 + b.y * 0.72,
       });
     }
     pts = nextPts;
@@ -90,6 +90,8 @@ function polyArea(points) {
   return sum / 2;
 }
 
+const TRACK_WIDTH_MULT = 1.28;
+
 function makeOfficialCircuit({
   id,
   name,
@@ -105,14 +107,15 @@ function makeOfficialCircuit({
   theme = {},
   info = {},
 }) {
+  const effectiveWidth = width * TRACK_WIDTH_MULT;
   const center = buildSourceCenterline(trace, sourceSize, scale);
-  const { outer, inner } = offsetWalls(center, width);
+  const { outer, inner } = offsetWalls(center, effectiveWidth);
 
   const N = center.length;
   const sc = center[0];
   const scNext = center[1];
   const sAngle = Math.atan2(scNext.y - sc.y, scNext.x - sc.x);
-  const halfW = width * 0.58;
+  const halfW = effectiveWidth * 0.58;
   const perpDx = -Math.sin(sAngle);
   const perpDy = Math.cos(sAngle);
   const approxStep = avgStep(center);
@@ -153,7 +156,7 @@ function makeOfficialCircuit({
     difficulty,
     desc,
     character,
-    width,
+    width: effectiveWidth,
     outerBoundary: outer,
     innerBoundary: inner,
     centerLine: center.map(c => [c.x, c.y]),

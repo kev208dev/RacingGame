@@ -62,6 +62,9 @@
       <h1>RACING SANDBOX</h1>
       <p class="subtitle">차량을 선택하세요</p>
     </div>
+    <div class="main-save-note" id="main-save-note">
+      이메일 인증을 해야 자동차 잠금 해제와 코인을 저장할 수 있습니다.
+    </div>
     <div class="category-tabs" id="cat-tabs"></div>
     <div class="paint-bar">
       <input id="paint-upload" type="file" accept="image/*" hidden />
@@ -74,13 +77,12 @@
       <aside class="home-leaderboard">
         <div class="home-board-head">
           <div>
-            <strong>LIVE RANKING</strong>
+            <strong>LIVE RANKING TOP 20</strong>
             <span id="home-leaderboard-status">서버 연결 중...</span>
           </div>
           <select id="home-leaderboard-track" aria-label="메인 랭킹 맵 선택"></select>
         </div>
-        <ol class="global-leaderboard-list compact" id="home-leaderboard-list"></ol>
-        <button class="btn-secondary btn-small" id="btn-open-leaderboard">전체 보기</button>
+        <ol class="global-leaderboard-list" id="home-leaderboard-list"></ol>
       </aside>
     </div>
     <div class="screen-footer">
@@ -134,20 +136,6 @@
 
   <!-- Help button (always available, opens controls modal) -->
   <button id="btn-help" title="조작법">?</button>
-  <div id="leaderboard-overlay" class="hidden">
-    <div class="leaderboard-modal">
-      <div class="modal-head">
-        <div>
-          <h2>토탈 랭킹</h2>
-          <p id="global-leaderboard-status">서버 연결 중...</p>
-        </div>
-        <select id="leaderboard-track-filter" aria-label="랭킹 맵 선택"></select>
-        <button class="btn-icon" id="btn-leaderboard-close" aria-label="닫기">×</button>
-      </div>
-      <ol class="global-leaderboard-list" id="global-leaderboard-list"></ol>
-      <button class="btn-secondary" id="btn-leaderboard-refresh">새로고침</button>
-    </div>
-  </div>
   <div id="help-overlay" class="hidden">
     <div class="help-box">
       <h2>조작법 (Controls)</h2>

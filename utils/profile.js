@@ -33,7 +33,7 @@ export function initProfile() {
     try {
       profile = await ensureProfile(user);
       setPlayerName(profile.nickname);
-      setLeaderboardIdentity({ id: profile.user_id, name: profile.nickname });
+      setLeaderboardIdentity({ id: profile.user_id, name: profile.nickname, themeColor: profile.theme_color });
     } catch (error) {
       console.warn('Profile load failed:', error);
       profile = null;

@@ -5,9 +5,15 @@ const API_BASE = '';
 const PROFILE_KEY = 'racing_player_profile';
 const TABLE = 'leaderboard_records';
 
+const DEFAULT_THEME_COLOR = '#2ec4b6';
 let channel = null;
 const listeners = new Set();
 let identityOverride = null;
+
+function normalizeThemeColor(value) {
+  const text = String(value || '').trim();
+  return /^#[0-9a-fA-F]{6}$/.test(text) ? text : DEFAULT_THEME_COLOR;
+}
 
 function randomId() {
   const bytes = new Uint32Array(2);
@@ -50,7 +56,11 @@ export function setPlayerName(name) {
 
 export function setLeaderboardIdentity(identity) {
   identityOverride = identity?.id && identity?.name
-    ? { id: identity.id, name: safeNickname(identity.name, 'Driver') }
+    ? {
+        id: identity.id,
+        name: safeNickname(identity.name, 'Driver'),
+        themeColor: normalizeThemeColor(identity.themeColor),
+      }
     : null;
 }
 
@@ -81,6 +91,7 @@ export async function submitLeaderboard(car, track, lapData) {
     body: JSON.stringify({
       playerId: profile.id,
       playerName: safeNickname(profile.name, 'Driver'),
+      themeColor: normalizeThemeColor(profile.themeColor),
       carId: car.id,
       carName: car.name,
       trackId: track.id,
@@ -129,7 +140,7 @@ export function subscribeLeaderboard(listener) {
 async function fetchSupabaseLeaderboard(carId, trackId, limit = 10) {
   let query = getSupabase()
     .from(TABLE)
-    .select('player_id,player_name,car_id,car_name,track_id,track_name,lap_ms,sectors,created_at,updated_at')
+    .select('player_id,player_name,theme_color,car_id,car_name,track_id,track_name,lap_ms,sectors,created_at,updated_at')
     .order('lap_ms', { ascending: true })
     .order('created_at', { ascending: true })
     .limit(Math.max(1, Math.min(Number(limit) || 10, 50)));
@@ -164,6 +175,7 @@ async function submitSupabaseLeaderboard(profile, car, track, lapData) {
     .upsert({
       player_id: profile.id,
       player_name: safeNickname(profile.name, 'Driver'),
+      theme_color: normalizeThemeColor(profile.themeColor),
       car_id: car.id,
       car_name: car.name,
       track_id: track.id,
@@ -191,6 +203,7 @@ function toLeaderboardRows(rows) {
     rank: index + 1,
     playerId: row.player_id,
     playerName: row.player_name,
+    themeColor: normalizeThemeColor(row.theme_color),
     carId: row.car_id,
     carName: row.car_name,
     trackId: row.track_id,

@@ -68,11 +68,16 @@ function cleanId(value, fallback = '') {
   return text.slice(0, 48) || fallback;
 }
 
+function cleanThemeColor(value) {
+  const text = String(value || '').trim();
+  return /^#[0-9a-fA-F]{6}$/.test(text) ? text : '#2ec4b6';
+}
+
 async function loadDb() {
   if (DATABASE_URL) {
     const pool = await getPgPool();
     const result = await pool.query(`
-      SELECT player_id, player_name, car_id, car_name, track_id, track_name,
+      SELECT player_id, player_name, theme_color, car_id, car_name, track_id, track_name,
              lap_ms, sectors, created_at, updated_at
       FROM leaderboard_records
       ORDER BY lap_ms ASC, created_at ASC
@@ -85,7 +90,7 @@ async function loadDb() {
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase
       .from('leaderboard_records')
-      .select('player_id, player_name, car_id, car_name, track_id, track_name, lap_ms, sectors, created_at, updated_at')
+      .select('player_id, player_name, theme_color, car_id, car_name, track_id, track_name, lap_ms, sectors, created_at, updated_at')
       .order('lap_ms', { ascending: true })
       .order('created_at', { ascending: true })
       .limit(1000);
@@ -133,6 +138,10 @@ async function getPgPool() {
       )
     `);
     await pgPool.query(`
+      ALTER TABLE leaderboard_records
+        ADD COLUMN IF NOT EXISTS theme_color TEXT NOT NULL DEFAULT '#2ec4b6'
+    `);
+    await pgPool.query(`
       CREATE INDEX IF NOT EXISTS leaderboard_track_car_lap_idx
       ON leaderboard_records (track_id, car_id, lap_ms, created_at)
     `);
@@ -151,6 +160,7 @@ function rowToRecord(row) {
   return {
     playerId: row.player_id ?? row.playerId,
     playerName: row.player_name ?? row.playerName,
+    themeColor: cleanThemeColor(row.theme_color ?? row.themeColor),
     carId: row.car_id ?? row.carId,
     carName: row.car_name ?? row.carName,
     trackId: row.track_id ?? row.trackId,
@@ -228,6 +238,7 @@ async function handlePostLeaderboard(req, res) {
   const record = {
     playerId,
     playerName: safeNickname(cleanText(body.playerName, 'Driver'), 'Driver'),
+    themeColor: cleanThemeColor(body.themeColor),
     carId,
     carName: cleanText(body.carName, carId),
     trackId,
@@ -286,11 +297,12 @@ async function upsertPgRecord(record, existing) {
 
   await pool.query(`
     INSERT INTO leaderboard_records (
-      player_id, player_name, car_id, car_name, track_id, track_name,
+      player_id, player_name, theme_color, car_id, car_name, track_id, track_name,
       lap_ms, sectors, created_at, updated_at
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
     ON CONFLICT (player_id, car_id, track_id) DO UPDATE SET
       player_name = EXCLUDED.player_name,
+      theme_color = EXCLUDED.theme_color,
       car_name = CASE
         WHEN EXCLUDED.lap_ms < leaderboard_records.lap_ms THEN EXCLUDED.car_name
         ELSE leaderboard_records.car_name
@@ -308,6 +320,7 @@ async function upsertPgRecord(record, existing) {
   `, [
     saved.playerId,
     saved.playerName,
+    cleanThemeColor(saved.themeColor),
     saved.carId,
     saved.carName,
     saved.trackId,
@@ -326,6 +339,7 @@ async function upsertSupabaseRecord(record) {
     .upsert({
       player_id: record.playerId,
       player_name: record.playerName,
+      theme_color: cleanThemeColor(record.themeColor),
       car_id: record.carId,
       car_name: record.carName,
       track_id: record.trackId,

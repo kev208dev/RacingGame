@@ -1,6 +1,6 @@
 import { clamp } from '../utils/math.js';
 
-export const TOP_SPEED_MULT = 2.25;
+export const TOP_SPEED_MULT = 2.02;
 export const KMH_PER_UNIT = 1;
 const ACCEL_MULT = 2.35;
 const BRAKE_MULT = 1.9;
@@ -41,16 +41,16 @@ export function updatePhysics(car, input, dt, track) {
     * (1 + 0.38 * drsPower);
   const brakeRate = baseAccel * BRAKE_MULT * Math.pow(1250 / Math.max(700, car.mass || 1250), 0.1);
   const reverseTop = maxSpeed * 0.30;
-  const turnPower = input.handbrake ? 1.86 : 1.42;
+  const turnPower = input.handbrake ? 2.55 : 1.62;
 
   car.gear = clamp(car.gear || 1, 1, 8);
   const accelRate = baseAccel * GEAR_ACCEL[car.gear];
 
   // ── steering ── (negate so D = right turn)
   const speedRatio  = clamp(car.speed / maxSpeed, 0, 1);
-  const maxWheel    = 0.72 - speedRatio * 0.28;
+  const maxWheel    = 0.82 - speedRatio * 0.22;
   const targetWheel = -input.steer * maxWheel;
-  car.steerAngle += (targetWheel - car.steerAngle) * Math.min(dt * 5.4, 1);
+  car.steerAngle += (targetWheel - car.steerAngle) * Math.min(dt * 6.0, 1);
 
   const fwdX     = Math.cos(car.angle);
   const fwdY     = Math.sin(car.angle);
@@ -97,7 +97,7 @@ export function updatePhysics(car, input, dt, track) {
   car.speed = Math.hypot(car.vx, car.vy);
   if (car.speed > 0.5) {
     const dirSign  = fwdSpeed >= 0 ? 1 : -1;
-    const turnGain = (0.36 + speedRatio * 0.50) * turnPower;
+    const turnGain = (0.46 + speedRatio * 0.58) * turnPower;
     car.angle += car.steerAngle * turnGain * dirSign * dt;
   }
 

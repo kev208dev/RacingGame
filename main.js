@@ -4,7 +4,7 @@ import { TRACKS }           from './data/tracks.js';
 import { initGame, updateGame, stopGame } from './screens/game.js';
 import { initResults }      from './screens/results.js';
 import { initAuth }         from './utils/auth.js';
-import { getCurrentUser, onAuthChange, sendMagicLink, signOut } from './utils/auth.js';
+import { getCurrentUser, getMagicLinkCooldownRemaining, onAuthChange, sendMagicLink, signOut } from './utils/auth.js';
 import { clearFrameKeys }   from './utils/input.js';
 import { formatTime }       from './utils/math.js';
 import { CAR_DATA }         from './data/cars.js';
@@ -28,6 +28,50 @@ let currentScreen = 'carSelect';
 let selectedCar   = null;
 let selectedTrack = null;
 let lastTime      = 0;
+
+// ── toast notifications ─────────────────────────────────────
+let toastTimer = null;
+function showToast(message, kind = 'info', duration = 2400) {
+  if (!message) return;
+  let el = document.getElementById('app-toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'app-toast';
+    el.className = 'app-toast';
+    document.body.appendChild(el);
+  }
+  el.textContent = message;
+  el.classList.remove('toast-info', 'toast-success', 'toast-error');
+  el.classList.add(`toast-${kind}`);
+  el.classList.add('show');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), duration);
+}
+
+let loginCooldownInterval = null;
+function _startLoginCooldownTicker(email) {
+  const btn = document.getElementById('btn-auth-login');
+  const status = document.getElementById('auth-status');
+  if (!btn) return;
+  if (loginCooldownInterval) clearInterval(loginCooldownInterval);
+  const tick = () => {
+    const remain = getMagicLinkCooldownRemaining(email);
+    if (remain <= 0) {
+      btn.disabled = false;
+      btn.textContent = '로그인 링크 받기';
+      clearInterval(loginCooldownInterval);
+      loginCooldownInterval = null;
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = `대기 ${remain}s`;
+    if (status && /대기|발송/.test(status.textContent || '')) {
+      // leave existing status as-is
+    }
+  };
+  tick();
+  loginCooldownInterval = setInterval(tick, 1000);
+}
 
 // ── screen helpers ──────────────────────────────────────────
 function showScreen(id) {
@@ -117,61 +161,6 @@ function _wireHelpButton() {
 }
 _wireHelpButton();
 
-function _wireGlobalLeaderboard() {
-  const openBtn = document.getElementById('btn-open-leaderboard');
-  const overlay = document.getElementById('leaderboard-overlay');
-  const closeBtn = document.getElementById('btn-leaderboard-close');
-  const refreshBtn = document.getElementById('btn-leaderboard-refresh');
-  const trackFilter = document.getElementById('leaderboard-track-filter');
-  if (!openBtn || !overlay) return;
-
-  if (trackFilter) {
-    trackFilter.innerHTML = TRACKS.map((track, idx) =>
-      `<option value="${track.id}"${idx === 0 ? ' selected' : ''}>${track.name}</option>`
-    ).join('');
-    trackFilter.addEventListener('change', () => _loadGlobalLeaderboard());
-  }
-
-  const open = () => {
-    overlay.classList.remove('hidden');
-    _loadGlobalLeaderboard();
-  };
-  const close = () => overlay.classList.add('hidden');
-
-  openBtn.addEventListener('click', open);
-  closeBtn && closeBtn.addEventListener('click', close);
-  refreshBtn && refreshBtn.addEventListener('click', () => _loadGlobalLeaderboard());
-  overlay.addEventListener('click', e => {
-    if (e.target === overlay) close();
-  });
-
-  subscribeLeaderboard(() => {
-    if (!overlay.classList.contains('hidden')) _loadGlobalLeaderboard('실시간 갱신됨');
-    _loadHomeLeaderboard('실시간 갱신됨');
-  });
-}
-
-async function _loadGlobalLeaderboard(statusText = '서버 연결 중...') {
-  const list = document.getElementById('global-leaderboard-list');
-  const status = document.getElementById('global-leaderboard-status');
-  const trackFilter = document.getElementById('leaderboard-track-filter');
-  if (!list || !status) return;
-  const trackId = trackFilter?.value || TRACKS[0]?.id || '';
-  const trackName = TRACKS.find(t => t.id === trackId)?.name || '선택 맵';
-
-  status.textContent = `${trackName} ${statusText}`;
-  list.innerHTML = '<li class="leaderboard-empty">랭킹을 불러오는 중...</li>';
-
-  try {
-    const result = await fetchLeaderboard('', trackId, 20);
-    _renderGlobalLeaderboard(result.leaderboard || []);
-    status.textContent = result.leaderboard?.length ? `${trackName} TOP 20` : `${trackName} 등록된 기록이 없습니다.`;
-  } catch {
-    list.innerHTML = '<li class="leaderboard-empty">서버에 연결할 수 없습니다.</li>';
-    status.textContent = '온라인 랭킹 서버를 확인하세요.';
-  }
-}
-
 function _wireHomeLeaderboard() {
   const trackFilter = document.getElementById('home-leaderboard-track');
   if (!trackFilter) return;
@@ -180,6 +169,7 @@ function _wireHomeLeaderboard() {
   ).join('');
   trackFilter.addEventListener('change', () => _loadHomeLeaderboard());
   _loadHomeLeaderboard();
+  subscribeLeaderboard(() => _loadHomeLeaderboard('실시간 갱신됨'));
 }
 
 async function _loadHomeLeaderboard(statusText = '서버 연결 중...') {
@@ -191,19 +181,13 @@ async function _loadHomeLeaderboard(statusText = '서버 연결 중...') {
   status.textContent = statusText;
   list.innerHTML = '<li class="leaderboard-empty">랭킹을 불러오는 중...</li>';
   try {
-    const result = await fetchLeaderboard('', trackId, 8);
+    const result = await fetchLeaderboard('', trackId, 20);
     _renderLeaderboardInto(list, result.leaderboard || []);
-    status.textContent = result.leaderboard?.length ? '맵별 TOP 8' : '아직 기록 없음';
+    status.textContent = result.leaderboard?.length ? '맵별 TOP 20' : '아직 기록 없음';
   } catch {
     list.innerHTML = '<li class="leaderboard-empty">서버에 연결할 수 없습니다.</li>';
     status.textContent = 'Supabase 연결 확인 필요';
   }
-}
-
-function _renderGlobalLeaderboard(rows) {
-  const list = document.getElementById('global-leaderboard-list');
-  if (!list) return;
-  _renderLeaderboardInto(list, rows);
 }
 
 function _renderLeaderboardInto(list, rows) {
@@ -218,6 +202,13 @@ function _renderLeaderboardInto(list, rows) {
   for (const row of rows) {
     const li = document.createElement('li');
     li.className = 'global-leaderboard-row' + (row.playerId === me ? ' mine' : '');
+    const color = row.themeColor || '#2ec4b6';
+    li.style.setProperty('--theme-color', color);
+
+    const dot = document.createElement('span');
+    dot.className = 'leaderboard-theme-dot';
+    dot.style.background = color;
+    dot.title = color;
 
     const rank = document.createElement('span');
     rank.className = 'leaderboard-rank';
@@ -235,7 +226,7 @@ function _renderLeaderboardInto(list, rows) {
     time.className = 'leaderboard-time';
     time.textContent = formatTime(row.lapMs);
 
-    li.append(rank, main, meta, time);
+    li.append(dot, rank, main, meta, time);
     list.appendChild(li);
   }
 }
@@ -255,13 +246,27 @@ function _wireProfilePanel() {
 
   openBtn.addEventListener('click', () => panel.classList.toggle('hidden'));
   closeBtn?.addEventListener('click', () => panel.classList.add('hidden'));
+  email?.addEventListener('input', () => _startLoginCooldownTicker(email.value || ''));
   login && (login.onclick = async () => {
+    const value = email?.value || '';
     if (status) status.textContent = '로그인 메일 보내는 중...';
     try {
-      await sendMagicLink(email?.value || '');
-      if (status) status.textContent = '메일의 로그인 링크를 확인하세요.';
+      await sendMagicLink(value);
+      if (status) status.textContent = '메일의 로그인 링크를 확인하세요. (받은편지함/스팸함 확인)';
+      _startLoginCooldownTicker(value);
+      showToast('로그인 메일을 발송했습니다.');
     } catch (error) {
-      if (status) status.textContent = `전송 실패: ${error?.message || 'Supabase 설정을 확인하세요.'}`;
+      if (status) {
+        if (error?.code === 'rate-limited') {
+          status.textContent = error.message;
+          _startLoginCooldownTicker(value);
+          showToast('잠시 후 다시 시도해주세요.');
+        } else if (error?.code === 'email-required') {
+          status.textContent = '이메일 주소를 입력하세요.';
+        } else {
+          status.textContent = `전송 실패: ${error?.message || 'Supabase 설정을 확인하세요.'}`;
+        }
+      }
     }
   });
   logout && (logout.onclick = async () => {
@@ -272,11 +277,13 @@ function _wireProfilePanel() {
     try {
       await updateProfileSettings({ nickname: nickname?.value, themeColor: theme?.value });
       if (status) status.textContent = '프로필 저장 완료';
+      showToast('프로필 저장 완료', 'success');
     } catch (error) {
-      if (!status) return;
-      status.textContent = error?.code === 'bad-nickname'
+      const msg = error?.code === 'bad-nickname'
         ? nicknameRejectMessage()
         : '로그인 후 프로필을 저장할 수 있습니다.';
+      if (status) status.textContent = msg;
+      showToast(msg, 'error');
     }
   });
 
@@ -326,6 +333,18 @@ function _renderProfilePanel() {
   if (login) login.classList.toggle('hidden', !!user);
   if (logout) logout.classList.toggle('hidden', !user);
   if (status) status.textContent = user ? `${user.email} 로그인됨` : '로그인하면 코인과 차량을 저장합니다.';
+  if (!user && email) _startLoginCooldownTicker(email.value || '');
+
+  const saveNote = document.getElementById('main-save-note');
+  if (saveNote) {
+    if (user) {
+      saveNote.classList.add('logged-in');
+      saveNote.textContent = `${user.email} 인증 완료 · 자동차 잠금 해제와 코인이 자동 저장됩니다.`;
+    } else {
+      saveNote.classList.remove('logged-in');
+      saveNote.textContent = '이메일 인증을 해야 자동차 잠금 해제와 코인을 저장할 수 있습니다.';
+    }
+  }
 }
 
 function _wireStarterRoulette() {
@@ -375,7 +394,6 @@ function _closeStarterRoulette() {
 _wireProfilePanel();
 _wireStarterRoulette();
 _wireHomeLeaderboard();
-_wireGlobalLeaderboard();
 await initAuth();
 initProfile();
 
