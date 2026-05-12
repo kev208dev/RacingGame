@@ -18,6 +18,8 @@ export function createCar(carData, startPos) {
     id:          carData.id,
     name:        carData.name,
     mass:        carData.mass,
+    power:       carData.power,
+    price:       carData.price || 0,
     maxSpeed:    carData.maxSpeed,
     grip:        carData.grip,
     wheelbase:   carData.wheelbase,

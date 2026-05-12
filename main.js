@@ -4,7 +4,7 @@ import { TRACKS }           from './data/tracks.js';
 import { initGame, updateGame, stopGame } from './screens/game.js';
 import { initResults }      from './screens/results.js';
 import { initAuth }         from './utils/auth.js';
-import { getCurrentUser, onAuthChange, sendMagicLink, signOut } from './utils/auth.js';
+import { getCurrentUser, onAuthChange, sendMagicLink, signInWithGoogle, signOut } from './utils/auth.js';
 import { clearFrameKeys }   from './utils/input.js';
 import { formatTime }       from './utils/math.js';
 import { CAR_DATA }         from './data/cars.js';
@@ -252,6 +252,7 @@ function _wireProfilePanel() {
   const closeBtn = document.getElementById('btn-profile-close');
   const email = document.getElementById('auth-email');
   const login = document.getElementById('btn-auth-login');
+  const google = document.getElementById('btn-auth-google');
   const logout = document.getElementById('btn-auth-logout');
   const status = document.getElementById('auth-status');
   const nickname = document.getElementById('profile-nickname');
@@ -263,11 +264,24 @@ function _wireProfilePanel() {
   closeBtn?.addEventListener('click', () => panel.classList.add('hidden'));
   login && (login.onclick = async () => {
     if (status) status.textContent = '로그인 메일 보내는 중...';
+    login.disabled = true;
     try {
       await sendMagicLink(email?.value || '');
       if (status) status.textContent = '메일의 로그인 링크를 확인하세요.';
     } catch (error) {
-      if (status) status.textContent = `전송 실패: ${error?.message || 'Supabase 설정을 확인하세요.'}`;
+      if (status) status.textContent = _authErrorMessage(error);
+    } finally {
+      setTimeout(() => { login.disabled = false; }, 1200);
+    }
+  });
+  google && (google.onclick = async () => {
+    if (status) status.textContent = 'Google 로그인으로 이동 중...';
+    google.disabled = true;
+    try {
+      await signInWithGoogle();
+    } catch (error) {
+      if (status) status.textContent = `Google 로그인 실패: ${error?.message || 'Supabase OAuth 설정을 확인하세요.'}`;
+      google.disabled = false;
     }
   });
   logout && (logout.onclick = async () => {
@@ -310,6 +324,7 @@ function _renderProfilePanel() {
   const note = document.getElementById('profile-note');
   const email = document.getElementById('auth-email');
   const login = document.getElementById('btn-auth-login');
+  const google = document.getElementById('btn-auth-google');
   const logout = document.getElementById('btn-auth-logout');
   const status = document.getElementById('auth-status');
 
@@ -330,8 +345,20 @@ function _renderProfilePanel() {
     : '게스트는 기본 차량만 사용할 수 있습니다.';
   if (email) email.classList.toggle('hidden', !!user);
   if (login) login.classList.toggle('hidden', !!user);
+  if (google) google.classList.toggle('hidden', !!user);
   if (logout) logout.classList.toggle('hidden', !user);
   if (status) status.textContent = user ? `${user.email} 로그인됨` : '로그인하면 코인과 차량을 저장합니다.';
+}
+
+function _authErrorMessage(error) {
+  if (error?.code === 'email-cooldown') {
+    return `메일 링크는 잠시 후 다시 보낼 수 있습니다. ${Math.ceil((error.retryAfterMs || 0) / 1000)}초 뒤 재시도하세요.`;
+  }
+  if (error?.code === 'email-rate-limited') {
+    return 'Supabase 메일 한도에 걸렸습니다. Google 로그인을 사용하거나 15분 뒤 메일 링크를 다시 시도하세요.';
+  }
+  if (error?.message === 'email-required') return '이메일을 입력하세요.';
+  return `전송 실패: ${error?.message || 'Supabase 설정을 확인하세요.'}`;
 }
 
 function _wireStarterRoulette() {
