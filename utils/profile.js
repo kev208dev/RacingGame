@@ -8,6 +8,9 @@ const PROFILES_KEY = 'racing_local_profiles';
 const DEFAULT_OWNED = ['apex_gt3', 'feather_sprint'];
 const DEFAULT_THEME = '#2ec4b6';
 const SUPER_ACCOUNT_IDS = new Set(['admin', 'kev208', 'kev208dev']);
+const ACCOUNT_CAR_UNLOCKS = {
+  ahgo: ['zero_f1'],
+};
 const ALL_CAR_IDS = CAR_DATA.map(car => car.id);
 
 let profile = null;
@@ -69,6 +72,7 @@ export function getDisplayProfile() {
 
 export function isOwned(carId) {
   if (isSuperAccount()) return ALL_CAR_IDS.includes(carId);
+  if (accountUnlockIds().includes(carId)) return true;
   if (!getCurrentUser()) return DEFAULT_OWNED.includes(carId);
   return !!profile?.owned_car_ids?.includes(carId);
 }
@@ -167,6 +171,10 @@ function ensureProfile(user) {
   const existing = store[user.id];
   if (existing) {
     let normalized = normalizeProfile(existing, user);
+    const accountUnlocks = accountUnlockIds(user);
+    if (accountUnlocks.some(id => !normalized.owned_car_ids.includes(id))) {
+      normalized = saveProfile({ ...normalized, owned_car_ids: unique([...normalized.owned_car_ids, ...accountUnlocks]) });
+    }
     if (isSuperAccount(user) && !ALL_CAR_IDS.every(id => normalized.owned_car_ids.includes(id))) {
       normalized = saveProfile({ ...normalized, owned_car_ids: ALL_CAR_IDS, starter_claimed: true });
     }
@@ -179,7 +187,7 @@ function ensureProfile(user) {
     nickname,
     theme_color: DEFAULT_THEME,
     coins: 0,
-    owned_car_ids: isSuperAccount(user) ? ALL_CAR_IDS : DEFAULT_OWNED,
+    owned_car_ids: isSuperAccount(user) ? ALL_CAR_IDS : unique([...DEFAULT_OWNED, ...accountUnlockIds(user)]),
     completed_missions: [],
     starter_claimed: isSuperAccount(user),
   };
@@ -197,12 +205,13 @@ function saveProfile(next) {
 function normalizeProfile(row, user = getCurrentUser()) {
   const owned = Array.isArray(row.owned_car_ids) ? row.owned_car_ids : DEFAULT_OWNED;
   const userId = row.user_id || user?.id;
+  const accountUnlocks = accountUnlockIds({ id: userId });
   return {
     user_id: userId,
     nickname: safeNickname(row.nickname, 'Driver'),
     theme_color: normalizeColor(row.theme_color) || DEFAULT_THEME,
     coins: Number(row.coins || 0),
-    owned_car_ids: isSuperAccount({ id: userId }) ? ALL_CAR_IDS : owned,
+    owned_car_ids: isSuperAccount({ id: userId }) ? ALL_CAR_IDS : unique([...owned, ...accountUnlocks]),
     completed_missions: Array.isArray(row.completed_missions) ? row.completed_missions : [],
     starter_claimed: isSuperAccount({ id: userId }) || !!row.starter_claimed,
   };
@@ -211,6 +220,11 @@ function normalizeProfile(row, user = getCurrentUser()) {
 function isSuperAccount(user = getCurrentUser()) {
   const id = String(user?.id || '').trim().toLowerCase();
   return SUPER_ACCOUNT_IDS.has(id);
+}
+
+function accountUnlockIds(user = getCurrentUser()) {
+  const id = String(user?.id || '').trim().toLowerCase();
+  return ACCOUNT_CAR_UNLOCKS[id] || [];
 }
 
 function normalizeColor(value) {
