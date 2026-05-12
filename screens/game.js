@@ -583,9 +583,9 @@ function _resetCar() {
   // Re-create timing so the new lap starts cleanly when the line is crossed.
   timing = createTiming(getBestSectors(track.id));
   lapPath = [];
-  startCountdown = 3.2;
-  startReadyAt = performance.now() + 3200;
-  raceReleased = false;
+  startCountdown = 0;
+  startReadyAt = performance.now();
+  raceReleased = true;
   lapBannerTimer = 0;
   pendingResults = null;
   if (resultsTimeout) {
