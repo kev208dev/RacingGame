@@ -73,7 +73,10 @@ export function getDisplayProfile() {
 
 export function isOwned(carId) {
   if (isSuperAccount()) return ALL_CAR_IDS.includes(carId);
-  if (!getCurrentUser()) return DEFAULT_OWNED.includes(carId);
+  // Default cars are always granted to every account (and to guests),
+  // regardless of whether the profile row stored them.
+  if (DEFAULT_OWNED.includes(carId)) return true;
+  if (!getCurrentUser()) return false;
   return !!profile?.owned_car_ids?.includes(carId);
 }
 
@@ -203,6 +206,17 @@ async function ensureProfile(user) {
         .eq('user_id', user.id);
       return { ...normalized, owned_car_ids: ALL_CAR_IDS, starter_claimed: true };
     }
+    // Backfill default cars for any existing profile that's missing them.
+    const storedOwned = Array.isArray(data.owned_car_ids) ? data.owned_car_ids : [];
+    const missingDefaults = DEFAULT_OWNED.filter(id => !storedOwned.includes(id));
+    if (missingDefaults.length) {
+      const patched = unique([...DEFAULT_OWNED, ...storedOwned]);
+      await getSupabase()
+        .from(TABLE)
+        .update({ owned_car_ids: patched })
+        .eq('user_id', user.id);
+      return { ...normalized, owned_car_ids: patched };
+    }
     return normalized;
   }
 
@@ -229,7 +243,8 @@ async function ensureProfile(user) {
 }
 
 function normalizeProfile(row) {
-  const owned = Array.isArray(row.owned_car_ids) ? row.owned_car_ids : DEFAULT_OWNED;
+  const stored = Array.isArray(row.owned_car_ids) ? row.owned_car_ids : [];
+  const owned = unique([...DEFAULT_OWNED, ...stored]);
   return {
     ...row,
     nickname: safeNickname(row.nickname, 'Driver'),
