@@ -47,7 +47,7 @@ export function updatePhysics(car, input, dt, track) {
     * (1 + 0.38 * drsPower);
   const brakeRate = baseAccel * BRAKE_MULT * handlingFactor * Math.pow(1250 / Math.max(700, car.mass || 1250), 0.1);
   const reverseTop = maxSpeed * 0.30;
-  const turnPower = input.handbrake ? 1.55 : 1.64;
+  const turnPower = input.handbrake ? 1.05 : 1.30;
 
   car.gear = clamp(car.gear || 1, 1, 8);
   const accelRate = baseAccel * GEAR_ACCEL[car.gear];
@@ -106,7 +106,7 @@ export function updatePhysics(car, input, dt, track) {
     const turnGain = (0.36 + speedRatio * 0.50) * turnPower * handlingFactor;
     car.angle += car.steerAngle * turnGain * dirSign * dt;
     if (input.handbrake && Math.abs(input.steer) > 0.05) {
-      car.angle += -input.steer * (0.25 + speedRatio * 0.45) * dt * dirSign;
+      car.angle += -input.steer * (0.10 + speedRatio * 0.18) * dt * dirSign;
     }
   }
 
