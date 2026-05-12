@@ -215,52 +215,48 @@ function _statRow(label, value) {
 }
 
 // ── mini car drawing ─────────────────────────────────────────
+const PREVIEW_DESIGNS = {
+  apex_gt3: { kind: 'gt', body: '#cfd8dc', accent: '#e11218', wheel: '#e11218', stripe: 'side', wing: true, length: 122, height: 30 },
+  feather_sprint: { kind: 'classic', body: '#1b7f3a', accent: '#f2f5f6', wheel: '#cfd8dc', stripe: 'center', fin: true, length: 112, height: 27 },
+  nitro_street: { kind: 'muscle', body: '#f57c00', accent: '#050505', wheel: '#050505', stripe: 'dual', scoop: true, length: 120, height: 32 },
+  lmp: { kind: 'cyber', body: '#111111', accent: '#00d9ff', wheel: '#00d9ff', stripe: 'center', wing: true, length: 124, height: 25 },
+  titan_v12: { kind: 'buggy', body: '#ffc400', accent: '#050505', wheel: '#ffc400', cage: true, length: 104, height: 31 },
+  shadow_rs: { kind: 'rally', body: '#1565c0', accent: '#f2f5f6', wheel: '#f2f5f6', stripe: 'center', wing: true, length: 108, height: 33 },
+  neon_wraith: { kind: 'hyper', body: '#7b1fa2', accent: '#00d9ff', wheel: '#00d9ff', stripe: 'channel', wing: true, length: 126, height: 25 },
+  zero_f1: { kind: 'formula', body: '#e11218', accent: '#f2f5f6', wheel: '#050505', stripe: 'center', length: 126, height: 23 },
+};
+
 function _drawCarPreview(canvas, car) {
   const ctx = canvas.getContext('2d');
   const w = canvas.width, h = canvas.height;
+  const spec = PREVIEW_DESIGNS[car.id] || { kind: 'gt', body: car.color, accent: '#ffd84a', wheel: car.color, length: 114, height: 30 };
+  const paint = car._skipPaint ? null : getPaintJob(car.id);
   ctx.clearRect(0, 0, w, h);
 
-  const cx = w / 2, cy = h / 2 + 7;
-  const paint = car._skipPaint ? null : getPaintJob(car.id);
-  const isLight = car.category === 'Lightweight';
-  const isHeavy = car.category === 'Heavyweight';
-  const isFormula = car.category === 'Formula';
-  const bw = isLight ? 96 : isHeavy ? 124 : isFormula ? 118 : 110;
-  const bh = isLight ? 28 : isHeavy ? 38 : isFormula ? 26 : 34;
-
-  const grad = ctx.createLinearGradient(16, 8, w - 12, h - 4);
-  grad.addColorStop(0, 'rgba(255,255,255,0.18)');
-  grad.addColorStop(1, 'rgba(0,0,0,0.36)');
-  ctx.fillStyle = grad;
+  const bg = ctx.createLinearGradient(12, 6, w - 10, h - 8);
+  bg.addColorStop(0, 'rgba(255,255,255,0.16)');
+  bg.addColorStop(1, 'rgba(0,0,0,0.38)');
+  ctx.fillStyle = bg;
   ctx.beginPath();
   ctx.roundRect(8, 8, w - 16, h - 16, 10);
   ctx.fill();
 
   ctx.save();
-  ctx.translate(cx, cy);
-  ctx.rotate(-0.06);
-  ctx.translate(-cx, -cy);
+  ctx.translate(w / 2, h / 2 + 8);
+  ctx.rotate(-0.05);
 
-  const bodyGrad = ctx.createLinearGradient(cx - bw / 2, cy - bh, cx + bw / 2, cy + bh);
-  bodyGrad.addColorStop(0, '#ffffff');
-  bodyGrad.addColorStop(0.22, car.color);
-  bodyGrad.addColorStop(1, '#11151b');
-
-  // shadow
   ctx.fillStyle = 'rgba(0,0,0,0.36)';
   ctx.beginPath();
-  ctx.ellipse(cx, cy + bh / 2 + 9, bw * 0.48, 8, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, 19, spec.length * 0.45, 7.5, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // sports-car silhouette
-  ctx.fillStyle = bodyGrad;
-  ctx.beginPath();
-  ctx.moveTo(cx - bw / 2, cy + bh * 0.22);
-  ctx.bezierCurveTo(cx - bw * 0.42, cy - bh * 0.28, cx - bw * 0.24, cy - bh * 0.62, cx - bw * 0.02, cy - bh * 0.62);
-  ctx.bezierCurveTo(cx + bw * 0.22, cy - bh * 0.62, cx + bw * 0.36, cy - bh * 0.2, cx + bw / 2, cy + bh * 0.15);
-  ctx.bezierCurveTo(cx + bw * 0.42, cy + bh * 0.48, cx - bw * 0.38, cy + bh * 0.48, cx - bw / 2, cy + bh * 0.22);
-  ctx.closePath();
-  ctx.fill();
+  if (spec.kind === 'formula') {
+    _drawFormulaPreview(ctx, spec);
+  } else if (spec.kind === 'buggy') {
+    _drawBuggyPreview(ctx, spec);
+  } else {
+    _drawClosedWheelPreview(ctx, spec);
+  }
 
   if (paint) {
     const img = new Image();
@@ -268,61 +264,172 @@ function _drawCarPreview(canvas, car) {
       _drawCarPreview(canvas, { ...car, _skipPaint: true });
       const ctx2 = canvas.getContext('2d');
       ctx2.save();
-      ctx2.translate(cx, cy);
-      ctx2.rotate(-0.06);
-      ctx2.globalAlpha = 0.86;
-      ctx2.globalCompositeOperation = 'source-over';
-      ctx2.drawImage(img, -bw / 2, -bh / 2 - 8, bw, bh + 20);
-      ctx2.globalAlpha = 1;
+      ctx2.translate(w / 2, h / 2 + 8);
+      ctx2.rotate(-0.05);
+      ctx2.globalAlpha = 0.78;
+      ctx2.drawImage(img, -spec.length * 0.40, -spec.height * 0.92, spec.length * 0.78, spec.height * 1.55);
       ctx2.restore();
     };
-    if (!car._skipPaint) img.src = paint;
+    img.src = paint;
   }
 
-  // glass canopy
-  const glass = ctx.createLinearGradient(cx - 18, cy - bh, cx + 34, cy);
-  glass.addColorStop(0, 'rgba(150,210,255,0.78)');
-  glass.addColorStop(1, 'rgba(3,8,16,0.84)');
-  ctx.fillStyle = glass;
+  ctx.restore();
+}
+
+function _drawClosedWheelPreview(ctx, spec) {
+  const L = spec.length;
+  const H = spec.height;
+  const bodyGrad = ctx.createLinearGradient(-L / 2, -H, L / 2, H);
+  bodyGrad.addColorStop(0, '#ffffff');
+  bodyGrad.addColorStop(0.20, spec.body);
+  bodyGrad.addColorStop(1, '#10151c');
+
+  _drawWheel(ctx, -L * 0.34, 12, spec.kind === 'rally' ? 11 : 10.5, spec.wheel);
+  _drawWheel(ctx, L * 0.34, 12, spec.kind === 'rally' ? 11 : 10.5, spec.wheel);
+
+  ctx.fillStyle = bodyGrad;
   ctx.beginPath();
-  ctx.ellipse(cx + 12, cy - bh * 0.28, isFormula ? 22 : 28, isFormula ? 8 : 11, -0.02, 0, Math.PI * 2);
+  ctx.moveTo(-L * 0.50, 7);
+  ctx.bezierCurveTo(-L * 0.43, -H * 0.20, -L * 0.24, -H * 0.62, -L * 0.02, -H * 0.70);
+  ctx.bezierCurveTo(L * 0.18, -H * 0.78, L * 0.36, -H * 0.26, L * 0.50, 5);
+  ctx.bezierCurveTo(L * 0.38, 15, -L * 0.38, 15, -L * 0.50, 7);
+  ctx.closePath();
   ctx.fill();
 
-  // aero / stripe
-  ctx.strokeStyle = isFormula ? '#f7f7f7' : '#ffd84a';
-  ctx.lineWidth = 3;
+  ctx.fillStyle = 'rgba(6,16,24,0.84)';
   ctx.beginPath();
-  ctx.moveTo(cx - bw * 0.42, cy + bh * 0.02);
-  ctx.bezierCurveTo(cx - bw * 0.1, cy - bh * 0.18, cx + bw * 0.18, cy - bh * 0.1, cx + bw * 0.42, cy + bh * 0.02);
+  ctx.ellipse(L * 0.08, -H * 0.36, spec.kind === 'classic' ? 18 : 24, spec.kind === 'muscle' ? 9 : 10.5, -0.02, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (spec.stripe === 'center') _stripe(ctx, spec.accent, -L * 0.38, -5, L * 0.76, 3);
+  if (spec.stripe === 'dual') {
+    _stripe(ctx, spec.accent, -L * 0.38, -8, L * 0.78, 3);
+    _stripe(ctx, spec.accent, -L * 0.38, -2, L * 0.78, 3);
+  }
+  if (spec.stripe === 'side') {
+    _stripe(ctx, spec.accent, -L * 0.42, 3, L * 0.58, 4);
+  }
+  if (spec.stripe === 'channel') {
+    _stripe(ctx, '#050505', -L * 0.34, -7, L * 0.58, 6);
+    _headlight(ctx, spec.accent, L * 0.34, -8);
+  }
+
+  if (spec.scoop) {
+    ctx.fillStyle = spec.accent;
+    ctx.beginPath();
+    ctx.roundRect(L * 0.06, -H * 0.66, 22, 8, 2);
+    ctx.fill();
+  }
+  if (spec.fin) {
+    ctx.fillStyle = spec.body;
+    ctx.fillRect(-L * 0.32, -H * 0.80, 18, 16);
+  }
+  if (spec.wing) {
+    ctx.fillStyle = spec.kind === 'rally' ? spec.body : '#050505';
+    ctx.fillRect(-L * 0.45, -H * 0.86, 40, 5);
+    ctx.fillRect(-L * 0.36, -H * 0.73, 4, 14);
+  }
+
+  ctx.fillStyle = '#050505';
+  ctx.fillRect(L * 0.35, 2, 20, 5);
+  if (spec.kind === 'gt') _headlight(ctx, '#f2f5f6', L * 0.34, -3);
+}
+
+function _drawBuggyPreview(ctx, spec) {
+  const L = spec.length;
+  const H = spec.height;
+  _drawWheel(ctx, -L * 0.35, 12, 14, spec.wheel);
+  _drawWheel(ctx, L * 0.35, 12, 14, spec.wheel);
+
+  ctx.fillStyle = spec.body;
+  ctx.beginPath();
+  ctx.moveTo(-L * 0.40, 9);
+  ctx.lineTo(-L * 0.25, -H * 0.38);
+  ctx.lineTo(L * 0.22, -H * 0.44);
+  ctx.lineTo(L * 0.42, 7);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = spec.accent;
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(-L * 0.22, -H * 0.36);
+  ctx.lineTo(-L * 0.08, -H * 0.92);
+  ctx.lineTo(L * 0.22, -H * 0.84);
+  ctx.lineTo(L * 0.30, -H * 0.34);
+  ctx.moveTo(-L * 0.08, -H * 0.92);
+  ctx.lineTo(-L * 0.16, -H * 0.34);
   ctx.stroke();
 
-  ctx.fillStyle = '#0a0d10';
+  ctx.fillStyle = 'rgba(6,16,24,0.82)';
   ctx.beginPath();
-  ctx.roundRect(cx - bw * 0.54, cy + bh * 0.12, 18, 5, 3);
-  ctx.roundRect(cx + bw * 0.36, cy + bh * 0.08, 24, 5, 3);
+  ctx.ellipse(0, -H * 0.34, 18, 8, 0, 0, Math.PI * 2);
   ctx.fill();
-  if (isFormula) {
-    ctx.fillRect(cx + bw / 2 - 2, cy - 13, 25, 5);
-    ctx.fillRect(cx - bw / 2 - 16, cy - 12, 24, 5);
-  }
+  ctx.fillStyle = spec.accent;
+  ctx.fillRect(L * 0.34, 1, 24, 5);
+  ctx.fillRect(-L * 0.53, 2, 22, 5);
+}
 
-  // wheels
-  const wheelR = isHeavy ? 13 : isLight ? 9 : 11;
-  [
-    [cx - bw * 0.34, cy + bh * 0.36],
-    [cx + bw * 0.34, cy + bh * 0.36],
-  ].forEach(([x, y]) => {
-    ctx.fillStyle = '#050505';
-    ctx.beginPath();
-    ctx.arc(x, y, wheelR, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = car.color;
-    ctx.lineWidth = 3;
-    ctx.stroke();
-    ctx.fillStyle = '#b8c0c8';
-    ctx.beginPath();
-    ctx.arc(x, y, wheelR * 0.38, 0, Math.PI * 2);
-    ctx.fill();
-  });
-  ctx.restore();
+function _drawFormulaPreview(ctx, spec) {
+  const L = spec.length;
+  const H = spec.height;
+  _drawWheel(ctx, -L * 0.37, 12, 10.5, spec.wheel);
+  _drawWheel(ctx, L * 0.33, 12, 10.5, spec.wheel);
+  _drawWheel(ctx, -L * 0.37, -15, 9.5, spec.wheel);
+  _drawWheel(ctx, L * 0.33, -15, 9.5, spec.wheel);
+
+  ctx.fillStyle = spec.body;
+  ctx.beginPath();
+  ctx.moveTo(-L * 0.44, 2);
+  ctx.lineTo(-L * 0.26, -H * 0.48);
+  ctx.lineTo(L * 0.46, -H * 0.22);
+  ctx.lineTo(L * 0.50, 1);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillRect(-L * 0.10, -H * 0.55, 40, 13);
+  ctx.fillStyle = 'rgba(6,16,24,0.84)';
+  ctx.beginPath();
+  ctx.ellipse(-L * 0.02, -H * 0.66, 14, 7, 0, 0, Math.PI * 2);
+  ctx.fill();
+  _stripe(ctx, spec.accent, -L * 0.36, -7, L * 0.74, 3);
+
+  ctx.fillStyle = '#050505';
+  ctx.fillRect(L * 0.35, -25, 30, 5);
+  ctx.fillRect(-L * 0.58, -3, 34, 5);
+  ctx.strokeStyle = '#050505';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(-L * 0.20, -2);
+  ctx.lineTo(-L * 0.37, -15);
+  ctx.moveTo(L * 0.12, -3);
+  ctx.lineTo(L * 0.33, -15);
+  ctx.stroke();
+}
+
+function _drawWheel(ctx, x, y, r, rim) {
+  ctx.fillStyle = '#050505';
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = rim;
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  ctx.fillStyle = '#b8c0c8';
+  ctx.beginPath();
+  ctx.arc(x, y, r * 0.36, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function _stripe(ctx, color, x, y, w, h) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, h / 2);
+  ctx.fill();
+}
+
+function _headlight(ctx, color, x, y) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.ellipse(x, y, 8, 3, -0.18, 0, Math.PI * 2);
+  ctx.fill();
 }

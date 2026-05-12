@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { createCar, createCar3D, updateCar3D } from '../js/car.js';
-import { updatePhysics, KMH_PER_UNIT }  from '../js/physics.js';
+import { updatePhysics, KMH_PER_UNIT, TOP_SPEED_MULT }  from '../js/physics.js';
 import { getTrackGroup }  from '../js/track3d.js';
 import { drawHUD }        from '../js/hud.js';
 import { createTiming, updateTiming } from '../js/timing.js';
@@ -304,7 +304,7 @@ export function updateGame(dt, now) {
 
   // ── FOV pump (visual speed sensation) ──
   const kmh = car.speed * KMH_PER_UNIT;
-  updateFovPump(camera3d, kmh, car.maxSpeed, !!car.boosting || !!car.drsActive, dt);
+  updateFovPump(camera3d, kmh, car.maxSpeed * TOP_SPEED_MULT, !!car.boosting || !!car.drsActive, dt);
 
   // ── render ──
   renderer.render(scene, camera3d);
@@ -573,7 +573,6 @@ function _resetCar() {
   car.drsAvailable = false;
   car.drsActive = false;
   car.drsTimer = 0;
-  car.drsWindowTimer = 0;
   car.drsTapTimer = 0;
   car.drsPower = 0;
   car.lastWallHit = null;

@@ -1,5 +1,5 @@
 import { formatTime } from '../utils/math.js';
-import { KMH_PER_UNIT } from './physics.js';
+import { KMH_PER_UNIT, TOP_SPEED_MULT } from './physics.js';
 
 export function drawHUD(ctx, car, timing, canvasW, canvasH, track, ghost = null) {
   const kmh = car.speed * KMH_PER_UNIT;
@@ -24,7 +24,7 @@ export function drawHUD(ctx, car, timing, canvasW, canvasH, track, ghost = null)
   ctx.stroke();
 
   // Speedometer
-  _speedometer(ctx, kmh, car.maxSpeed, 86, barY + 60);
+  _speedometer(ctx, kmh, car.maxSpeed * TOP_SPEED_MULT, 86, barY + 60);
 
   // RPM bar
   _rpmBar(ctx, rpmRatio, 180, barY + 22, canvasW * 0.36, 24);
@@ -351,7 +351,7 @@ function _superBoostMeter(ctx, car, x, y, w, h) {
   ctx.font = '10px monospace';
   ctx.fillStyle = car.drsAvailable ? '#9ff8ff' : '#7b8b92';
   ctx.textAlign = 'left';
-  ctx.fillText('SUPER', x, y - 2);
+  ctx.fillText('DRX', x, y - 2);
   if (car.drsAvailable && !car.drsActive && rawMeter > 8) {
     ctx.textAlign = 'right';
     ctx.fillText('SHIFT x2', x + w, y - 2);

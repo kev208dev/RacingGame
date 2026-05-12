@@ -50,7 +50,6 @@ export function createCar(carData, startPos) {
     drsAvailable: false,
     drsActive: false,
     drsTimer: 0,
-    drsWindowTimer: 0,
     drsTapTimer: 0,
     drsPower: 0,
     lastWallHit: null,

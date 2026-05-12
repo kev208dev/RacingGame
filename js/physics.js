@@ -1,8 +1,11 @@
 import { clamp } from '../utils/math.js';
 
-// 1 game-unit / sec  ==  1 km/h on the speedometer.
-const SPEED_FACTOR = 1.0;
-export const KMH_PER_UNIT = 1 / SPEED_FACTOR;
+export const TOP_SPEED_MULT = 2.25;
+export const KMH_PER_UNIT = 1;
+const ACCEL_MULT = 2.35;
+const BRAKE_MULT = 1.9;
+const DRAG_MULT = 1 / (TOP_SPEED_MULT * TOP_SPEED_MULT);
+const DRS_MIN_SPEED = 110;
 
 // Per-gear "top speed" — speed at which RPM hits maxRpm in that gear.
 const GEAR_TOP = [0, 48, 82, 120, 162, 208, 258, 305, 355];
@@ -29,14 +32,14 @@ export function updatePhysics(car, input, dt, track) {
   // ── derived car limits (boost-modulated) ──
   const boostPower = clamp(car.boostPower || 0, 0, 1);
   const drsPower = clamp(car.drsPower || 0, 0, 1);
-  const maxSpeed  = car.maxSpeed * SPEED_FACTOR
+  const maxSpeed  = car.maxSpeed * TOP_SPEED_MULT
     * (1 + ((car.boostSpeedMult || 1.23) - 1) * boostPower)
     * (1 + 0.28 * drsPower);
   const massFactor = Math.pow(1200 / Math.max(650, car.mass || 1200), 0.28);
-  const baseAccel = (40 + car.maxTorque * 0.105) * massFactor
+  const baseAccel = (40 + car.maxTorque * 0.105) * massFactor * ACCEL_MULT
     * (1 + ((car.boostAccelMult || 1.35) - 1) * boostPower)
     * (1 + 0.38 * drsPower);
-  const brakeRate = baseAccel * 1.28 * Math.pow(1250 / Math.max(700, car.mass || 1250), 0.1);
+  const brakeRate = baseAccel * BRAKE_MULT * Math.pow(1250 / Math.max(700, car.mass || 1250), 0.1);
   const reverseTop = maxSpeed * 0.30;
   const turnPower = input.handbrake ? 1.86 : 1.42;
 
@@ -61,7 +64,7 @@ export function updatePhysics(car, input, dt, track) {
   if (input.gearDown) {
     car.transmission = 'manual';
     if (car.gear > 1) {
-      const newTop = GEAR_TOP[car.gear - 1];
+      const newTop = _gearTop(car.gear - 1);
       if ((car.speed / newTop) < 1.05) car.gear -= 1;
     }
   }
@@ -122,7 +125,7 @@ export function updatePhysics(car, input, dt, track) {
   // ── drag + rolling ──
   car.speed = Math.hypot(car.vx, car.vy);
   if (car.speed > 0.05) {
-    const dragDec = car.speed * car.speed * 0.00265 + 1.05;
+    const dragDec = car.speed * car.speed * 0.00265 * DRAG_MULT + 1.05;
     const k       = Math.min((dragDec * dt) / car.speed, 1);
     car.vx -= car.vx * k;
     car.vy -= car.vy * k;
@@ -139,7 +142,7 @@ export function updatePhysics(car, input, dt, track) {
   }
 
   // ── RPM from gear band ──
-  const gearTop  = GEAR_TOP[car.gear];
+  const gearTop  = _gearTop(car.gear);
   const sNorm    = car.speed / gearTop;
   car.rpm = clamp(1000 + sNorm * (car.maxRpm - 1000), 800, car.maxRpm * 1.10);
 
@@ -265,24 +268,18 @@ function _updateBoost(car, input, dt) {
 function _updateDrs(car, input, track, dt) {
   car.superBoostMeter = clamp(car.superBoostMeter ?? 100, 0, 100);
   car.drsTimer = Math.max(0, (car.drsTimer || 0) - dt);
-  car.drsWindowTimer = Math.max(0, (car.drsWindowTimer || 0) - dt);
   car.drsTapTimer = Math.max(0, (car.drsTapTimer || 0) - dt);
 
   const hit = _closestCenterlineSegment(car.x, car.y, track.centerLine || []);
   let available = false;
-  if (hit && car.speed > 55 && !car.drifting && !car.offTrack) {
+  if (hit && car.speed > DRS_MIN_SPEED && !car.drifting && !car.offTrack) {
     const fwdX = Math.cos(car.angle);
     const fwdY = Math.sin(car.angle);
     const headingAlign = Math.abs(fwdX * hit.tx + fwdY * hit.ty);
-    available = hit.straightness > 0.94 && headingAlign > 0.75 && hit.dist < (track.width || 100) * 0.45;
+    available = hit.straightness > 0.965 && headingAlign > 0.82 && hit.dist < (track.width || 100) * 0.40;
   }
 
-  if (available) {
-    car.drsWindowTimer = 0.45;
-  }
-
-  const inDrsWindow = available || car.drsWindowTimer > 0;
-  if (inDrsWindow && input.boostJust && car.superBoostMeter > 8) {
+  if (available && input.boostJust && car.superBoostMeter > 8) {
     if (input.boostDouble || car.drsTapTimer > 0) {
       car.drsTimer = 2.6;
       car.drsTapTimer = 0;
@@ -291,13 +288,13 @@ function _updateDrs(car, input, track, dt) {
     }
   }
 
-  if (!inDrsWindow) {
+  if (!available) {
     car.drsTimer = 0;
     car.drsTapTimer = 0;
     car.superBoostMeter = Math.min(100, car.superBoostMeter + dt * 18);
   }
 
-  let active = inDrsWindow && car.drsTimer > 0 && car.superBoostMeter > 0;
+  let active = available && car.drsTimer > 0 && car.superBoostMeter > 0;
   if (active) {
     car.superBoostMeter = Math.max(0, car.superBoostMeter - 42 * dt);
     if (car.superBoostMeter <= 0) {
@@ -305,10 +302,14 @@ function _updateDrs(car, input, track, dt) {
       active = false;
     }
   }
-  car.drsAvailable = inDrsWindow;
+  car.drsAvailable = available;
   car.drsActive = active;
   const target = active ? 1 : 0;
   car.drsPower = (car.drsPower || 0) + (target - (car.drsPower || 0)) * (1 - Math.exp(-(active ? 5.0 : 5.8) * dt));
+}
+
+function _gearTop(gear) {
+  return (GEAR_TOP[gear] || GEAR_TOP[1]) * TOP_SPEED_MULT;
 }
 
 function _closestCenterlineSegment(x, y, centerLine) {
