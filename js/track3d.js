@@ -20,6 +20,7 @@ function _buildTrackGroup(track) {
   _addTrackRibbon(grp, track);
   _addRoadMarkings(grp, track);
   _addKerbStripes(grp, track);
+  _addWallRideBanks(grp, track);
   _addGuardrails(grp, track);
 
   const sl = track.startLine;
@@ -141,6 +142,82 @@ function _addGuardrails(grp, track) {
     _addGuardrailStrip(grp, rail, stripeMat, 4.75, 5.35);
     _addGuardrailPosts(grp, rail, postMat, 10);
   }
+}
+
+function _addWallRideBanks(grp, track) {
+  const cl = track.centerLine || [];
+  const half = (track.width || 100) / 2;
+  if (cl.length < 8) return;
+
+  const mats = [
+    new THREE.MeshLambertMaterial({ color: 0x22d3ee, side: THREE.DoubleSide }),
+    new THREE.MeshLambertMaterial({ color: 0xfacc15, side: THREE.DoubleSide }),
+  ];
+  const sideMat = new THREE.MeshLambertMaterial({ color: 0x111827, side: THREE.DoubleSide });
+  const stride = 2;
+
+  for (let i = 0; i < cl.length; i += stride) {
+    const turn = _localTurnMax(cl, i, 4);
+    if (turn < 0.105) continue;
+
+    const [x1, y1] = cl[i];
+    const [x2, y2] = cl[(i + stride) % cl.length];
+    const { len } = _segBasis(x1, y1, x2, y2);
+    if (len < 8) continue;
+
+    for (const side of [-1, 1]) {
+      const mat = mats[(Math.floor(i / stride) + (side > 0 ? 0 : 1)) % mats.length];
+      _addWallRideBankSegment(grp, cl, i, stride, side, half, turn, mat, sideMat);
+    }
+  }
+}
+
+function _addWallRideBankSegment(grp, cl, i, stride, side, half, turn, mat, sideMat) {
+  const [x1, y1] = cl[i];
+  const [x2, y2] = cl[(i + stride) % cl.length];
+  const { px, py } = _segBasis(x1, y1, x2, y2);
+  const innerOff = half + 3.5;
+  const outerOff = half + 21.0;
+  const innerY = 0.32;
+  const outerY = 2.65 + Math.min(1.15, turn * 2.0);
+  const baseY = 0.08;
+
+  const p = (x, y, off, h) => [x + px * off * side, h, -(y + py * off * side)];
+  const verts = [
+    ...p(x1, y1, innerOff, innerY),
+    ...p(x2, y2, innerOff, innerY),
+    ...p(x2, y2, outerOff, outerY),
+    ...p(x1, y1, outerOff, outerY),
+    ...p(x1, y1, innerOff, baseY),
+    ...p(x2, y2, innerOff, baseY),
+    ...p(x2, y2, outerOff, baseY),
+    ...p(x1, y1, outerOff, baseY),
+  ];
+  const indices = [
+    0, 1, 2, 0, 2, 3,
+    3, 2, 6, 3, 6, 7,
+    1, 0, 4, 1, 4, 5,
+    0, 3, 7, 0, 7, 4,
+    2, 1, 5, 2, 5, 6,
+  ];
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  const bank = new THREE.Mesh(geo, mat);
+  bank.receiveShadow = true;
+  bank.castShadow = true;
+  bank.frustumCulled = false;
+  grp.add(bank);
+
+  if (Math.floor(i / stride) % 3 !== 0) return;
+  const cap = new THREE.Mesh(geo.clone(), sideMat);
+  cap.scale.y = 0.18;
+  cap.position.y = -0.02;
+  cap.receiveShadow = true;
+  cap.frustumCulled = false;
+  grp.add(cap);
 }
 
 function _offsetLine(cl, side, off) {

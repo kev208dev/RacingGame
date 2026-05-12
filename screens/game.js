@@ -576,6 +576,8 @@ function _resetCar() {
   car.drsTimer = 0;
   car.drsTapTimer = 0;
   car.drsPower = 0;
+  car.wallRiding = false;
+  car.wallRideSide = 0;
   car.lastWallHit = null;
   if (skidBuf) skidBuf.reset();
   // Re-create timing so the new lap starts cleanly when the line is crossed.

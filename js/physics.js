@@ -6,6 +6,9 @@ const ACCEL_MULT = 1.65;
 const BRAKE_MULT = 1.55;
 const DRAG_MULT = 1 / (TOP_SPEED_MULT * TOP_SPEED_MULT);
 const DRS_MIN_SPEED = 85;
+const WALL_RIDE_TURN_MIN = 0.105;
+const WALL_RIDE_EXTRA = 16;
+const WALL_RIDE_MIN_SPEED = 58;
 
 // Per-gear "top speed" — speed at which RPM hits maxRpm in that gear.
 const GEAR_TOP = [0, 48, 82, 120, 162, 208, 258, 305, 355];
@@ -188,8 +191,13 @@ function _resolveCollision(car, nextX, nextY, track) {
   const halfTrack = (track.width || 100) / 2;
   const guardrailOffset = halfTrack + 18;
   const maxDist = Math.max(18, guardrailOffset - 4);
+  const wallRideLimit = maxDist + WALL_RIDE_EXTRA;
 
   let collided = false;
+  let rideTouch = false;
+  let rideCollisions = 0;
+  let hardCollisions = 0;
+  let rideSide = 0;
   let aggrNx  = 0, aggrNy = 0;
 
   for (let iter = 0; iter < 2; iter++) {
@@ -200,16 +208,28 @@ function _resolveCollision(car, nextX, nextY, track) {
       const cx = fx + lx * ca + lz * sa;
       const cy = fy + lx * sa - lz * ca;
       const hit = _closestCenterlineSegment(cx, cy, track.centerLine || []);
-      if (!hit || hit.dist <= maxDist) continue;
+      if (!hit) continue;
+
+      const rideable = _isWallRideCorner(car, hit, maxDist);
+      if (rideable && hit.dist > maxDist - 2 && hit.dist <= wallRideLimit + 2) {
+        rideTouch = true;
+        rideSide += _wallRideSide(car, hit);
+      }
+
+      const activeLimit = rideable ? wallRideLimit : maxDist;
+      if (hit.dist <= activeLimit) continue;
 
       anyOff = true;
-      const excess = hit.dist - maxDist + 0.8;
+      const softRideHit = rideable && hit.dist <= wallRideLimit + 8;
+      const excess = hit.dist - activeLimit + (softRideHit ? 0.25 : 0.8);
       const nx = hit.dx / (hit.dist || 1);
       const ny = hit.dy / (hit.dist || 1);
       pushX -= nx * excess;
       pushY -= ny * excess;
       aggrNx -= nx;
       aggrNy -= ny;
+      if (softRideHit) rideCollisions++;
+      else hardCollisions++;
       pushCount++;
     }
 
@@ -220,26 +240,30 @@ function _resolveCollision(car, nextX, nextY, track) {
   }
 
   if (collided) {
+    const wallRiding = rideCollisions > 0 && hardCollisions === 0;
     car.x = fx;
     car.y = fy;
-    car.offTrack = true;
+    car.offTrack = !wallRiding;
+    car.wallRiding = wallRiding;
+    car.wallRideSide = Math.sign(rideSide) || car.wallRideSide || 0;
 
-    // reflect the wall-normal component of velocity
+    // Corner wall-ride banks preserve the tangent speed and only bleed the
+    // outward shove, so the player can brush the structure instead of stopping.
     const nl = Math.hypot(aggrNx, aggrNy) || 1;
     const nx = aggrNx / nl;
     const ny = aggrNy / nl;
     if (Number.isFinite(nx) && Number.isFinite(ny)) {
       const vn = car.vx * nx + car.vy * ny;
       if (vn < 0) {
-        car.vx -= vn * nx * 1.12;
-        car.vy -= vn * ny * 1.12;
+        const normalBleed = wallRiding ? 0.72 : 1.12;
+        car.vx -= vn * nx * normalBleed;
+        car.vy -= vn * ny * normalBleed;
       }
     }
-    // friction along the wall slide
-    car.vx *= 0.70;
-    car.vy *= 0.70;
+    car.vx *= wallRiding ? 0.93 : 0.70;
+    car.vy *= wallRiding ? 0.93 : 0.70;
 
-    car.lastWallHit = {
+    car.lastWallHit = wallRiding ? null : {
       x: fx, y: fy, nx, ny,
       impactSpeed: car.speed,
       totalSpeed: car.speed,
@@ -247,6 +271,8 @@ function _resolveCollision(car, nextX, nextY, track) {
     };
   } else {
     car.offTrack = false;
+    car.wallRiding = rideTouch;
+    if (rideTouch) car.wallRideSide = Math.sign(rideSide) || car.wallRideSide || 0;
     car.x = fx;
     car.y = fy;
   }
@@ -321,6 +347,7 @@ function _gearTop(gear) {
 function _closestCenterlineSegment(x, y, centerLine) {
   let best = null;
   let bestD2 = Infinity;
+  let bestIndex = 0;
   for (let i = 0; i < centerLine.length; i++) {
     const [x1, y1] = centerLine[i];
     const [x2, y2] = centerLine[(i + 1) % centerLine.length];
@@ -340,8 +367,53 @@ function _closestCenterlineSegment(x, y, centerLine) {
       const vy = next[1] - prev[1];
       const vl = Math.hypot(vx, vy) || 1;
       const straightness = Math.abs((ex / len) * (vx / vl) + (ey / len) * (vy / vl));
-      best = { px, py, dx: ddx, dy: ddy, dist: Math.sqrt(d2), tx: ex / len, ty: ey / len, straightness };
+      best = {
+        px, py, dx: ddx, dy: ddy,
+        dist: Math.sqrt(d2),
+        tx: ex / len, ty: ey / len,
+        straightness,
+      };
+      bestIndex = i;
     }
   }
+  if (best) best.localTurn = _localTurnMax(centerLine, bestIndex, 4);
   return best;
+}
+
+function _isWallRideCorner(car, hit, maxDist) {
+  if (!hit || hit.localTurn < WALL_RIDE_TURN_MIN || hit.dist < maxDist - 5) return false;
+  const speed = Math.hypot(car.vx || 0, car.vy || 0);
+  if (speed < WALL_RIDE_MIN_SPEED) return false;
+  const tangentAlign = Math.abs(((car.vx || 0) * hit.tx + (car.vy || 0) * hit.ty) / speed);
+  return tangentAlign > 0.42;
+}
+
+function _wallRideSide(car, hit) {
+  const sideX = -Math.sin(car.angle || 0);
+  const sideY = Math.cos(car.angle || 0);
+  return Math.sign((hit.dx || 0) * sideX + (hit.dy || 0) * sideY) || 0;
+}
+
+function _turnAmount(points, i) {
+  const N = points.length;
+  if (N < 4) return 0;
+  const [px, py] = points[(i - 1 + N) % N];
+  const [cx, cy] = points[i];
+  const [nx, ny] = points[(i + 1) % N];
+  const ax = cx - px;
+  const ay = cy - py;
+  const bx = nx - cx;
+  const by = ny - cy;
+  const al = Math.hypot(ax, ay) || 1;
+  const bl = Math.hypot(bx, by) || 1;
+  const dot = Math.max(-1, Math.min(1, (ax * bx + ay * by) / (al * bl)));
+  return Math.acos(dot);
+}
+
+function _localTurnMax(points, i, radius) {
+  let maxTurn = 0;
+  for (let off = -radius; off <= radius; off++) {
+    maxTurn = Math.max(maxTurn, _turnAmount(points, (i + off + points.length) % points.length));
+  }
+  return maxTurn;
 }

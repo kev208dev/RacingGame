@@ -54,6 +54,8 @@ export function createCar(carData, startPos) {
     drsTimer: 0,
     drsTapTimer: 0,
     drsPower: 0,
+    wallRiding: false,
+    wallRideSide: 0,
     lastWallHit: null,
     _acc: 0, _shiftTimer: 0,
     _prevFwdSpeed: 0,
@@ -96,7 +98,8 @@ export function createCar3D(carData = {}) {
 // ── per-frame mesh sync ──────────────────────────────────────
 export function updateCar3D(mesh3d, car, input, track = null) {
   // 2D y → 3D -z mapping
-  const surfaceY = _trackSurfaceHeight(track, car.x, car.y);
+  const wallRideLift = car.wallRiding ? Math.min(2.2, 0.35 + (car.speed || 0) * 0.006) : 0;
+  const surfaceY = _trackSurfaceHeight(track, car.x, car.y) + wallRideLift;
   car.roadHeight = surfaceY;
   mesh3d.position.set(car.x, surfaceY, -car.y);
   mesh3d.rotation.y = car.angle;
@@ -173,7 +176,8 @@ export function updateCar3D(mesh3d, car, input, track = null) {
     mesh3d.body.position.y = avgY - baseRef - driftDrop;
     const targetPitch = (rAvg - fAvg) * 0.02 + throttle * 0.018 - brake * 0.048;
     const driftLean = car.drifting ? -Math.sign(car.sideSpeed || car.steerAngle || 1) * 0.045 : 0;
-    const targetRoll = (rAvg2 - lAvg) * 0.02 - car.steerAngle * speed * 0.00062 + driftLean;
+    const wallRideLean = car.wallRiding ? -(car.wallRideSide || Math.sign(car.sideSpeed || 1)) * 0.075 : 0;
+    const targetRoll = (rAvg2 - lAvg) * 0.02 - car.steerAngle * speed * 0.00062 + driftLean + wallRideLean;
     mesh3d.body.rotation.z += (targetPitch - mesh3d.body.rotation.z) * 0.20;
     mesh3d.body.rotation.x += (targetRoll - mesh3d.body.rotation.x) * 0.20;
   }
