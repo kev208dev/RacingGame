@@ -9,6 +9,8 @@ const DRS_MIN_SPEED = 85;
 const WALL_RIDE_TURN_MIN = 0.105;
 const WALL_RIDE_EXTRA = 16;
 const WALL_RIDE_MIN_SPEED = 58;
+const STRAIGHT_DRIFT_STEER_MAX = 0.24;
+const STRAIGHT_DRIFT_SLIP_MAX = 0.16;
 
 // Per-gear "top speed" — speed at which RPM hits maxRpm in that gear.
 const GEAR_TOP = [0, 48, 82, 120, 162, 208, 258, 305, 355];
@@ -128,6 +130,7 @@ export function updatePhysics(car, input, dt, track) {
     car.vy = fy * fSpeed + sy * sNew;
   }
   car.sideSpeed = sSpeed;
+  _applyStraightDriftBrake(car, input, dt, sSpeed);
   car.drifting  = (input.handbrake && Math.abs(sSpeed) > 2.5 && car.speed > 16);
   if (car.drifting) {
     const driftIntensity = clamp(Math.abs(sSpeed) / 45, 0.25, 1.15);
@@ -303,6 +306,22 @@ function _applyDriftImpulse(car, input, dt) {
       car.driftImpulse -= step;
     }
   }
+}
+
+function _applyStraightDriftBrake(car, input, dt, sideSpeed) {
+  if (!input.handbrake || input.handbrakeDouble || car.speed < 8) return;
+
+  const steerAmount = Math.abs(input.steer || 0);
+  const slipRatio = Math.abs(sideSpeed || 0) / Math.max(1, car.speed || 1);
+  const noTurn = 1 - clamp(steerAmount / STRAIGHT_DRIFT_STEER_MAX, 0, 1);
+  const noSlide = 1 - clamp(slipRatio / STRAIGHT_DRIFT_SLIP_MAX, 0, 1);
+  const penalty = noTurn * noSlide;
+  if (penalty <= 0.001) return;
+
+  const decel = (72 + car.speed * 0.34) * penalty * dt;
+  const k = Math.min(decel / Math.max(1, car.speed), 0.24);
+  car.vx -= car.vx * k;
+  car.vy -= car.vy * k;
 }
 
 function _updateBoost(car, input, dt) {
