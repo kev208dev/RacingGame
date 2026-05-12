@@ -47,19 +47,19 @@ export function updatePhysics(car, input, dt, track) {
   const reverseTop = maxSpeed * 0.30;
   const driftActive = car.drifting === true;
   const turnPower = input.handbrake
-    ? (driftActive ? 6.40 : 4.40)
-    : (input.brake > 0 ? 2.45 : 2.15);
+    ? (driftActive ? 6.80 : 4.80)
+    : (input.brake > 0 ? 3.40 : 3.00);
 
   car.gear = clamp(car.gear || 1, 1, 8);
   const accelRate = baseAccel * GEAR_ACCEL[car.gear];
 
   // ── steering ── (negate so D = right turn)
   const speedRatio  = clamp(car.speed / maxSpeed, 0, 1);
-  const baseWheel   = 0.82 - speedRatio * 0.22;
+  const baseWheel   = 1.05 - speedRatio * 0.18;
   const handbrakeBonus = input.handbrake ? 0.45 : 0;
   const maxWheel    = baseWheel + handbrakeBonus;
   const targetWheel = -input.steer * maxWheel;
-  car.steerAngle += (targetWheel - car.steerAngle) * Math.min(dt * 7.6, 1);
+  car.steerAngle += (targetWheel - car.steerAngle) * Math.min(dt * 8.4, 1);
 
   const fwdX     = Math.cos(car.angle);
   const fwdY     = Math.sin(car.angle);
@@ -111,7 +111,7 @@ export function updatePhysics(car, input, dt, track) {
     // all the way around to ~180°.
     const dirSign = input.handbrake ? 1 : (fwdSpeed >= 0 ? 1 : -1);
     const speedFloor = input.handbrake ? 0.42 : 0;
-    const turnGain = (0.46 + Math.max(speedFloor, speedRatio) * 0.58) * turnPower;
+    const turnGain = (0.62 + Math.max(speedFloor, speedRatio) * 0.62) * turnPower;
     car.angle += car.steerAngle * turnGain * dirSign * dt;
   }
 
@@ -124,7 +124,7 @@ export function updatePhysics(car, input, dt, track) {
     const fSpeed = car.vx * fx + car.vy * fy;
     sSpeed = car.vx * sx + car.vy * sy;
     // Looser grip while handbraking → bigger drift.
-    const decay  = input.handbrake ? 0.02 : (4.4 + car.grip * 1.25);
+    const decay  = input.handbrake ? 0.02 : (2.6 + car.grip * 0.95);
     const sNew   = sSpeed * Math.exp(-decay * dt);
     car.vx = fx * fSpeed + sx * sNew;
     car.vy = fy * fSpeed + sy * sNew;
