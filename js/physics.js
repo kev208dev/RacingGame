@@ -7,7 +7,7 @@ import { clamp } from '../utils/math.js';
 export const TOP_SPEED_MULT = 2.15;
 export const KMH_PER_UNIT = 1 / TOP_SPEED_MULT;
 const ACCEL_MULT = 2.35;
-const BRAKE_MULT = 2.85;
+const BRAKE_MULT = 4.30;
 const DRAG_MULT = 1 / (TOP_SPEED_MULT * TOP_SPEED_MULT);
 const DRS_MIN_SPEED = 110;
 
@@ -124,7 +124,7 @@ export function updatePhysics(car, input, dt, track) {
     const fSpeed = car.vx * fx + car.vy * fy;
     sSpeed = car.vx * sx + car.vy * sy;
     // Looser grip while handbraking → bigger drift.
-    const decay  = input.handbrake ? 0.02 : (2.6 + car.grip * 0.95);
+    const decay  = input.handbrake ? 0.02 : (5.2 + car.grip * 1.55);
     const sNew   = sSpeed * Math.exp(-decay * dt);
     car.vx = fx * fSpeed + sx * sNew;
     car.vy = fy * fSpeed + sy * sNew;
@@ -139,7 +139,7 @@ export function updatePhysics(car, input, dt, track) {
   // ── drag + rolling ──
   car.speed = Math.hypot(car.vx, car.vy);
   if (car.speed > 0.05) {
-    const dragDec = car.speed * car.speed * 0.00265 * DRAG_MULT + 1.05;
+    const dragDec = car.speed * car.speed * 0.00265 * DRAG_MULT + 2.30;
     const k       = Math.min((dragDec * dt) / car.speed, 1);
     car.vx -= car.vx * k;
     car.vy -= car.vy * k;
