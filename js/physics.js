@@ -7,7 +7,7 @@ import { clamp } from '../utils/math.js';
 export const TOP_SPEED_MULT = 2.15;
 export const KMH_PER_UNIT = 1 / TOP_SPEED_MULT;
 const ACCEL_MULT = 2.35;
-const BRAKE_MULT = 1.9;
+const BRAKE_MULT = 2.85;
 const DRAG_MULT = 1 / (TOP_SPEED_MULT * TOP_SPEED_MULT);
 const DRS_MIN_SPEED = 110;
 
@@ -48,7 +48,7 @@ export function updatePhysics(car, input, dt, track) {
   const driftActive = car.drifting === true;
   const turnPower = input.handbrake
     ? (driftActive ? 6.40 : 4.40)
-    : 1.62;
+    : (input.brake > 0 ? 2.45 : 2.15);
 
   car.gear = clamp(car.gear || 1, 1, 8);
   const accelRate = baseAccel * GEAR_ACCEL[car.gear];
