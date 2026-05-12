@@ -1,13 +1,13 @@
 import * as THREE from 'three';
 import { createCar, createCar3D, updateCar3D } from '../js/car.js';
-import { updatePhysics, KMH_PER_UNIT, TOP_SPEED_MULT }  from '../js/physics.js';
+import { updatePhysics, KMH_PER_UNIT }  from '../js/physics.js';
 import { getTrackGroup }  from '../js/track3d.js';
 import { drawHUD }        from '../js/hud.js';
 import { createTiming, updateTiming } from '../js/timing.js';
 import { getInput }       from '../utils/input.js';
 import { startEngine, stopEngine, updateEngineSound, resumeContext, playLapDing, playWallThud } from '../js/audio.js';
 import { formatTime } from '../utils/math.js';
-import { saveBestLap, addLapHistory, getBestSectors, saveBestSectors, getBestGhost, saveBestGhost } from '../utils/storage.js';
+import { getBestLap, saveBestLap, addLapHistory, getBestSectors, saveBestSectors, getBestGhost, saveBestGhost } from '../utils/storage.js';
 import {
   createSmokePool, spawnSmoke, updateSmoke,
   createSkidBuffer,
@@ -170,7 +170,7 @@ export function initGame(cd, tr, resultsCb, menuCb) {
   speedLines = makeSpeedLines(60);
 
   // ── timing ──
-  timing = createTiming(getBestSectors(track.id));
+  timing = createTiming(getBestSectors(track.id), getBestLap(carData.id, track.id));
 
   window.addEventListener('resize', _onResize);
 
@@ -304,7 +304,7 @@ export function updateGame(dt, now) {
 
   // ── FOV pump (visual speed sensation) ──
   const kmh = car.speed * KMH_PER_UNIT;
-  updateFovPump(camera3d, kmh, car.maxSpeed * TOP_SPEED_MULT, !!car.boosting || !!car.drsActive, dt);
+  updateFovPump(camera3d, kmh, car.maxSpeed, !!car.boosting || !!car.drsActive, dt);
 
   // ── render ──
   renderer.render(scene, camera3d);
@@ -580,7 +580,7 @@ function _resetCar() {
   car.lastWallHit = null;
   if (skidBuf) skidBuf.reset();
   // Re-create timing so the new lap starts cleanly when the line is crossed.
-  timing = createTiming(getBestSectors(track.id));
+  timing = createTiming(getBestSectors(track.id), getBestLap(carData.id, track.id));
   lapPath = [];
   startCountdown = 3.2;
   startReadyAt = performance.now() + 3200;

@@ -1,7 +1,11 @@
 import { clamp } from '../utils/math.js';
 
-export const TOP_SPEED_MULT = 2.02;
-export const KMH_PER_UNIT = 1;
+// `car.maxSpeed` in cars.js is the spec'd top speed in km/h (e.g. 292 for
+// Apex GT3). Internally we run physics at TOP_SPEED_MULT × that value to
+// keep the world feeling fast, then convert the displayed speed back via
+// KMH_PER_UNIT so the speedometer shows the spec number at the cap.
+export const TOP_SPEED_MULT = 2.15;
+export const KMH_PER_UNIT = 1 / TOP_SPEED_MULT;
 const ACCEL_MULT = 2.35;
 const BRAKE_MULT = 1.9;
 const DRAG_MULT = 1 / (TOP_SPEED_MULT * TOP_SPEED_MULT);
@@ -43,7 +47,7 @@ export function updatePhysics(car, input, dt, track) {
   const reverseTop = maxSpeed * 0.30;
   const driftActive = car.drifting === true;
   const turnPower = input.handbrake
-    ? (driftActive ? 4.20 : 3.40)
+    ? (driftActive ? 5.50 : 4.10)
     : 1.62;
 
   car.gear = clamp(car.gear || 1, 1, 8);
@@ -52,10 +56,10 @@ export function updatePhysics(car, input, dt, track) {
   // ── steering ── (negate so D = right turn)
   const speedRatio  = clamp(car.speed / maxSpeed, 0, 1);
   const baseWheel   = 0.82 - speedRatio * 0.22;
-  const handbrakeBonus = input.handbrake ? 0.30 : 0;
+  const handbrakeBonus = input.handbrake ? 0.45 : 0;
   const maxWheel    = baseWheel + handbrakeBonus;
   const targetWheel = -input.steer * maxWheel;
-  car.steerAngle += (targetWheel - car.steerAngle) * Math.min(dt * 6.8, 1);
+  car.steerAngle += (targetWheel - car.steerAngle) * Math.min(dt * 7.6, 1);
 
   const fwdX     = Math.cos(car.angle);
   const fwdY     = Math.sin(car.angle);
@@ -115,7 +119,7 @@ export function updatePhysics(car, input, dt, track) {
     const fSpeed = car.vx * fx + car.vy * fy;
     sSpeed = car.vx * sx + car.vy * sy;
     // Looser grip while handbraking → bigger drift.
-    const decay  = input.handbrake ? 0.05 : (4.4 + car.grip * 1.25);
+    const decay  = input.handbrake ? 0.02 : (4.4 + car.grip * 1.25);
     const sNew   = sSpeed * Math.exp(-decay * dt);
     car.vx = fx * fSpeed + sx * sNew;
     car.vy = fy * fSpeed + sy * sNew;
