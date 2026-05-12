@@ -47,7 +47,7 @@ export function updatePhysics(car, input, dt, track) {
   const reverseTop = maxSpeed * 0.30;
   const driftActive = car.drifting === true;
   const turnPower = input.handbrake
-    ? (driftActive ? 6.80 : 4.80)
+    ? (driftActive ? 9.20 : 6.20)
     : (input.brake > 0 ? 3.40 : 3.00);
 
   car.gear = clamp(car.gear || 1, 1, 8);
@@ -110,7 +110,7 @@ export function updatePhysics(car, input, dt, track) {
     // crosses the velocity vector — that's what lets a hard drift swing
     // all the way around to ~180°.
     const dirSign = input.handbrake ? 1 : (fwdSpeed >= 0 ? 1 : -1);
-    const speedFloor = input.handbrake ? 0.42 : 0;
+    const speedFloor = input.handbrake ? 0.85 : 0;
     const turnGain = (0.62 + Math.max(speedFloor, speedRatio) * 0.62) * turnPower;
     car.angle += car.steerAngle * turnGain * dirSign * dt;
   }
@@ -130,7 +130,7 @@ export function updatePhysics(car, input, dt, track) {
     car.vy = fy * fSpeed + sy * sNew;
   }
   car.sideSpeed = sSpeed;
-  car.drifting  = (input.handbrake && Math.abs(sSpeed) > 1.6 && car.speed > 9);
+  car.drifting  = (input.handbrake && car.speed > 3 && (Math.abs(sSpeed) > 0.6 || car.speed > 9));
   if (car.drifting) {
     const driftIntensity = clamp(Math.abs(sSpeed) / 45, 0.25, 1.15);
     car.boostMeter = Math.min(100, (car.boostMeter || 0) + dt * (car.boostChargeRate || 14) * 0.48 * driftIntensity);
