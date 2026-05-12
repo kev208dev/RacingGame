@@ -34,11 +34,8 @@
         <button id="btn-profile-close" class="btn-icon" aria-label="닫기">×</button>
       </div>
       <div id="profile-auth-box" class="profile-auth-box">
-        <input id="auth-email" type="email" placeholder="이메일 로그인" autocomplete="email" />
-        <button class="btn-secondary btn-small" id="btn-auth-google">Google 로그인</button>
-        <button class="btn-secondary btn-small" id="btn-auth-login">로그인 링크 받기</button>
-        <button class="btn-secondary btn-small hidden" id="btn-auth-logout">로그아웃</button>
-        <span id="auth-status">로그인하면 코인과 차량을 저장합니다.</span>
+        <button class="btn-secondary btn-small" id="btn-auth-logout">로그아웃</button>
+        <span id="auth-status">로그인 정보로 코인과 차량을 저장합니다.</span>
       </div>
       <label class="profile-field">
         <span>닉네임</span>
@@ -58,7 +55,34 @@
   </div>
 
   <!-- UI screens -->
-  <div id="screen-carselect" class="screen active">
+  <div id="screen-auth" class="screen active">
+    <div class="auth-card">
+      <h1 class="auth-title">RACING SANDBOX</h1>
+      <p class="auth-subtitle" id="auth-mode-subtitle">아이디와 비밀번호로 로그인</p>
+      <form id="auth-form" class="auth-form" autocomplete="on">
+        <label class="auth-field">
+          <span>아이디</span>
+          <input id="auth-id" type="text" autocomplete="username" maxlength="20" placeholder="3~20자 영문/숫자" required />
+        </label>
+        <label class="auth-field">
+          <span>비밀번호</span>
+          <input id="auth-password" type="password" autocomplete="current-password" minlength="4" placeholder="4자 이상" required />
+        </label>
+        <label class="auth-field auth-field-confirm hidden">
+          <span>비밀번호 확인</span>
+          <input id="auth-password-confirm" type="password" autocomplete="new-password" minlength="4" placeholder="동일하게 입력" />
+        </label>
+        <div class="auth-error" id="auth-error"></div>
+        <button class="btn-primary auth-submit" id="btn-auth-submit" type="submit">로그인</button>
+      </form>
+      <div class="auth-switch">
+        <span id="auth-switch-label">계정이 없으신가요?</span>
+        <button class="btn-link" id="btn-auth-toggle" type="button">회원가입</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="screen-carselect" class="screen">
     <div class="screen-header">
       <h1>RACING SANDBOX</h1>
       <p class="subtitle">차량을 선택하세요</p>

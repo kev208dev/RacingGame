@@ -1,17 +1,13 @@
 import { CAR_DATA } from '../data/cars.js';
 import { MISSIONS } from '../data/missions.js';
 import { getCurrentUser, onAuthChange } from './auth.js';
-import { getSupabase } from './supabaseClient.js';
 import { getPlayerProfile, setLeaderboardIdentity, setPlayerName } from './leaderboard.js';
 import { safeNickname, validateNickname } from './nicknameFilter.js';
 
-const TABLE = 'player_profiles';
+const PROFILES_KEY = 'racing_local_profiles';
 const DEFAULT_OWNED = ['apex_gt3', 'feather_sprint'];
 const DEFAULT_THEME = '#2ec4b6';
-const SUPER_ACCOUNT_EMAILS = new Set([
-  'kev208dev@gmail.com',
-  'kev208ev@gmail.com',
-]);
+const SUPER_ACCOUNT_IDS = new Set(['admin', 'kev208']);
 const ALL_CAR_IDS = CAR_DATA.map(car => car.id);
 
 let profile = null;
@@ -31,7 +27,7 @@ export function initProfile() {
     loading = true;
     notify();
     try {
-      profile = await ensureProfile(user);
+      profile = ensureProfile(user);
       setPlayerName(profile.nickname);
       setLeaderboardIdentity({ id: profile.user_id, name: profile.nickname, themeColor: profile.theme_color });
     } catch (error) {
@@ -81,15 +77,7 @@ export async function updateProfileSettings({ nickname, themeColor }) {
   if (!profile) throw new Error('login-required');
   const cleanName = validateNickname(nickname, profile.nickname);
   const cleanColor = normalizeColor(themeColor) || profile.theme_color || DEFAULT_THEME;
-  const next = { nickname: cleanName, theme_color: cleanColor };
-  const { data, error } = await getSupabase()
-    .from(TABLE)
-    .update(next)
-    .eq('user_id', profile.user_id)
-    .select('*')
-    .single();
-  if (error) throw error;
-  profile = normalizeProfile(data);
+  profile = saveProfile({ ...profile, nickname: cleanName, theme_color: cleanColor });
   setPlayerName(profile.nickname);
   setLeaderboardIdentity({ id: profile.user_id, name: profile.nickname, themeColor: profile.theme_color });
   notify();
@@ -104,14 +92,7 @@ export async function purchaseCar(car) {
   if ((profile.coins || 0) < price) throw new Error('not-enough-coins');
   const nextOwned = unique([...(profile.owned_car_ids || []), car.id]);
   const nextCoins = Math.max(0, (profile.coins || 0) - price);
-  const { data, error } = await getSupabase()
-    .from(TABLE)
-    .update({ coins: nextCoins, owned_car_ids: nextOwned })
-    .eq('user_id', profile.user_id)
-    .select('*')
-    .single();
-  if (error) throw error;
-  profile = normalizeProfile(data);
+  profile = saveProfile({ ...profile, coins: nextCoins, owned_car_ids: nextOwned });
   notify();
   return profile;
 }
@@ -122,14 +103,7 @@ export async function claimStarterCar(carId) {
   const car = CAR_DATA.find(item => item.id === carId);
   if (!car) throw new Error('unknown-car');
   const nextOwned = unique([...(profile.owned_car_ids || []), car.id]);
-  const { data, error } = await getSupabase()
-    .from(TABLE)
-    .update({ owned_car_ids: nextOwned, starter_claimed: true })
-    .eq('user_id', profile.user_id)
-    .select('*')
-    .single();
-  if (error) throw error;
-  profile = normalizeProfile(data);
+  profile = saveProfile({ ...profile, owned_car_ids: nextOwned, starter_claimed: true });
   notify();
   return profile;
 }
@@ -145,17 +119,11 @@ export async function awardMissions(trackId, lapMs) {
   if (!rewards.length) return [];
   const rewardCoins = rewards.reduce((sum, mission) => sum + mission.reward, 0);
   const nextCompleted = unique([...(profile.completed_missions || []), ...rewards.map(m => m.id)]);
-  const { data, error } = await getSupabase()
-    .from(TABLE)
-    .update({
-      coins: (profile.coins || 0) + rewardCoins,
-      completed_missions: nextCompleted,
-    })
-    .eq('user_id', profile.user_id)
-    .select('*')
-    .single();
-  if (error) throw error;
-  profile = normalizeProfile(data);
+  profile = saveProfile({
+    ...profile,
+    coins: (profile.coins || 0) + rewardCoins,
+    completed_missions: nextCompleted,
+  });
   notify();
   return rewards;
 }
@@ -173,77 +141,76 @@ export function rollStarterCar() {
   return pool[pool.length - 1];
 }
 
-async function addOwnedCar(carId) {
+function addOwnedCar(carId) {
   const nextOwned = unique([...(profile.owned_car_ids || []), carId]);
-  const { data, error } = await getSupabase()
-    .from(TABLE)
-    .update({ owned_car_ids: nextOwned })
-    .eq('user_id', profile.user_id)
-    .select('*')
-    .single();
-  if (error) throw error;
-  profile = normalizeProfile(data);
+  profile = saveProfile({ ...profile, owned_car_ids: nextOwned });
   notify();
   return profile;
 }
 
-async function ensureProfile(user) {
-  const { data, error } = await getSupabase()
-    .from(TABLE)
-    .select('*')
-    .eq('user_id', user.id)
-    .maybeSingle();
-  if (error) throw error;
-  if (data) {
-    const normalized = normalizeProfile(data);
+function readStore() {
+  try {
+    const raw = localStorage.getItem(PROFILES_KEY);
+    const data = raw ? JSON.parse(raw) : {};
+    return data && typeof data === 'object' ? data : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeStore(store) {
+  localStorage.setItem(PROFILES_KEY, JSON.stringify(store));
+}
+
+function ensureProfile(user) {
+  const store = readStore();
+  const existing = store[user.id];
+  if (existing) {
+    let normalized = normalizeProfile(existing, user);
     if (isSuperAccount(user) && !ALL_CAR_IDS.every(id => normalized.owned_car_ids.includes(id))) {
-      await getSupabase()
-        .from(TABLE)
-        .update({ owned_car_ids: ALL_CAR_IDS, starter_claimed: true })
-        .eq('user_id', user.id);
-      return { ...normalized, owned_car_ids: ALL_CAR_IDS, starter_claimed: true };
+      normalized = saveProfile({ ...normalized, owned_car_ids: ALL_CAR_IDS, starter_claimed: true });
     }
     return normalized;
   }
-
   const local = getPlayerProfile();
-  const nickname = safeNickname(
-    user.user_metadata?.name || local.name,
-    `Driver-${Math.floor(1000 + Math.random() * 9000)}`
-  );
-  const { data: created, error: createError } = await getSupabase()
-    .from(TABLE)
-    .insert({
-      user_id: user.id,
-      nickname,
-      theme_color: DEFAULT_THEME,
-      coins: 0,
-      owned_car_ids: isSuperAccount(user) ? ALL_CAR_IDS : DEFAULT_OWNED,
-      completed_missions: [],
-      starter_claimed: isSuperAccount(user),
-    })
-    .select('*')
-    .single();
-  if (createError) throw createError;
-  return normalizeProfile(created);
+  const nickname = safeNickname(local.name || user.id, user.id);
+  const fresh = {
+    user_id: user.id,
+    nickname,
+    theme_color: DEFAULT_THEME,
+    coins: 0,
+    owned_car_ids: isSuperAccount(user) ? ALL_CAR_IDS : DEFAULT_OWNED,
+    completed_missions: [],
+    starter_claimed: isSuperAccount(user),
+  };
+  return saveProfile(fresh);
 }
 
-function normalizeProfile(row) {
+function saveProfile(next) {
+  const store = readStore();
+  const normalized = normalizeProfile(next);
+  store[normalized.user_id] = normalized;
+  writeStore(store);
+  return normalized;
+}
+
+function normalizeProfile(row, user = getCurrentUser()) {
   const owned = Array.isArray(row.owned_car_ids) ? row.owned_car_ids : DEFAULT_OWNED;
+  const userId = row.user_id || user?.id;
   return {
-    ...row,
+    user_id: userId,
     nickname: safeNickname(row.nickname, 'Driver'),
     theme_color: normalizeColor(row.theme_color) || DEFAULT_THEME,
     coins: Number(row.coins || 0),
-    owned_car_ids: isSuperAccount() ? ALL_CAR_IDS : owned,
+    owned_car_ids: isSuperAccount({ id: userId }) ? ALL_CAR_IDS : owned,
     completed_missions: Array.isArray(row.completed_missions) ? row.completed_missions : [],
-    starter_claimed: isSuperAccount() || !!row.starter_claimed,
+    starter_claimed: isSuperAccount({ id: userId }) || !!row.starter_claimed,
   };
 }
 
 function isSuperAccount(user = getCurrentUser()) {
-  const email = String(user?.email || '').trim().toLowerCase();
-  return SUPER_ACCOUNT_EMAILS.has(email);
+  const id = String(user?.id || '').trim().toLowerCase();
+  return SUPER_ACCOUNT_IDS.has(id);
 }
 
 function normalizeColor(value) {

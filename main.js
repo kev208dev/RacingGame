@@ -4,7 +4,7 @@ import { TRACKS }           from './data/tracks.js';
 import { initGame, updateGame, stopGame } from './screens/game.js';
 import { initResults }      from './screens/results.js';
 import { initAuth }         from './utils/auth.js';
-import { getCurrentUser, onAuthChange, sendMagicLink, signInWithGoogle, signOut } from './utils/auth.js';
+import { getCurrentUser, onAuthChange, signOut, signInLocal, signUpLocal } from './utils/auth.js';
 import { clearFrameKeys }   from './utils/input.js';
 import { formatTime }       from './utils/math.js';
 import { CAR_DATA }         from './data/cars.js';
@@ -24,10 +24,11 @@ import {
 } from './utils/profile.js';
 import { nicknameRejectMessage } from './utils/nicknameFilter.js';
 
-let currentScreen = 'carSelect';
+let currentScreen = 'auth';
 let selectedCar   = null;
 let selectedTrack = null;
 let lastTime      = 0;
+let authMode      = 'login';
 
 // ── screen helpers ──────────────────────────────────────────
 function showScreen(id) {
@@ -40,6 +41,12 @@ function hideScreens() {
 }
 
 // ── transitions ─────────────────────────────────────────────
+function goToAuth() {
+  currentScreen = 'auth';
+  showScreen('screen-auth');
+  _resetAuthForm();
+}
+
 function goToCarSelect() {
   currentScreen = 'carSelect';
   showScreen('screen-carselect');
@@ -250,9 +257,6 @@ function _wireProfilePanel() {
   const openBtn = document.getElementById('btn-profile-open');
   const panel = document.getElementById('profile-panel');
   const closeBtn = document.getElementById('btn-profile-close');
-  const email = document.getElementById('auth-email');
-  const login = document.getElementById('btn-auth-login');
-  const google = document.getElementById('btn-auth-google');
   const logout = document.getElementById('btn-auth-logout');
   const status = document.getElementById('auth-status');
   const nickname = document.getElementById('profile-nickname');
@@ -262,31 +266,10 @@ function _wireProfilePanel() {
 
   openBtn.addEventListener('click', () => panel.classList.toggle('hidden'));
   closeBtn?.addEventListener('click', () => panel.classList.add('hidden'));
-  login && (login.onclick = async () => {
-    if (status) status.textContent = '로그인 메일 보내는 중...';
-    login.disabled = true;
-    try {
-      await sendMagicLink(email?.value || '');
-      if (status) status.textContent = '메일의 로그인 링크를 확인하세요.';
-    } catch (error) {
-      if (status) status.textContent = _authErrorMessage(error);
-    } finally {
-      setTimeout(() => { login.disabled = false; }, 1200);
-    }
-  });
-  google && (google.onclick = async () => {
-    if (status) status.textContent = 'Google 로그인으로 이동 중...';
-    google.disabled = true;
-    try {
-      await signInWithGoogle();
-    } catch (error) {
-      if (status) status.textContent = `Google 로그인 실패: ${error?.message || 'Supabase OAuth 설정을 확인하세요.'}`;
-      google.disabled = false;
-    }
-  });
   logout && (logout.onclick = async () => {
     await signOut();
     panel.classList.add('hidden');
+    goToAuth();
   });
   save && (save.onclick = async () => {
     try {
@@ -322,9 +305,6 @@ function _renderProfilePanel() {
   const theme = document.getElementById('profile-theme');
   const coinsEl = document.getElementById('profile-coins');
   const note = document.getElementById('profile-note');
-  const email = document.getElementById('auth-email');
-  const login = document.getElementById('btn-auth-login');
-  const google = document.getElementById('btn-auth-google');
   const logout = document.getElementById('btn-auth-logout');
   const status = document.getElementById('auth-status');
 
@@ -343,22 +323,97 @@ function _renderProfilePanel() {
   if (note) note.textContent = user
     ? `${ownedCount}/${CAR_DATA.length}대 소유 · 미션 클리어로 코인을 모아 구매하세요.`
     : '게스트는 기본 차량만 사용할 수 있습니다.';
-  if (email) email.classList.toggle('hidden', !!user);
-  if (login) login.classList.toggle('hidden', !!user);
-  if (google) google.classList.toggle('hidden', !!user);
   if (logout) logout.classList.toggle('hidden', !user);
-  if (status) status.textContent = user ? `${user.email} 로그인됨` : '로그인하면 코인과 차량을 저장합니다.';
+  if (status) status.textContent = user ? `${user.id} 로그인됨` : '로그인하면 코인과 차량을 저장합니다.';
 }
 
 function _authErrorMessage(error) {
-  if (error?.code === 'email-cooldown') {
-    return `메일 링크는 잠시 후 다시 보낼 수 있습니다. ${Math.ceil((error.retryAfterMs || 0) / 1000)}초 뒤 재시도하세요.`;
+  switch (error?.code) {
+    case 'invalid-id':
+      return '아이디는 영문/숫자/_/- 3~20자로 입력하세요.';
+    case 'invalid-password':
+      return '비밀번호는 4자 이상이어야 합니다.';
+    case 'id-taken':
+      return '이미 사용 중인 아이디입니다.';
+    case 'no-account':
+      return '존재하지 않는 아이디입니다.';
+    case 'wrong-password':
+      return '비밀번호가 일치하지 않습니다.';
+    case 'password-mismatch':
+      return '비밀번호 확인이 일치하지 않습니다.';
+    default:
+      return `오류: ${error?.message || '알 수 없는 문제가 발생했습니다.'}`;
   }
-  if (error?.code === 'email-rate-limited') {
-    return 'Supabase 메일 한도에 걸렸습니다. Google 로그인을 사용하거나 15분 뒤 메일 링크를 다시 시도하세요.';
-  }
-  if (error?.message === 'email-required') return '이메일을 입력하세요.';
-  return `전송 실패: ${error?.message || 'Supabase 설정을 확인하세요.'}`;
+}
+
+function _resetAuthForm() {
+  const idInput = document.getElementById('auth-id');
+  const pwInput = document.getElementById('auth-password');
+  const pwConfirm = document.getElementById('auth-password-confirm');
+  const errorEl = document.getElementById('auth-error');
+  if (idInput) idInput.value = '';
+  if (pwInput) pwInput.value = '';
+  if (pwConfirm) pwConfirm.value = '';
+  if (errorEl) errorEl.textContent = '';
+  _setAuthMode('login');
+  setTimeout(() => idInput?.focus(), 50);
+}
+
+function _setAuthMode(mode) {
+  authMode = mode;
+  const subtitle = document.getElementById('auth-mode-subtitle');
+  const submit = document.getElementById('btn-auth-submit');
+  const toggle = document.getElementById('btn-auth-toggle');
+  const switchLabel = document.getElementById('auth-switch-label');
+  const confirmField = document.querySelector('.auth-field-confirm');
+  const pwInput = document.getElementById('auth-password');
+  const errorEl = document.getElementById('auth-error');
+  const isSignup = mode === 'signup';
+  if (subtitle) subtitle.textContent = isSignup ? '새 계정을 만들어 주세요' : '아이디와 비밀번호로 로그인';
+  if (submit) submit.textContent = isSignup ? '회원가입 완료' : '로그인';
+  if (toggle) toggle.textContent = isSignup ? '로그인' : '회원가입';
+  if (switchLabel) switchLabel.textContent = isSignup ? '이미 계정이 있으신가요?' : '계정이 없으신가요?';
+  if (confirmField) confirmField.classList.toggle('hidden', !isSignup);
+  if (pwInput) pwInput.setAttribute('autocomplete', isSignup ? 'new-password' : 'current-password');
+  if (errorEl) errorEl.textContent = '';
+}
+
+function _wireAuthScreen() {
+  const form = document.getElementById('auth-form');
+  const toggle = document.getElementById('btn-auth-toggle');
+  const errorEl = document.getElementById('auth-error');
+  const submit = document.getElementById('btn-auth-submit');
+  if (!form) return;
+
+  toggle?.addEventListener('click', () => {
+    _setAuthMode(authMode === 'signup' ? 'login' : 'signup');
+  });
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const id = document.getElementById('auth-id')?.value || '';
+    const pw = document.getElementById('auth-password')?.value || '';
+    const pwConfirm = document.getElementById('auth-password-confirm')?.value || '';
+    if (errorEl) errorEl.textContent = '';
+    if (submit) submit.disabled = true;
+    try {
+      if (authMode === 'signup') {
+        if (pw !== pwConfirm) {
+          const err = new Error('password-mismatch');
+          err.code = 'password-mismatch';
+          throw err;
+        }
+        await signUpLocal(id, pw);
+      } else {
+        await signInLocal(id, pw);
+      }
+      goToCarSelect();
+    } catch (error) {
+      if (errorEl) errorEl.textContent = _authErrorMessage(error);
+    } finally {
+      if (submit) submit.disabled = false;
+    }
+  });
 }
 
 function _wireStarterRoulette() {
@@ -405,6 +460,7 @@ function _closeStarterRoulette() {
   if (overlay) overlay.classList.add('hidden');
 }
 
+_wireAuthScreen();
 _wireProfilePanel();
 _wireStarterRoulette();
 _wireHomeLeaderboard();
@@ -412,6 +468,11 @@ _wireGlobalLeaderboard();
 await initAuth();
 initProfile();
 
+onAuthChange(user => {
+  if (!user && currentScreen !== 'auth') goToAuth();
+});
+
 // ── start ────────────────────────────────────────────────────
-goToCarSelect();
+if (getCurrentUser()) goToCarSelect();
+else goToAuth();
 requestAnimationFrame(gameLoop);
