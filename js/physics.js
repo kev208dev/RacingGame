@@ -282,10 +282,9 @@ function _resolveCollision(car, nextX, nextY, track) {
 }
 
 function _applyDriftImpulse(car, input, dt) {
-  if (input.handbrakeJust && Math.abs(input.steer) > 0.1 && car.speed > 22) {
-    const isDouble = !!input.handbrakeDouble;
-    const magnitude = isDouble ? Math.PI * 0.94 : Math.PI * 0.50;
-    const duration  = isDouble ? 0.45 : 0.28;
+  if (input.handbrakeDouble && Math.abs(input.steer) > 0.1 && car.speed > 22) {
+    const magnitude = Math.PI * 0.50;
+    const duration  = 0.32;
     const fwdX = Math.cos(car.angle);
     const fwdY = Math.sin(car.angle);
     const fwdSpeed = car.vx * fwdX + car.vy * fwdY;
