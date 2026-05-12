@@ -42,7 +42,7 @@ function _addTrackRibbon(grp, track) {
     const [x, y] = cl[i];
     const left = _offsetPoint(cl, i, width / 2, 1);
     const right = _offsetPoint(cl, i, width / 2, -1);
-    const crown = 0.08 + Math.sin(i * 0.17) * 0.015;
+    const crown = 0.08 + Math.sin(i * 0.17) * 0.015 + _trackHeight(track, i, x, y);
 
     verts.push(left.x, crown, -left.y);
     verts.push(right.x, crown, -right.y);
@@ -327,4 +327,22 @@ function _pointSegmentDistance(px, py, x1, y1, x2, y2) {
 
 function _visualStride(points, targetSegments) {
   return Math.max(1, Math.ceil((points?.length || 1) / targetSegments));
+}
+
+function _trackHeight(track, i, x, y) {
+  const profile = track.roadProfile;
+  if (!profile) return 0;
+  const n = Math.max(1, track.centerLine?.length || 1);
+  const p = i / n;
+  if (profile.type === 'climb') {
+    const climb = Math.sin(p * Math.PI) ** 1.25;
+    const loopPulse = Math.sin(p * Math.PI * 4) * 0.12;
+    return (profile.height || 28) * Math.max(0, climb + loopPulse);
+  }
+  if (profile.type === 'rumble') {
+    const amp = profile.roughness || 1;
+    return Math.sin(x * 0.018 + y * 0.011) * amp
+      + Math.sin(x * 0.041 - y * 0.023) * amp * 0.55;
+  }
+  return 0;
 }

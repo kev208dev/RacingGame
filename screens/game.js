@@ -298,7 +298,7 @@ export function updateGame(dt, now) {
   updateSparks(sparkPool, dt);
 
   // ── 3D update ──
-  updateCar3D(carMesh, car, driveInput);
+  updateCar3D(carMesh, car, driveInput, track);
   updateScenery(propsGroup, now);
   _updateCamera(dt);
 
@@ -396,13 +396,14 @@ function _updateCamera(dt) {
 
   const a  = _camAngle;
   const cs = Math.cos(a), sn = Math.sin(a);
+  const roadY = car.roadHeight || 0;
 
   const tx = car.x - cs * DIST;
-  const ty = HEIGHT;
+  const ty = HEIGHT + roadY;
   const tz = -(car.y - sn * DIST);
 
   const lx = car.x + cs * LOOK_AHEAD;
-  const ly = isHigh ? 0 : isHood ? 10.5 : 14;
+  const ly = (isHigh ? 0 : isHood ? 10.5 : 14) + roadY;
   const lz = -(car.y + sn * LOOK_AHEAD);
 
   const posK  = 1 - Math.exp(-12.0 * dt);

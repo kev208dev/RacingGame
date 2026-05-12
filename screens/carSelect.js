@@ -1,5 +1,4 @@
 import { CAR_DATA } from '../data/cars.js';
-import { clearPaintJob, getPaintJob, savePaintJob } from '../utils/storage.js';
 import { isCarUnlocked, unlockProgressText, unlockText } from '../utils/unlocks.js';
 import { getProfile, onProfileChange, purchaseCar } from '../utils/profile.js';
 
@@ -26,7 +25,6 @@ function _filtered() {
 }
 
 function _render() {
-  _wirePaintPanel();
   if (_isLocked(CAR_DATA[selectedIndex])) {
     const firstOpen = CAR_DATA.findIndex(car => !_isLocked(car));
     if (firstOpen >= 0) selectedIndex = firstOpen;
@@ -73,7 +71,6 @@ function _render() {
         <span>${car.driveType}</span>
         <span>${car.power} hp</span>
         <span>${locked ? `${Number(car.price || 0).toLocaleString()} C` : 'OWNED'}</span>
-        ${getPaintJob(car.id) ? '<span>PHOTO PAINT</span>' : ''}
       </div>
       <div class="car-spec">
         ${_statRow('속도', car.maxSpeed / 340)}
@@ -141,69 +138,6 @@ function _isLocked(car) {
   return !car || !isCarUnlocked(car);
 }
 
-function _wirePaintPanel() {
-  const input = document.getElementById('paint-upload');
-  const upload = document.getElementById('btn-paint-upload');
-  const clear = document.getElementById('btn-paint-clear');
-  const status = document.getElementById('paint-status');
-  const car = CAR_DATA[selectedIndex];
-  if (!input || !upload || !clear || !car) return;
-
-  upload.onclick = () => input.click();
-  clear.onclick = () => {
-    clearPaintJob(car.id);
-    if (status) status.textContent = `${car.name} 도색을 지웠습니다.`;
-    _render();
-  };
-  input.onchange = async () => {
-    const file = input.files?.[0];
-    input.value = '';
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      if (status) status.textContent = '이미지 파일만 사용할 수 있습니다.';
-      return;
-    }
-    const dataUrl = await _fileToDataUrl(file);
-    const color = await _averageImageColor(dataUrl);
-    savePaintJob(car.id, dataUrl, color);
-    if (status) status.textContent = `${car.name}에 사진 도색을 적용했습니다.`;
-    _render();
-  };
-}
-
-function _averageImageColor(dataUrl) {
-  return new Promise(resolve => {
-    const img = new Image();
-    img.onload = () => {
-      const cv = document.createElement('canvas');
-      cv.width = 16;
-      cv.height = 16;
-      const ctx = cv.getContext('2d');
-      ctx.drawImage(img, 0, 0, 16, 16);
-      const data = ctx.getImageData(0, 0, 16, 16).data;
-      let r = 0, g = 0, b = 0, n = 0;
-      for (let i = 0; i < data.length; i += 4) {
-        if (data[i + 3] < 20) continue;
-        r += data[i]; g += data[i + 1]; b += data[i + 2]; n++;
-      }
-      if (!n) return resolve('#eeeeee');
-      const hex = v => Math.max(0, Math.min(255, Math.round(v / n))).toString(16).padStart(2, '0');
-      resolve(`#${hex(r)}${hex(g)}${hex(b)}`);
-    };
-    img.onerror = () => resolve('#eeeeee');
-    img.src = dataUrl;
-  });
-}
-
-function _fileToDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ''));
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
 function _statRow(label, value) {
   const pct = Math.max(8, Math.min(100, Math.round(value * 100)));
   return `
@@ -230,7 +164,6 @@ function _drawCarPreview(canvas, car) {
   const ctx = canvas.getContext('2d');
   const w = canvas.width, h = canvas.height;
   const spec = PREVIEW_DESIGNS[car.id] || { kind: 'gt', body: car.color, accent: '#ffd84a', wheel: car.color, length: 114, height: 30 };
-  const paint = car._skipPaint ? null : getPaintJob(car.id);
   ctx.clearRect(0, 0, w, h);
 
   const bg = ctx.createLinearGradient(12, 6, w - 10, h - 8);
@@ -256,21 +189,6 @@ function _drawCarPreview(canvas, car) {
     _drawBuggyPreview(ctx, spec);
   } else {
     _drawClosedWheelPreview(ctx, spec);
-  }
-
-  if (paint) {
-    const img = new Image();
-    img.onload = () => {
-      _drawCarPreview(canvas, { ...car, _skipPaint: true });
-      const ctx2 = canvas.getContext('2d');
-      ctx2.save();
-      ctx2.translate(w / 2, h / 2 + 8);
-      ctx2.rotate(-0.05);
-      ctx2.globalAlpha = 0.78;
-      ctx2.drawImage(img, -spec.length * 0.40, -spec.height * 0.92, spec.length * 0.78, spec.height * 1.55);
-      ctx2.restore();
-    };
-    img.src = paint;
   }
 
   ctx.restore();

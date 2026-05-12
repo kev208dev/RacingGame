@@ -1,11 +1,11 @@
 import { clamp } from '../utils/math.js';
 
-export const TOP_SPEED_MULT = 2.25;
+export const TOP_SPEED_MULT = 1.7;
 export const KMH_PER_UNIT = 1;
-const ACCEL_MULT = 2.35;
-const BRAKE_MULT = 1.9;
+const ACCEL_MULT = 1.65;
+const BRAKE_MULT = 1.55;
 const DRAG_MULT = 1 / (TOP_SPEED_MULT * TOP_SPEED_MULT);
-const DRS_MIN_SPEED = 110;
+const DRS_MIN_SPEED = 85;
 
 // Per-gear "top speed" — speed at which RPM hits maxRpm in that gear.
 const GEAR_TOP = [0, 48, 82, 120, 162, 208, 258, 305, 355];
@@ -41,7 +41,7 @@ export function updatePhysics(car, input, dt, track) {
     * (1 + 0.38 * drsPower);
   const brakeRate = baseAccel * BRAKE_MULT * Math.pow(1250 / Math.max(700, car.mass || 1250), 0.1);
   const reverseTop = maxSpeed * 0.30;
-  const turnPower = input.handbrake ? 1.86 : 1.42;
+  const turnPower = input.handbrake ? 3.25 : 1.64;
 
   car.gear = clamp(car.gear || 1, 1, 8);
   const accelRate = baseAccel * GEAR_ACCEL[car.gear];
@@ -50,7 +50,7 @@ export function updatePhysics(car, input, dt, track) {
   const speedRatio  = clamp(car.speed / maxSpeed, 0, 1);
   const maxWheel    = 0.72 - speedRatio * 0.28;
   const targetWheel = -input.steer * maxWheel;
-  car.steerAngle += (targetWheel - car.steerAngle) * Math.min(dt * 5.4, 1);
+  car.steerAngle += (targetWheel - car.steerAngle) * Math.min(dt * (input.handbrake ? 9.2 : 5.8), 1);
 
   const fwdX     = Math.cos(car.angle);
   const fwdY     = Math.sin(car.angle);
@@ -99,6 +99,9 @@ export function updatePhysics(car, input, dt, track) {
     const dirSign  = fwdSpeed >= 0 ? 1 : -1;
     const turnGain = (0.36 + speedRatio * 0.50) * turnPower;
     car.angle += car.steerAngle * turnGain * dirSign * dt;
+    if (input.handbrake && Math.abs(input.steer) > 0.05) {
+      car.angle += -input.steer * (0.95 + speedRatio * 1.55) * dt * dirSign;
+    }
   }
 
   // ── lateral grip + drift detection ──
@@ -110,7 +113,7 @@ export function updatePhysics(car, input, dt, track) {
     const fSpeed = car.vx * fx + car.vy * fy;
     sSpeed = car.vx * sx + car.vy * sy;
     // Looser grip while handbraking → bigger drift.
-    const decay  = input.handbrake ? 0.12 : (4.4 + car.grip * 1.25);
+    const decay  = input.handbrake ? 0.045 : (4.6 + car.grip * 1.30);
     const sNew   = sSpeed * Math.exp(-decay * dt);
     car.vx = fx * fSpeed + sx * sNew;
     car.vy = fy * fSpeed + sy * sNew;

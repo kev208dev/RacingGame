@@ -92,9 +92,11 @@ export function createCar3D(carData = {}) {
 }
 
 // ── per-frame mesh sync ──────────────────────────────────────
-export function updateCar3D(mesh3d, car, input) {
+export function updateCar3D(mesh3d, car, input, track = null) {
   // 2D y → 3D -z mapping
-  mesh3d.position.set(car.x, 0, -car.y);
+  const surfaceY = _trackSurfaceHeight(track, car.x, car.y);
+  car.roadHeight = surfaceY;
+  mesh3d.position.set(car.x, surfaceY, -car.y);
   mesh3d.rotation.y = car.angle;
 
   const speedSign = Math.sign(car.vx * Math.cos(car.angle) + car.vy * Math.sin(car.angle)) || 1;
@@ -142,8 +144,10 @@ export function updateCar3D(mesh3d, car, input) {
     if (!w) continue;
     const wx = car.x + c.lx * ca + c.lz * sa;
     const wy = car.y + c.lx * sa - c.lz * ca;
-    const roadH = Math.sin(wx * 0.003 + wy * 0.005) * 0.04
-                + Math.sin(wx * 0.009 - wy * 0.007) * 0.02;
+    const profile = track?.roadProfile;
+    const rough = profile?.type === 'rumble' ? 0.20 * (profile.roughness || 1) : 0.04;
+    const roadH = Math.sin(wx * 0.003 + wy * 0.005) * rough
+                + Math.sin(wx * 0.009 - wy * 0.007) * rough * 0.5;
     const brakeDive = brake * (c.lx > 0 ? -0.42 : 0.16);
     const accelSquat = throttle * (c.lx > 0 ? 0.10 : -0.30);
     const turnSide = Math.sign(car.steerAngle || 0);
@@ -207,4 +211,35 @@ export function updateCar3D(mesh3d, car, input) {
       });
     }
   });
+}
+
+function _trackSurfaceHeight(track, x, y) {
+  const profile = track?.roadProfile;
+  const cl = track?.centerLine || [];
+  if (!profile || cl.length < 2) return 0;
+  let best = { d2: Infinity, i: 0 };
+  for (let i = 0; i < cl.length; i++) {
+    const [x1, y1] = cl[i];
+    const [x2, y2] = cl[(i + 1) % cl.length];
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const lenSq = dx * dx + dy * dy || 1;
+    const t = Math.max(0, Math.min(1, ((x - x1) * dx + (y - y1) * dy) / lenSq));
+    const px = x1 + dx * t;
+    const py = y1 + dy * t;
+    const d2 = (x - px) ** 2 + (y - py) ** 2;
+    if (d2 < best.d2) best = { d2, i: i + t };
+  }
+  const p = best.i / cl.length;
+  if (profile.type === 'climb') {
+    const climb = Math.sin(p * Math.PI) ** 1.25;
+    const loopPulse = Math.sin(p * Math.PI * 4) * 0.12;
+    return (profile.height || 28) * Math.max(0, climb + loopPulse);
+  }
+  if (profile.type === 'rumble') {
+    const amp = profile.roughness || 1;
+    return Math.sin(x * 0.018 + y * 0.011) * amp
+      + Math.sin(x * 0.041 - y * 0.023) * amp * 0.55;
+  }
+  return 0;
 }

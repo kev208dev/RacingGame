@@ -73,7 +73,7 @@ async function loadDb() {
     const pool = await getPgPool();
     const result = await pool.query(`
       SELECT player_id, player_name, car_id, car_name, track_id, track_name,
-             lap_ms, sectors, created_at, updated_at
+             player_theme_color, lap_ms, sectors, created_at, updated_at
       FROM leaderboard_records
       ORDER BY lap_ms ASC, created_at ASC
       LIMIT 1000
@@ -83,12 +83,22 @@ async function loadDb() {
 
   if (SUPABASE_URL && SUPABASE_KEY) {
     const supabase = await getSupabaseClient();
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('leaderboard_records')
-      .select('player_id, player_name, car_id, car_name, track_id, track_name, lap_ms, sectors, created_at, updated_at')
+      .select('player_id, player_name, player_theme_color, car_id, car_name, track_id, track_name, lap_ms, sectors, created_at, updated_at')
       .order('lap_ms', { ascending: true })
       .order('created_at', { ascending: true })
       .limit(1000);
+    if (error && String(error.message || '').includes('player_theme_color')) {
+      const legacy = await supabase
+        .from('leaderboard_records')
+        .select('player_id, player_name, car_id, car_name, track_id, track_name, lap_ms, sectors, created_at, updated_at')
+        .order('lap_ms', { ascending: true })
+        .order('created_at', { ascending: true })
+        .limit(1000);
+      data = legacy.data;
+      error = legacy.error;
+    }
     if (error) throw error;
     return { records: (data || []).map(rowToRecord) };
   }
@@ -123,6 +133,7 @@ async function getPgPool() {
         car_id TEXT NOT NULL,
         track_id TEXT NOT NULL,
         player_name TEXT NOT NULL,
+        player_theme_color TEXT NOT NULL DEFAULT '#2ec4b6',
         car_name TEXT NOT NULL,
         track_name TEXT NOT NULL,
         lap_ms INTEGER NOT NULL,
@@ -140,6 +151,10 @@ async function getPgPool() {
       CREATE INDEX IF NOT EXISTS leaderboard_global_lap_idx
       ON leaderboard_records (lap_ms, created_at)
     `);
+    await pgPool.query(`
+      ALTER TABLE leaderboard_records
+      ADD COLUMN IF NOT EXISTS player_theme_color TEXT NOT NULL DEFAULT '#2ec4b6'
+    `);
     await pgPool.query('ALTER TABLE leaderboard_records ENABLE ROW LEVEL SECURITY');
     await pgPool.query('REVOKE ALL ON TABLE leaderboard_records FROM anon, authenticated');
     pgReady = true;
@@ -151,6 +166,7 @@ function rowToRecord(row) {
   return {
     playerId: row.player_id ?? row.playerId,
     playerName: row.player_name ?? row.playerName,
+    playerThemeColor: normalizeColor(row.player_theme_color ?? row.playerThemeColor) || '#2ec4b6',
     carId: row.car_id ?? row.carId,
     carName: row.car_name ?? row.carName,
     trackId: row.track_id ?? row.trackId,
@@ -228,6 +244,7 @@ async function handlePostLeaderboard(req, res) {
   const record = {
     playerId,
     playerName: safeNickname(cleanText(body.playerName, 'Driver'), 'Driver'),
+    playerThemeColor: normalizeColor(body.playerThemeColor) || '#2ec4b6',
     carId,
     carName: cleanText(body.carName, carId),
     trackId,
@@ -259,6 +276,7 @@ async function handlePostLeaderboard(req, res) {
       improved = true;
     } else {
       existing.playerName = record.playerName;
+      existing.playerThemeColor = record.playerThemeColor;
       existing.updatedAt = now;
     }
 
@@ -268,7 +286,7 @@ async function handlePostLeaderboard(req, res) {
     await saveDb(db);
   }
 
-  const nextDb = DATABASE_URL ? await loadDb() : db;
+  const nextDb = (DATABASE_URL || (SUPABASE_URL && SUPABASE_KEY)) ? await loadDb() : db;
   const leaderboard = getLeaderboard(nextDb, carId, trackId, 10);
   const rank = leaderboard.find(r => r.playerId === playerId)?.rank ?? null;
   if (improved) broadcast({ carId, trackId, leaderboard });
@@ -282,15 +300,16 @@ async function upsertPgRecord(record, existing) {
   const shouldReplaceLap = !existing || record.lapMs < existing.lapMs;
   const saved = shouldReplaceLap
     ? record
-    : { ...existing, playerName: record.playerName, updatedAt: record.updatedAt };
+    : { ...existing, playerName: record.playerName, playerThemeColor: record.playerThemeColor, updatedAt: record.updatedAt };
 
   await pool.query(`
     INSERT INTO leaderboard_records (
       player_id, player_name, car_id, car_name, track_id, track_name,
-      lap_ms, sectors, created_at, updated_at
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      player_theme_color, lap_ms, sectors, created_at, updated_at
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
     ON CONFLICT (player_id, car_id, track_id) DO UPDATE SET
       player_name = EXCLUDED.player_name,
+      player_theme_color = EXCLUDED.player_theme_color,
       car_name = CASE
         WHEN EXCLUDED.lap_ms < leaderboard_records.lap_ms THEN EXCLUDED.car_name
         ELSE leaderboard_records.car_name
@@ -312,6 +331,7 @@ async function upsertPgRecord(record, existing) {
     saved.carName,
     saved.trackId,
     saved.trackName,
+    saved.playerThemeColor,
     saved.lapMs,
     JSON.stringify(saved.sectors || []),
     createdAt,
@@ -321,20 +341,29 @@ async function upsertPgRecord(record, existing) {
 
 async function upsertSupabaseRecord(record) {
   const supabase = await getSupabaseClient();
-  const { error } = await supabase
+  const payload = {
+    player_id: record.playerId,
+    player_name: record.playerName,
+    player_theme_color: record.playerThemeColor,
+    car_id: record.carId,
+    car_name: record.carName,
+    track_id: record.trackId,
+    track_name: record.trackName,
+    lap_ms: record.lapMs,
+    sectors: record.sectors || [],
+    created_at: record.createdAt,
+    updated_at: record.updatedAt,
+  };
+  let { error } = await supabase
     .from('leaderboard_records')
-    .upsert({
-      player_id: record.playerId,
-      player_name: record.playerName,
-      car_id: record.carId,
-      car_name: record.carName,
-      track_id: record.trackId,
-      track_name: record.trackName,
-      lap_ms: record.lapMs,
-      sectors: record.sectors || [],
-      created_at: record.createdAt,
-      updated_at: record.updatedAt,
-    }, { onConflict: 'player_id,car_id,track_id' });
+    .upsert(payload, { onConflict: 'player_id,car_id,track_id' });
+  if (error && String(error.message || '').includes('player_theme_color')) {
+    const { player_theme_color, ...legacyPayload } = payload;
+    const legacy = await supabase
+      .from('leaderboard_records')
+      .upsert(legacyPayload, { onConflict: 'player_id,car_id,track_id' });
+    error = legacy.error;
+  }
   if (error) throw error;
 }
 
@@ -380,6 +409,11 @@ function getLanUrls() {
     }
   }
   return urls;
+}
+
+function normalizeColor(value) {
+  const text = String(value || '').trim();
+  return /^#[0-9a-fA-F]{6}$/.test(text) ? text : null;
 }
 
 const server = createServer(async (req, res) => {

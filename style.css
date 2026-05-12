@@ -264,18 +264,6 @@ html, body {
   font-size: 0.82rem;
 }
 .hidden { display: none !important; }
-.paint-bar span {
-  color: #8b949e;
-  font-size: 0.76rem;
-}
-.paint-bar {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  padding: 0 24px 10px;
-}
 .car-card.locked {
   opacity: 0.62;
   filter: saturate(0.55);
@@ -331,12 +319,13 @@ html, body {
   border: 1px solid #222a34;
   border-radius: 8px;
   padding: 0 12px;
+  box-shadow: inset 4px 0 0 var(--player-theme, #2ec4b6), inset 0 0 18px color-mix(in srgb, var(--player-theme, #2ec4b6) 18%, transparent);
 }
 .leaderboard-row.mine {
-  border-color: #2ec4b6;
-  background: #0e2a33;
+  border-color: var(--player-theme, #2ec4b6);
+  background: color-mix(in srgb, var(--player-theme, #2ec4b6) 18%, #0d1117);
 }
-.leaderboard-rank { color: #2ec4b6; font-weight: 900; font-size: 0.9rem; }
+.leaderboard-rank { color: var(--player-theme, #2ec4b6); font-weight: 900; font-size: 0.9rem; }
 .leaderboard-row:first-child .leaderboard-rank,
 .global-leaderboard-row:first-child .leaderboard-rank {
   color: #ffd166;
@@ -548,10 +537,11 @@ html, body {
   border: 1px solid #222a34;
   border-radius: 8px;
   padding: 0 12px;
+  box-shadow: inset 4px 0 0 var(--player-theme, #2ec4b6), inset 0 0 18px color-mix(in srgb, var(--player-theme, #2ec4b6) 16%, transparent);
 }
 .global-leaderboard-row.mine {
-  border-color: #2ec4b6;
-  background: #0e2a33;
+  border-color: var(--player-theme, #2ec4b6);
+  background: color-mix(in srgb, var(--player-theme, #2ec4b6) 18%, #0d1117);
 }
 .global-leaderboard-main,
 .global-leaderboard-meta {

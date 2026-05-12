@@ -88,33 +88,6 @@ export function saveBestGhost(trackId, ghost) {
   save(d);
 }
 
-export function getPaintJob(carId) {
-  const d = load();
-  return d?.paintJobs?.[carId] || null;
-}
-
-export function getPaintColor(carId) {
-  const d = load();
-  return d?.paintColors?.[carId] || '#eeeeee';
-}
-
-export function savePaintJob(carId, dataUrl, color = '#eeeeee') {
-  const d = load();
-  if (!d.paintJobs) d.paintJobs = {};
-  if (!d.paintColors) d.paintColors = {};
-  d.paintJobs[carId] = dataUrl;
-  d.paintColors[carId] = color;
-  save(d);
-}
-
-export function clearPaintJob(carId) {
-  const d = load();
-  if (!d.paintJobs?.[carId]) return;
-  delete d.paintJobs[carId];
-  if (d.paintColors) delete d.paintColors[carId];
-  save(d);
-}
-
 export function getSettings() {
   const d = load();
   return d.settings ?? {};

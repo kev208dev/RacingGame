@@ -4,6 +4,7 @@ import { safeNickname } from './nicknameFilter.js';
 const API_BASE = '';
 const PROFILE_KEY = 'racing_player_profile';
 const TABLE = 'leaderboard_records';
+const DEFAULT_THEME = '#2ec4b6';
 
 let channel = null;
 const listeners = new Set();
@@ -34,9 +35,11 @@ export function getPlayerProfile() {
     profile = {
       id: randomId(),
       name: `Driver-${Math.floor(1000 + Math.random() * 9000)}`,
+      themeColor: DEFAULT_THEME,
     };
     saveProfile(profile);
   }
+  profile.themeColor = normalizeColor(profile.themeColor) || DEFAULT_THEME;
   return profile;
 }
 
@@ -50,7 +53,11 @@ export function setPlayerName(name) {
 
 export function setLeaderboardIdentity(identity) {
   identityOverride = identity?.id && identity?.name
-    ? { id: identity.id, name: safeNickname(identity.name, 'Driver') }
+    ? {
+        id: identity.id,
+        name: safeNickname(identity.name, 'Driver'),
+        themeColor: normalizeColor(identity.themeColor) || DEFAULT_THEME,
+      }
     : null;
 }
 
@@ -81,6 +88,7 @@ export async function submitLeaderboard(car, track, lapData) {
     body: JSON.stringify({
       playerId: profile.id,
       playerName: safeNickname(profile.name, 'Driver'),
+      playerThemeColor: normalizeColor(profile.themeColor) || DEFAULT_THEME,
       carId: car.id,
       carName: car.name,
       trackId: track.id,
@@ -127,20 +135,31 @@ export function subscribeLeaderboard(listener) {
 }
 
 async function fetchSupabaseLeaderboard(carId, trackId, limit = 10) {
+  const { data, error } = await runLeaderboardQuery(carId, trackId, limit, true);
+  if (error && String(error.message || '').includes('player_theme_color')) {
+    const fallback = await runLeaderboardQuery(carId, trackId, limit, false);
+    if (fallback.error) throw fallback.error;
+    return { leaderboard: toLeaderboardRows(fallback.data || []) };
+  }
+  if (error) throw error;
+
+  return { leaderboard: toLeaderboardRows(data || []) };
+}
+
+function runLeaderboardQuery(carId, trackId, limit, includeTheme) {
+  const columns = includeTheme
+    ? 'player_id,player_name,player_theme_color,car_id,car_name,track_id,track_name,lap_ms,sectors,created_at,updated_at'
+    : 'player_id,player_name,car_id,car_name,track_id,track_name,lap_ms,sectors,created_at,updated_at';
   let query = getSupabase()
     .from(TABLE)
-    .select('player_id,player_name,car_id,car_name,track_id,track_name,lap_ms,sectors,created_at,updated_at')
+    .select(columns)
     .order('lap_ms', { ascending: true })
     .order('created_at', { ascending: true })
     .limit(Math.max(1, Math.min(Number(limit) || 10, 50)));
 
   if (carId) query = query.eq('car_id', carId);
   if (trackId) query = query.eq('track_id', trackId);
-
-  const { data, error } = await query;
-  if (error) throw error;
-
-  return { leaderboard: toLeaderboardRows(data || []) };
+  return query;
 }
 
 async function submitSupabaseLeaderboard(profile, car, track, lapData) {
@@ -159,20 +178,30 @@ async function submitSupabaseLeaderboard(profile, car, track, lapData) {
   if (existingError) throw existingError;
 
   const improved = !existing || lapMs < existing.lap_ms;
-  const { error } = await client
+  const payload = {
+    player_id: profile.id,
+    player_name: safeNickname(profile.name, 'Driver'),
+    player_theme_color: normalizeColor(profile.themeColor) || DEFAULT_THEME,
+    car_id: car.id,
+    car_name: car.name,
+    track_id: track.id,
+    track_name: track.name,
+    lap_ms: lapMs,
+    sectors: lapData.sectors || [],
+    created_at: existing?.created_at || now,
+    updated_at: now,
+  };
+  let { error } = await client
     .from(TABLE)
-    .upsert({
-      player_id: profile.id,
-      player_name: safeNickname(profile.name, 'Driver'),
-      car_id: car.id,
-      car_name: car.name,
-      track_id: track.id,
-      track_name: track.name,
-      lap_ms: lapMs,
-      sectors: lapData.sectors || [],
-      created_at: existing?.created_at || now,
-      updated_at: now,
-    }, { onConflict: 'player_id,car_id,track_id' });
+    .upsert(payload, { onConflict: 'player_id,car_id,track_id' });
+
+  if (error && String(error.message || '').includes('player_theme_color')) {
+    const { player_theme_color, ...legacyPayload } = payload;
+    const legacy = await client
+      .from(TABLE)
+      .upsert(legacyPayload, { onConflict: 'player_id,car_id,track_id' });
+    error = legacy.error;
+  }
 
   if (error) throw error;
 
@@ -191,6 +220,7 @@ function toLeaderboardRows(rows) {
     rank: index + 1,
     playerId: row.player_id,
     playerName: row.player_name,
+    playerThemeColor: normalizeColor(row.player_theme_color) || DEFAULT_THEME,
     carId: row.car_id,
     carName: row.car_name,
     trackId: row.track_id,
@@ -200,4 +230,9 @@ function toLeaderboardRows(rows) {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }));
+}
+
+function normalizeColor(value) {
+  const text = String(value || '').trim();
+  return /^#[0-9a-fA-F]{6}$/.test(text) ? text : null;
 }

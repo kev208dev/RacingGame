@@ -218,6 +218,7 @@ function _renderLeaderboardInto(list, rows) {
   for (const row of rows) {
     const li = document.createElement('li');
     li.className = 'global-leaderboard-row' + (row.playerId === me ? ' mine' : '');
+    li.style.setProperty('--player-theme', _themeColor(row.playerThemeColor));
 
     const rank = document.createElement('span');
     rank.className = 'leaderboard-rank';
@@ -238,6 +239,11 @@ function _renderLeaderboardInto(list, rows) {
     li.append(rank, main, meta, time);
     list.appendChild(li);
   }
+}
+
+function _themeColor(value) {
+  const text = String(value || '').trim();
+  return /^#[0-9a-fA-F]{6}$/.test(text) ? text : '#2ec4b6';
 }
 
 function _wireProfilePanel() {

@@ -135,6 +135,7 @@ function _renderLeaderboard(listEl, rows) {
   rows.forEach(row => {
     const li = document.createElement('li');
     li.className = 'leaderboard-row' + (row.playerId === me ? ' mine' : '');
+    li.style.setProperty('--player-theme', _themeColor(row.playerThemeColor));
 
     const rank = document.createElement('span');
     rank.className = 'leaderboard-rank';
@@ -151,6 +152,11 @@ function _renderLeaderboard(listEl, rows) {
     li.append(rank, name, time);
     listEl.appendChild(li);
   });
+}
+
+function _themeColor(value) {
+  const text = String(value || '').trim();
+  return /^#[0-9a-fA-F]{6}$/.test(text) ? text : '#2ec4b6';
 }
 
 function _setStatus(statusEl, text) {
