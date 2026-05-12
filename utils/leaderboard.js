@@ -8,6 +8,7 @@ const DEFAULT_THEME = '#2ec4b6';
 
 let channel = null;
 const listeners = new Set();
+const completionListeners = new Set();
 let identityOverride = null;
 
 function randomId() {
@@ -101,37 +102,71 @@ export async function submitLeaderboard(car, track, lapData) {
   return res.json();
 }
 
+export function subscribeLapCompletion(listener) {
+  completionListeners.add(listener);
+  _ensureRealtimeChannel();
+  return () => {
+    completionListeners.delete(listener);
+    _teardownIfIdle();
+  };
+}
+
 export function subscribeLeaderboard(listener) {
   listeners.add(listener);
-
-  if (!channel) {
-    channel = getSupabase()
-      .channel('public:leaderboard_records')
-      .on('postgres_changes', { event: '*', schema: 'public', table: TABLE }, async payload => {
-        const row = payload.new || payload.old || {};
-        const carId = row.car_id || '';
-        const trackId = row.track_id || '';
-        try {
-          const result = await fetchLeaderboard('', trackId, 20);
-          for (const fn of listeners) {
-            fn({ carId, trackId, leaderboard: result.leaderboard || [] });
-          }
-        } catch {}
-      })
-      .subscribe(status => {
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          console.warn('Supabase realtime leaderboard channel status:', status);
-        }
-      });
-  }
-
+  _ensureRealtimeChannel();
   return () => {
     listeners.delete(listener);
-    if (listeners.size === 0 && channel) {
-      getSupabase().removeChannel(channel);
-      channel = null;
-    }
+    _teardownIfIdle();
   };
+}
+
+function _ensureRealtimeChannel() {
+  if (channel) return;
+  channel = getSupabase()
+    .channel('public:leaderboard_records')
+    .on('postgres_changes', { event: '*', schema: 'public', table: TABLE }, async payload => {
+      const row = payload.new || payload.old || {};
+      const carId = row.car_id || '';
+      const trackId = row.track_id || '';
+      const newLap = Number(payload.new?.lap_ms || 0);
+      const oldLap = Number(payload.old?.lap_ms || Infinity);
+      const isInsert = payload.eventType === 'INSERT';
+      const isImprovement = isInsert || (newLap > 0 && newLap < oldLap);
+      if (isImprovement && payload.new) {
+        for (const fn of completionListeners) {
+          fn({
+            playerId: payload.new.player_id,
+            playerName: payload.new.player_name,
+            playerThemeColor: payload.new.player_theme_color,
+            carId,
+            carName: payload.new.car_name,
+            trackId,
+            trackName: payload.new.track_name,
+            lapMs: newLap,
+            isInsert,
+          });
+        }
+      }
+      if (listeners.size === 0) return;
+      try {
+        const result = await fetchLeaderboard('', trackId, 20);
+        for (const fn of listeners) {
+          fn({ carId, trackId, leaderboard: result.leaderboard || [] });
+        }
+      } catch {}
+    })
+    .subscribe(status => {
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        console.warn('Supabase realtime leaderboard channel status:', status);
+      }
+    });
+}
+
+function _teardownIfIdle() {
+  if (listeners.size === 0 && completionListeners.size === 0 && channel) {
+    getSupabase().removeChannel(channel);
+    channel = null;
+  }
 }
 
 async function fetchSupabaseLeaderboard(carId, trackId, limit = 10) {

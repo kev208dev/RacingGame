@@ -11,6 +11,7 @@ import { CAR_DATA }         from './data/cars.js';
 import {
   fetchLeaderboard,
   getPlayerProfile,
+  subscribeLapCompletion,
   subscribeLeaderboard,
 } from './utils/leaderboard.js';
 import {
@@ -460,11 +461,60 @@ function _closeStarterRoulette() {
   if (overlay) overlay.classList.add('hidden');
 }
 
+const recentToastKeys = new Map();
+const TOAST_DEDUPE_MS = 6000;
+
+function _wireGlobalCompletionToast() {
+  subscribeLapCompletion(event => {
+    if (!event) return;
+    const me = getPlayerProfile().id;
+    if (event.playerId === me) return;
+    const key = `${event.playerId}|${event.trackId}|${event.lapMs}`;
+    const now = Date.now();
+    for (const [k, t] of recentToastKeys) {
+      if (now - t > TOAST_DEDUPE_MS) recentToastKeys.delete(k);
+    }
+    if (recentToastKeys.has(key)) return;
+    recentToastKeys.set(key, now);
+    _showCompletionToast(event);
+  });
+}
+
+function _showCompletionToast(event) {
+  const container = document.getElementById('global-toast-container');
+  if (!container) return;
+  const name = event.playerName || 'Driver';
+  const track = event.trackName || event.trackId || '?';
+  const time = formatTime(event.lapMs);
+  const theme = _themeColor(event.playerThemeColor);
+  const verb = event.isInsert ? '완주' : '베스트 갱신';
+  const toast = document.createElement('div');
+  toast.className = 'global-toast';
+  toast.style.setProperty('--player-theme', theme);
+  toast.innerHTML = `<b>${_escape(name)}</b>님이 ${_escape(track)} <time>${_escape(time)}</time> ${verb}!`;
+  container.appendChild(toast);
+  requestAnimationFrame(() => toast.classList.add('show'));
+  setTimeout(() => {
+    toast.classList.remove('show');
+    setTimeout(() => toast.remove(), 400);
+  }, 5200);
+  while (container.children.length > 5) {
+    container.firstElementChild?.remove();
+  }
+}
+
+function _escape(value) {
+  return String(value ?? '').replace(/[&<>"']/g, ch => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]
+  ));
+}
+
 _wireAuthScreen();
 _wireProfilePanel();
 _wireStarterRoulette();
 _wireHomeLeaderboard();
 _wireGlobalLeaderboard();
+_wireGlobalCompletionToast();
 await initAuth();
 initProfile();
 
