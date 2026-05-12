@@ -240,7 +240,12 @@ export function updateGame(dt, now) {
   const event = updateTiming(timing, car, track, now);
   if (timing.started && raceReleased) _sampleLapPath(now);
   if (event?.type === 'lapComplete') {
-    const isNew = !!event.isNew;
+    // Use persisted storage as the authoritative best so a slower lap
+    // never gets flagged as "신기록" even if the session-local timing
+    // state ever drifted.
+    const persistedBest = getBestLap(carData.id, track.id);
+    const isNew = !persistedBest || event.lapMs < persistedBest;
+    event.isNew = isNew;
     saveBestLap(carData.id, track.id, event.lapMs);
     addLapHistory(carData.id, track.id, {
       lapMs: event.lapMs, sectors: event.sectors, date: Date.now(), path: lapPath.slice(0, 900)
