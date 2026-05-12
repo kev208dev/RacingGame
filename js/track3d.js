@@ -42,7 +42,7 @@ function _addTrackRibbon(grp, track) {
     const [x, y] = cl[i];
     const left = _offsetPoint(cl, i, width / 2, 1);
     const right = _offsetPoint(cl, i, width / 2, -1);
-    const crown = 0.08 + Math.sin(i * 0.17) * 0.015;
+    const crown = 0.08;
 
     verts.push(left.x, crown, -left.y);
     verts.push(right.x, crown, -right.y);

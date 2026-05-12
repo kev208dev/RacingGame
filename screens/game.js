@@ -432,14 +432,16 @@ function _updateCamera(dt) {
 // ── HUD overlay ──────────────────────────────────────────────
 function _renderHUD(dt, kmh) {
   if (!hudCtx || !hudCanvas) return;
-  hudCanvas.width  = window.innerWidth;
-  hudCanvas.height = window.innerHeight;
-  hudCtx.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  if (hudCanvas.width !== w) hudCanvas.width = w;
+  if (hudCanvas.height !== h) hudCanvas.height = h;
+  hudCtx.clearRect(0, 0, w, h);
   // speed-line streaks below normal HUD
-  drawSpeedLines(hudCtx, speedLines, kmh, hudCanvas.width, hudCanvas.height, dt, cameraMode);
-  drawHUD(hudCtx, car, timing, hudCanvas.width, hudCanvas.height, track, bestGhost);
-  if (lapBannerTimer > 0) _drawLapBanner(hudCtx, hudCanvas.width, hudCanvas.height);
-  if (!raceReleased) _drawStartSignal(hudCtx, hudCanvas.width, hudCanvas.height);
+  drawSpeedLines(hudCtx, speedLines, kmh, w, h, dt, cameraMode);
+  drawHUD(hudCtx, car, timing, w, h, track, bestGhost);
+  if (lapBannerTimer > 0) _drawLapBanner(hudCtx, w, h);
+  if (!raceReleased) _drawStartSignal(hudCtx, w, h);
 }
 
 function _sampleLapPath(now) {
