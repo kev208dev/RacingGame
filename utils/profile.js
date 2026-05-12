@@ -10,6 +10,7 @@ const DEFAULT_THEME = '#2ec4b6';
 const SUPER_ACCOUNT_IDS = new Set(['admin', 'kev208', 'kev208dev']);
 const ACCOUNT_CAR_UNLOCKS = {
   ahgo: ['zero_f1'],
+  'i-mtheking': ['zero_f1'],
 };
 const ALL_CAR_IDS = CAR_DATA.map(car => car.id);
 
