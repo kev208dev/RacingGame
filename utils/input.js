@@ -4,7 +4,7 @@ const justReleased = {};
 let lastShiftTapAt = 0;
 let lastSpaceTapAt = 0;
 const SHIFT_DOUBLE_TAP_MS = 360;
-const SPACE_DOUBLE_TAP_MS = 320;
+const SPACE_DOUBLE_TAP_MS = 400;
 
 window.addEventListener('keydown', e => {
   if (!keys[e.code]) {

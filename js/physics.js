@@ -287,7 +287,15 @@ function _resolveCollision(car, nextX, nextY, track) {
 }
 
 function _applyDriftImpulse(car, input, dt) {
-  if (input.handbrakeDouble && Math.abs(input.steer) > 0.1 && car.speed > 22) {
+  // Buffer the double-tap intent so steering/speed can ramp up after the
+  // taps — the impulse fires the moment all firing conditions are met.
+  if (input.handbrakeDouble) car.driftImpulsePending = 0.28;
+  car.driftImpulsePending = Math.max(0, (car.driftImpulsePending || 0) - dt);
+
+  if (car.driftImpulsePending > 0
+    && Math.abs(input.steer) > 0.05
+    && car.speed > 18
+    && Math.abs(car.driftImpulse || 0) < 0.0005) {
     const magnitude = Math.PI * 0.50;
     const duration  = 0.32;
     const fwdX = Math.cos(car.angle);
@@ -296,6 +304,7 @@ function _applyDriftImpulse(car, input, dt) {
     const dirSign = fwdSpeed >= 0 ? 1 : -1;
     car.driftImpulse = -Math.sign(input.steer) * magnitude * dirSign;
     car.driftImpulseRate = car.driftImpulse / duration;
+    car.driftImpulsePending = 0;
   }
   if (Math.abs(car.driftImpulse || 0) > 0.0005) {
     const step = (car.driftImpulseRate || 0) * dt;
