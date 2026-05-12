@@ -2,7 +2,9 @@ export const keys = {};
 const justPressed = {};
 const justReleased = {};
 let lastShiftTapAt = 0;
+let lastSpaceTapAt = 0;
 const SHIFT_DOUBLE_TAP_MS = 360;
+const SPACE_DOUBLE_TAP_MS = 320;
 
 window.addEventListener('keydown', e => {
   if (!keys[e.code]) {
@@ -14,6 +16,15 @@ window.addEventListener('keydown', e => {
         lastShiftTapAt = 0;
       } else {
         lastShiftTapAt = now;
+      }
+    }
+    if (e.code === 'Space') {
+      const now = performance.now();
+      if (now - lastSpaceTapAt <= SPACE_DOUBLE_TAP_MS) {
+        justPressed.SpaceDouble = true;
+        lastSpaceTapAt = 0;
+      } else {
+        lastSpaceTapAt = now;
       }
     }
   }
@@ -47,6 +58,8 @@ export function getInput() {
     brake,
     steer,
     handbrake:    !!keys['Space'],
+    handbrakeJust:   wasJustPressed('Space'),
+    handbrakeDouble: wasJustPressed('SpaceDouble'),
     boost:        !!(keys['ShiftLeft'] || keys['ShiftRight']),
     boostJust:    wasJustPressed('ShiftLeft') || wasJustPressed('ShiftRight'),
     boostDouble:  wasJustPressed('ShiftDouble'),

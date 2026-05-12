@@ -110,6 +110,9 @@ export function updatePhysics(car, input, dt, track) {
     }
   }
 
+  // ── KartRider-style drift impulse on space tap / double-tap ──
+  _applyDriftImpulse(car, input, dt);
+
   // ── lateral grip + drift detection ──
   car.speed = Math.hypot(car.vx, car.vy);
   let sSpeed = 0;
@@ -275,6 +278,31 @@ function _resolveCollision(car, nextX, nextY, track) {
     if (rideTouch) car.wallRideSide = Math.sign(rideSide) || car.wallRideSide || 0;
     car.x = fx;
     car.y = fy;
+  }
+}
+
+function _applyDriftImpulse(car, input, dt) {
+  if (input.handbrakeJust && Math.abs(input.steer) > 0.1 && car.speed > 22) {
+    const isDouble = !!input.handbrakeDouble;
+    const magnitude = isDouble ? Math.PI * 0.94 : Math.PI * 0.50;
+    const duration  = isDouble ? 0.45 : 0.28;
+    const fwdX = Math.cos(car.angle);
+    const fwdY = Math.sin(car.angle);
+    const fwdSpeed = car.vx * fwdX + car.vy * fwdY;
+    const dirSign = fwdSpeed >= 0 ? 1 : -1;
+    car.driftImpulse = -Math.sign(input.steer) * magnitude * dirSign;
+    car.driftImpulseRate = car.driftImpulse / duration;
+  }
+  if (Math.abs(car.driftImpulse || 0) > 0.0005) {
+    const step = (car.driftImpulseRate || 0) * dt;
+    if (Math.abs(step) >= Math.abs(car.driftImpulse)) {
+      car.angle += car.driftImpulse;
+      car.driftImpulse = 0;
+      car.driftImpulseRate = 0;
+    } else {
+      car.angle += step;
+      car.driftImpulse -= step;
+    }
   }
 }
 
