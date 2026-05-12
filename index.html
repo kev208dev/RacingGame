@@ -34,10 +34,25 @@
         <button id="btn-profile-close" class="btn-icon" aria-label="닫기">×</button>
       </div>
       <div id="profile-auth-box" class="profile-auth-box">
-        <input id="auth-email" type="email" placeholder="이메일 로그인" autocomplete="email" />
-        <button class="btn-secondary btn-small" id="btn-auth-login">로그인 링크 받기</button>
+        <input id="auth-email" type="email" placeholder="이메일" autocomplete="email" />
+        <input id="auth-password" type="password" placeholder="비밀번호 (6자 이상)" autocomplete="current-password" />
+        <div class="auth-row">
+          <button class="btn-primary btn-small" id="btn-auth-password-login">로그인</button>
+          <button class="btn-secondary btn-small" id="btn-auth-signup">회원가입</button>
+        </div>
+        <button class="link-button" id="btn-auth-magic" type="button">
+          비밀번호 없이 이메일 링크로 로그인 (기존 계정)
+        </button>
         <button class="btn-secondary btn-small hidden" id="btn-auth-logout">로그아웃</button>
         <span id="auth-status">로그인하면 코인과 차량을 저장합니다.</span>
+      </div>
+      <div id="set-password-section" class="set-password-section hidden">
+        <label class="profile-field">
+          <span>비밀번호 변경 / 설정</span>
+          <input id="auth-new-password" type="password" placeholder="새 비밀번호 (6자 이상)" autocomplete="new-password" />
+        </label>
+        <button class="btn-secondary btn-small" id="btn-set-password">비밀번호 저장</button>
+        <span id="set-password-status"></span>
       </div>
       <label class="profile-field">
         <span>닉네임</span>

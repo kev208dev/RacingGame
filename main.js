@@ -4,7 +4,16 @@ import { TRACKS }           from './data/tracks.js';
 import { initGame, updateGame, stopGame } from './screens/game.js';
 import { initResults }      from './screens/results.js';
 import { initAuth }         from './utils/auth.js';
-import { getCurrentUser, getMagicLinkCooldownRemaining, onAuthChange, sendMagicLink, signOut } from './utils/auth.js';
+import {
+  getCurrentUser,
+  getMagicLinkCooldownRemaining,
+  onAuthChange,
+  sendMagicLink,
+  signInWithPassword,
+  signOut,
+  signUpWithPassword,
+  updateUserPassword,
+} from './utils/auth.js';
 import { clearFrameKeys }   from './utils/input.js';
 import { formatTime }       from './utils/math.js';
 import { CAR_DATA }         from './data/cars.js';
@@ -49,25 +58,22 @@ function showToast(message, kind = 'info', duration = 2400) {
 }
 
 let loginCooldownInterval = null;
-function _startLoginCooldownTicker(email) {
-  const btn = document.getElementById('btn-auth-login');
-  const status = document.getElementById('auth-status');
+function _startMagicCooldownTicker(email) {
+  const btn = document.getElementById('btn-auth-magic');
   if (!btn) return;
   if (loginCooldownInterval) clearInterval(loginCooldownInterval);
+  const defaultLabel = '비밀번호 없이 이메일 링크로 로그인 (기존 계정)';
   const tick = () => {
     const remain = getMagicLinkCooldownRemaining(email);
     if (remain <= 0) {
       btn.disabled = false;
-      btn.textContent = '로그인 링크 받기';
+      btn.textContent = defaultLabel;
       clearInterval(loginCooldownInterval);
       loginCooldownInterval = null;
       return;
     }
     btn.disabled = true;
-    btn.textContent = `대기 ${remain}s`;
-    if (status && /대기|발송/.test(status.textContent || '')) {
-      // leave existing status as-is
-    }
+    btn.textContent = `이메일 링크 대기 ${remain}s`;
   };
   tick();
   loginCooldownInterval = setInterval(tick, 1000);
@@ -236,30 +242,73 @@ function _wireProfilePanel() {
   const panel = document.getElementById('profile-panel');
   const closeBtn = document.getElementById('btn-profile-close');
   const email = document.getElementById('auth-email');
-  const login = document.getElementById('btn-auth-login');
+  const password = document.getElementById('auth-password');
+  const pwLogin = document.getElementById('btn-auth-password-login');
+  const signupBtn = document.getElementById('btn-auth-signup');
+  const magicBtn = document.getElementById('btn-auth-magic');
   const logout = document.getElementById('btn-auth-logout');
   const status = document.getElementById('auth-status');
   const nickname = document.getElementById('profile-nickname');
   const theme = document.getElementById('profile-theme');
   const save = document.getElementById('btn-profile-save');
+  const newPw = document.getElementById('auth-new-password');
+  const setPwBtn = document.getElementById('btn-set-password');
+  const setPwStatus = document.getElementById('set-password-status');
   if (!openBtn || !panel) return;
 
   openBtn.addEventListener('click', () => panel.classList.toggle('hidden'));
   closeBtn?.addEventListener('click', () => panel.classList.add('hidden'));
-  email?.addEventListener('input', () => _startLoginCooldownTicker(email.value || ''));
-  login && (login.onclick = async () => {
+  email?.addEventListener('input', () => _startMagicCooldownTicker(email.value || ''));
+
+  pwLogin && (pwLogin.onclick = async () => {
+    const e = email?.value || '';
+    const p = password?.value || '';
+    if (status) status.textContent = '로그인 중...';
+    try {
+      await signInWithPassword(e, p);
+      if (status) status.textContent = '로그인 완료';
+      showToast('로그인 완료', 'success');
+    } catch (error) {
+      const msg = error?.message || '로그인에 실패했습니다.';
+      if (status) status.textContent = msg;
+      showToast(msg, 'error');
+    }
+  });
+
+  signupBtn && (signupBtn.onclick = async () => {
+    const e = email?.value || '';
+    const p = password?.value || '';
+    if (status) status.textContent = '회원가입 중...';
+    try {
+      const { needsEmailConfirmation } = await signUpWithPassword(e, p);
+      if (needsEmailConfirmation) {
+        const text = '회원가입 완료. 이메일의 인증 링크를 확인하세요.';
+        if (status) status.textContent = text;
+        showToast(text, 'success');
+      } else {
+        if (status) status.textContent = '회원가입 완료';
+        showToast('회원가입 완료', 'success');
+      }
+    } catch (error) {
+      const msg = error?.message || '회원가입에 실패했습니다.';
+      if (status) status.textContent = msg;
+      showToast(msg, 'error');
+    }
+  });
+
+  magicBtn && (magicBtn.onclick = async () => {
     const value = email?.value || '';
     if (status) status.textContent = '로그인 메일 보내는 중...';
     try {
       await sendMagicLink(value);
       if (status) status.textContent = '메일의 로그인 링크를 확인하세요. (받은편지함/스팸함 확인)';
-      _startLoginCooldownTicker(value);
+      _startMagicCooldownTicker(value);
       showToast('로그인 메일을 발송했습니다.');
     } catch (error) {
       if (status) {
         if (error?.code === 'rate-limited') {
           status.textContent = error.message;
-          _startLoginCooldownTicker(value);
+          _startMagicCooldownTicker(value);
           showToast('잠시 후 다시 시도해주세요.');
         } else if (error?.code === 'email-required') {
           status.textContent = '이메일 주소를 입력하세요.';
@@ -269,9 +318,27 @@ function _wireProfilePanel() {
       }
     }
   });
+
   logout && (logout.onclick = async () => {
     await signOut();
+    if (password) password.value = '';
+    if (newPw) newPw.value = '';
     panel.classList.add('hidden');
+  });
+
+  setPwBtn && (setPwBtn.onclick = async () => {
+    const p = newPw?.value || '';
+    if (setPwStatus) setPwStatus.textContent = '저장 중...';
+    try {
+      await updateUserPassword(p);
+      if (newPw) newPw.value = '';
+      if (setPwStatus) setPwStatus.textContent = '비밀번호 저장 완료';
+      showToast('비밀번호 저장 완료', 'success');
+    } catch (error) {
+      const msg = error?.message || '저장 실패';
+      if (setPwStatus) setPwStatus.textContent = msg;
+      showToast(msg, 'error');
+    }
   });
   save && (save.onclick = async () => {
     try {
@@ -310,9 +377,13 @@ function _renderProfilePanel() {
   const coinsEl = document.getElementById('profile-coins');
   const note = document.getElementById('profile-note');
   const email = document.getElementById('auth-email');
-  const login = document.getElementById('btn-auth-login');
+  const password = document.getElementById('auth-password');
+  const pwLogin = document.getElementById('btn-auth-password-login');
+  const signupBtn = document.getElementById('btn-auth-signup');
+  const magicBtn = document.getElementById('btn-auth-magic');
   const logout = document.getElementById('btn-auth-logout');
   const status = document.getElementById('auth-status');
+  const setPwSection = document.getElementById('set-password-section');
 
   if (chipName) chipName.textContent = user ? name : 'Guest';
   if (chipCoins) chipCoins.textContent = user ? coins.toLocaleString() : 'login';
@@ -329,11 +400,20 @@ function _renderProfilePanel() {
   if (note) note.textContent = user
     ? `${ownedCount}/${CAR_DATA.length}대 소유 · 미션 클리어로 코인을 모아 구매하세요.`
     : '게스트는 기본 차량만 사용할 수 있습니다.';
+
+  // Login form (email + password + buttons) shown only when logged out.
   if (email) email.classList.toggle('hidden', !!user);
-  if (login) login.classList.toggle('hidden', !!user);
+  if (password) password.classList.toggle('hidden', !!user);
+  if (pwLogin) pwLogin.classList.toggle('hidden', !!user);
+  if (signupBtn) signupBtn.classList.toggle('hidden', !!user);
+  if (magicBtn) magicBtn.classList.toggle('hidden', !!user);
   if (logout) logout.classList.toggle('hidden', !user);
+
+  // Set/change-password section only when logged in.
+  if (setPwSection) setPwSection.classList.toggle('hidden', !user);
+
   if (status) status.textContent = user ? `${user.email} 로그인됨` : '로그인하면 코인과 차량을 저장합니다.';
-  if (!user && email) _startLoginCooldownTicker(email.value || '');
+  if (!user && email) _startMagicCooldownTicker(email.value || '');
 
   const saveNote = document.getElementById('main-save-note');
   if (saveNote) {

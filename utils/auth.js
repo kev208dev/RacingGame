@@ -103,6 +103,94 @@ function _extractRetrySeconds(message) {
   return m ? Math.min(600, Number(m[1])) : 0;
 }
 
+export async function signInWithPassword(email, password) {
+  const cleanEmail = String(email || '').trim();
+  const cleanPw = String(password || '');
+  if (!cleanEmail) {
+    const err = new Error('이메일을 입력하세요.');
+    err.code = 'email-required';
+    throw err;
+  }
+  if (cleanPw.length < 6) {
+    const err = new Error('비밀번호는 6자 이상이어야 합니다.');
+    err.code = 'password-too-short';
+    throw err;
+  }
+  const { error } = await getSupabase().auth.signInWithPassword({
+    email: cleanEmail,
+    password: cleanPw,
+  });
+  if (error) throw _translateAuthError(error);
+}
+
+export async function signUpWithPassword(email, password) {
+  const cleanEmail = String(email || '').trim();
+  const cleanPw = String(password || '');
+  if (!cleanEmail) {
+    const err = new Error('이메일을 입력하세요.');
+    err.code = 'email-required';
+    throw err;
+  }
+  if (cleanPw.length < 6) {
+    const err = new Error('비밀번호는 6자 이상이어야 합니다.');
+    err.code = 'password-too-short';
+    throw err;
+  }
+  const { data, error } = await getSupabase().auth.signUp({
+    email: cleanEmail,
+    password: cleanPw,
+    options: { emailRedirectTo: getRedirectUrl() },
+  });
+  if (error) throw _translateAuthError(error);
+  // If email confirmation is on, data.user has identities=[] until confirmed.
+  const needsEmailConfirmation = !data?.session;
+  return { needsEmailConfirmation };
+}
+
+export async function updateUserPassword(newPassword) {
+  const cleanPw = String(newPassword || '');
+  if (cleanPw.length < 6) {
+    const err = new Error('비밀번호는 6자 이상이어야 합니다.');
+    err.code = 'password-too-short';
+    throw err;
+  }
+  const { error } = await getSupabase().auth.updateUser({ password: cleanPw });
+  if (error) throw _translateAuthError(error);
+}
+
+function _translateAuthError(error) {
+  const status = error?.status || 0;
+  const raw = String(error?.message || '').toLowerCase();
+  if (status === 429 || raw.includes('rate limit') || raw.includes('for security purposes')) {
+    const seconds = _extractRetrySeconds(error.message) || COOLDOWN_SECONDS;
+    const wrapped = new Error(`요청이 너무 잦습니다. ${seconds}초 후 다시 시도하세요.`);
+    wrapped.code = 'rate-limited';
+    wrapped.retryAfter = seconds;
+    return wrapped;
+  }
+  if (raw.includes('invalid login credentials') || raw.includes('invalid_grant')) {
+    const wrapped = new Error('이메일 또는 비밀번호가 올바르지 않습니다.');
+    wrapped.code = 'invalid-credentials';
+    return wrapped;
+  }
+  if (raw.includes('email not confirmed')) {
+    const wrapped = new Error('이메일 인증이 아직 완료되지 않았습니다. 받은 메일의 링크를 확인하세요.');
+    wrapped.code = 'email-not-confirmed';
+    return wrapped;
+  }
+  if (raw.includes('user already registered') || raw.includes('already been registered') || raw.includes('already_registered')) {
+    const wrapped = new Error('이미 가입된 이메일입니다. 비밀번호로 로그인하거나, 비밀번호가 없다면 이메일 링크로 로그인하세요.');
+    wrapped.code = 'already-registered';
+    return wrapped;
+  }
+  if (raw.includes('password should be') || raw.includes('weak password')) {
+    const wrapped = new Error('더 강한 비밀번호를 사용하세요 (6자 이상).');
+    wrapped.code = 'weak-password';
+    return wrapped;
+  }
+  return error;
+}
+
 export async function signOut() {
   const { error } = await getSupabase().auth.signOut();
   if (error) throw error;

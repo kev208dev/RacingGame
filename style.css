@@ -71,6 +71,38 @@ html, body {
 }
 .profile-wallet b { color: #ffd166; }
 .profile-note { margin-top: 10px; line-height: 1.4; }
+.auth-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+.link-button {
+  background: transparent;
+  border: none;
+  color: #79b8ff;
+  font-size: 0.78rem;
+  text-decoration: underline;
+  padding: 2px 0;
+  cursor: pointer;
+  text-align: left;
+}
+.link-button:hover { color: #a4d0ff; }
+.link-button:disabled { color: #555; cursor: default; text-decoration: none; }
+.set-password-section {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid #2a323b;
+  border-radius: 10px;
+  background: rgba(46, 196, 182, 0.06);
+}
+.set-password-section span { color: #8b949e; font-size: 0.72rem; }
+.set-password-section input {
+  height: 34px; border-radius: 8px; border: 1px solid #30363d;
+  background: #0d1117; color: #fff; padding: 0 11px;
+}
+#set-password-status { color: #8b949e; font-size: 0.72rem; min-height: 14px; }
 
 /* ── car select ── */
 .category-tabs {
