@@ -7,7 +7,7 @@ import { clamp } from '../utils/math.js';
 export const TOP_SPEED_MULT = 2.15;
 export const KMH_PER_UNIT = 1 / TOP_SPEED_MULT;
 const ACCEL_MULT = 2.35;
-const BRAKE_MULT = 4.30;
+const BRAKE_MULT = 6.20;
 const DRAG_MULT = 1 / (TOP_SPEED_MULT * TOP_SPEED_MULT);
 const DRS_MIN_SPEED = 110;
 
@@ -45,9 +45,18 @@ export function updatePhysics(car, input, dt, track) {
     * (1 + 0.38 * drsPower);
   const brakeRate = baseAccel * BRAKE_MULT * Math.pow(1250 / Math.max(700, car.mass || 1250), 0.1);
   const reverseTop = maxSpeed * 0.30;
-  const driftActive = car.drifting === true;
+
+  // ── handbrake state machine (drift charge + exit snap) ──
+  const prevHeldTime = car._handbrakeHoldTime || 0;
+  const handbrakeJustReleased = !input.handbrake && car._wasHandbraking === true;
+  car._wasHandbraking = !!input.handbrake;
+  car._handbrakeHoldTime = input.handbrake ? prevHeldTime + dt : 0;
+
+  // While drifting, the chassis pivots gently — the *big* rotation hits
+  // the moment the handbrake is released (e-brake snap below). This is
+  // the "rotation at the end of the drift" feel.
   const turnPower = input.handbrake
-    ? (driftActive ? 9.20 : 6.20)
+    ? 2.60
     : (input.brake > 0 ? 3.40 : 3.00);
 
   car.gear = clamp(car.gear || 1, 1, 8);
@@ -110,7 +119,7 @@ export function updatePhysics(car, input, dt, track) {
     // crosses the velocity vector — that's what lets a hard drift swing
     // all the way around to ~180°.
     const dirSign = input.handbrake ? 1 : (fwdSpeed >= 0 ? 1 : -1);
-    const speedFloor = input.handbrake ? 0.85 : 0;
+    const speedFloor = input.handbrake ? 0.35 : 0;
     const turnGain = (0.62 + Math.max(speedFloor, speedRatio) * 0.62) * turnPower;
     car.angle += car.steerAngle * turnGain * dirSign * dt;
   }
@@ -136,10 +145,34 @@ export function updatePhysics(car, input, dt, track) {
     car.boostMeter = Math.min(100, (car.boostMeter || 0) + dt * (car.boostChargeRate || 14) * 0.48 * driftIntensity);
   }
 
+  // ── drift exit: when handbrake releases, snap the chassis around so
+  // the rotation completes AT THE END of the drift. Magnitude scales
+  // with how long the drift was held and which way the player is
+  // steering. Velocity gets partially realigned to the new heading so
+  // the car shoots forward cleanly instead of staying sideways.
+  if (handbrakeJustReleased && car.speed > 6) {
+    const charge = clamp(prevHeldTime / 0.55, 0, 1);
+    const steerComponent = car.steerAngle * 2.4;
+    const sideComponent = (sSpeed > 0 ? 1 : -1) * Math.min(1.0, Math.abs(sSpeed) / 18);
+    const exitYaw = clamp((steerComponent + sideComponent * 0.55) * charge, -1.9, 1.9);
+    car.angle += exitYaw;
+
+    // Realign 65% of remaining side velocity into forward motion.
+    const fx2 = Math.cos(car.angle), fy2 = Math.sin(car.angle);
+    const sx2 = -fy2, sy2 = fx2;
+    const fS = car.vx * fx2 + car.vy * fy2;
+    const sS = car.vx * sx2 + car.vy * sy2;
+    const totalSp = Math.hypot(car.vx, car.vy);
+    const newSSpeed = sS * 0.35;
+    const newFSpeed = Math.sign(fS || 1) * Math.sqrt(Math.max(0, totalSp * totalSp - newSSpeed * newSSpeed));
+    car.vx = fx2 * newFSpeed + sx2 * newSSpeed;
+    car.vy = fy2 * newFSpeed + sy2 * newSSpeed;
+  }
+
   // ── drag + rolling ──
   car.speed = Math.hypot(car.vx, car.vy);
   if (car.speed > 0.05) {
-    const dragDec = car.speed * car.speed * 0.00265 * DRAG_MULT + 2.30;
+    const dragDec = car.speed * car.speed * 0.00265 * DRAG_MULT + 4.50;
     const k       = Math.min((dragDec * dt) / car.speed, 1);
     car.vx -= car.vx * k;
     car.vy -= car.vy * k;

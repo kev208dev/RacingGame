@@ -108,8 +108,8 @@ export function initGame(cd, tr, resultsCb, menuCb) {
 
   // ── scene ──
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x87ceeb);
-  scene.fog        = new THREE.Fog(0x87ceeb, 9000, 22000);
+  scene.background = new THREE.Color(0xbfe6ff);
+  scene.fog        = new THREE.Fog(0xd6eeff, 11000, 24000);
 
   // ── camera ──
   camera3d = new THREE.PerspectiveCamera(
@@ -131,8 +131,8 @@ export function initGame(cd, tr, resultsCb, menuCb) {
   camera3d.lookAt(_camLook);
 
   // ── lights ──
-  scene.add(new THREE.AmbientLight(0xffffff, 0.7));
-  const sun = new THREE.DirectionalLight(0xfff5dc, 1.1);
+  scene.add(new THREE.AmbientLight(0xffffff, 1.05));
+  const sun = new THREE.DirectionalLight(0xfff5dc, 1.55);
   sun.position.set(400, 700, -300);
   sun.castShadow = false;
   sun.shadow.mapSize.set(1024, 1024);
@@ -146,7 +146,7 @@ export function initGame(cd, tr, resultsCb, menuCb) {
   scene.add(sun.target);
   scene.sunLight = sun;
 
-  const fill = new THREE.DirectionalLight(0xadd8e6, 0.35);
+  const fill = new THREE.DirectionalLight(0xcfe4f5, 0.55);
   fill.position.set(-200, 200, 300);
   scene.add(fill);
 

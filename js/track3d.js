@@ -69,7 +69,7 @@ function _addTrackRibbon(grp, track) {
 
 function _makeRoadMaterial() {
   return new THREE.MeshLambertMaterial({
-    color: 0x5f625c,
+    color: 0x7a7e78,
     polygonOffset: true,
     polygonOffsetFactor: 1,
     polygonOffsetUnits: 1,
@@ -77,7 +77,7 @@ function _makeRoadMaterial() {
 }
 
 function _makeGroundMaterial() {
-  return new THREE.MeshLambertMaterial({ color: 0x293426 });
+  return new THREE.MeshLambertMaterial({ color: 0x4f6a44 });
 }
 
 function _addRoadMarkings(grp, track) {
