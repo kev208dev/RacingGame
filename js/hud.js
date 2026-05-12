@@ -125,6 +125,7 @@ function _drawMinimap(ctx, car, track, x, y, w, h, ghost) {
     _miniCacheKey = track.id;
   }
   ctx.drawImage(_miniCache.canvas, x, y);
+  const m = _miniCache;
 
   if (ghost?.path?.length) {
     ctx.save();
@@ -151,7 +152,6 @@ function _drawMinimap(ctx, car, track, x, y, w, h, ghost) {
   }
 
   // Live overlay: car position dot.
-  const m = _miniCache;
   const cx = x + (car.x - m.minX) * m.scale + m.padX;
   const cy = y + (car.y - m.minY) * m.scale + m.padY;
   // direction indicator

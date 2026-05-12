@@ -8,7 +8,10 @@ import { safeNickname, validateNickname } from './nicknameFilter.js';
 const TABLE = 'player_profiles';
 const DEFAULT_OWNED = ['apex_gt3', 'feather_sprint'];
 const DEFAULT_THEME = '#2ec4b6';
-const SUPER_ACCOUNT_EMAILS = new Set(['kev208ev@gmail.com']);
+const SUPER_ACCOUNT_EMAILS = new Set([
+  'kev208dev@gmail.com',
+  'kev208ev@gmail.com',
+]);
 const ALL_CAR_IDS = CAR_DATA.map(car => car.id);
 
 let profile = null;

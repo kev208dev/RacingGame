@@ -573,6 +573,8 @@ function _resetCar() {
   car.drsAvailable = false;
   car.drsActive = false;
   car.drsTimer = 0;
+  car.drsWindowTimer = 0;
+  car.drsTapTimer = 0;
   car.drsPower = 0;
   car.lastWallHit = null;
   if (skidBuf) skidBuf.reset();

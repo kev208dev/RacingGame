@@ -265,22 +265,39 @@ function _updateBoost(car, input, dt) {
 function _updateDrs(car, input, track, dt) {
   car.superBoostMeter = clamp(car.superBoostMeter ?? 100, 0, 100);
   car.drsTimer = Math.max(0, (car.drsTimer || 0) - dt);
+  car.drsWindowTimer = Math.max(0, (car.drsWindowTimer || 0) - dt);
+  car.drsTapTimer = Math.max(0, (car.drsTapTimer || 0) - dt);
+
   const hit = _closestCenterlineSegment(car.x, car.y, track.centerLine || []);
   let available = false;
-  if (hit && car.speed > 65 && !car.drifting && !car.offTrack) {
+  if (hit && car.speed > 55 && !car.drifting && !car.offTrack) {
     const fwdX = Math.cos(car.angle);
     const fwdY = Math.sin(car.angle);
     const headingAlign = Math.abs(fwdX * hit.tx + fwdY * hit.ty);
-    available = hit.straightness > 0.975 && headingAlign > 0.82 && hit.dist < (track.width || 100) * 0.38;
+    available = hit.straightness > 0.94 && headingAlign > 0.75 && hit.dist < (track.width || 100) * 0.45;
   }
-  if (available && input.boostDouble && car.superBoostMeter > 8) {
-    car.drsTimer = 2.35;
+
+  if (available) {
+    car.drsWindowTimer = 0.45;
   }
-  if (!available) {
+
+  const inDrsWindow = available || car.drsWindowTimer > 0;
+  if (inDrsWindow && input.boostJust && car.superBoostMeter > 8) {
+    if (input.boostDouble || car.drsTapTimer > 0) {
+      car.drsTimer = 2.6;
+      car.drsTapTimer = 0;
+    } else {
+      car.drsTapTimer = 0.48;
+    }
+  }
+
+  if (!inDrsWindow) {
     car.drsTimer = 0;
+    car.drsTapTimer = 0;
     car.superBoostMeter = Math.min(100, car.superBoostMeter + dt * 18);
   }
-  let active = available && car.drsTimer > 0 && car.superBoostMeter > 0;
+
+  let active = inDrsWindow && car.drsTimer > 0 && car.superBoostMeter > 0;
   if (active) {
     car.superBoostMeter = Math.max(0, car.superBoostMeter - 42 * dt);
     if (car.superBoostMeter <= 0) {
@@ -288,7 +305,7 @@ function _updateDrs(car, input, track, dt) {
       active = false;
     }
   }
-  car.drsAvailable = available;
+  car.drsAvailable = inDrsWindow;
   car.drsActive = active;
   const target = active ? 1 : 0;
   car.drsPower = (car.drsPower || 0) + (target - (car.drsPower || 0)) * (1 - Math.exp(-(active ? 5.0 : 5.8) * dt));
