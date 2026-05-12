@@ -150,10 +150,9 @@ function _addWallRideBanks(grp, track) {
   if (cl.length < 8) return;
 
   const mats = [
-    new THREE.MeshLambertMaterial({ color: 0x22d3ee, side: THREE.DoubleSide }),
-    new THREE.MeshLambertMaterial({ color: 0xfacc15, side: THREE.DoubleSide }),
+    _makeWallRideBankMaterial(0x22d3ee),
+    _makeWallRideBankMaterial(0xfacc15),
   ];
-  const sideMat = new THREE.MeshLambertMaterial({ color: 0x111827, side: THREE.DoubleSide });
   const stride = 2;
 
   for (let i = 0; i < cl.length; i += stride) {
@@ -167,12 +166,22 @@ function _addWallRideBanks(grp, track) {
 
     for (const side of [-1, 1]) {
       const mat = mats[(Math.floor(i / stride) + (side > 0 ? 0 : 1)) % mats.length];
-      _addWallRideBankSegment(grp, cl, i, stride, side, half, turn, mat, sideMat);
+      _addWallRideBankSegment(grp, cl, i, stride, side, half, turn, mat);
     }
   }
 }
 
-function _addWallRideBankSegment(grp, cl, i, stride, side, half, turn, mat, sideMat) {
+function _makeWallRideBankMaterial(color) {
+  return new THREE.MeshLambertMaterial({
+    color,
+    side: THREE.DoubleSide,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -1,
+  });
+}
+
+function _addWallRideBankSegment(grp, cl, i, stride, side, half, turn, mat) {
   const [x1, y1] = cl[i];
   const [x2, y2] = cl[(i + stride) % cl.length];
   const { px, py } = _segBasis(x1, y1, x2, y2);
@@ -210,14 +219,6 @@ function _addWallRideBankSegment(grp, cl, i, stride, side, half, turn, mat, side
   bank.castShadow = true;
   bank.frustumCulled = false;
   grp.add(bank);
-
-  if (Math.floor(i / stride) % 3 !== 0) return;
-  const cap = new THREE.Mesh(geo.clone(), sideMat);
-  cap.scale.y = 0.18;
-  cap.position.y = -0.02;
-  cap.receiveShadow = true;
-  cap.frustumCulled = false;
-  grp.add(cap);
 }
 
 function _offsetLine(cl, side, off) {
