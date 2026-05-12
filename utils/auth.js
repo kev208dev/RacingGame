@@ -1,10 +1,12 @@
 const ACCOUNTS_KEY = 'racing_local_accounts';
 const SESSION_KEY = 'racing_local_session';
-const PURGE_FLAG_KEY = 'racing_accounts_purged_v1';
+const PURGE_FLAG_KEY = 'racing_accounts_purged_v2';
 const LEGACY_KEYS = [
   'racing_player_profile',
   'racing_auth_email_cooldown_until',
   'sb-fcexjurcapptmiagdcxn-auth-token',
+  'racing_local_profiles',
+  'racing_accounts_purged_v1',
 ];
 
 const ID_PATTERN = /^[a-zA-Z0-9_-]{3,20}$/;

@@ -7,7 +7,7 @@ import { safeNickname, validateNickname } from './nicknameFilter.js';
 const PROFILES_KEY = 'racing_local_profiles';
 const DEFAULT_OWNED = ['apex_gt3', 'feather_sprint'];
 const DEFAULT_THEME = '#2ec4b6';
-const SUPER_ACCOUNT_IDS = new Set(['admin', 'kev208']);
+const SUPER_ACCOUNT_IDS = new Set(['admin', 'kev208', 'kev208dev']);
 const ALL_CAR_IDS = CAR_DATA.map(car => car.id);
 
 let profile = null;
