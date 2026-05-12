@@ -11,6 +11,8 @@ const WALL_RIDE_EXTRA = 16;
 const WALL_RIDE_MIN_SPEED = 58;
 const STRAIGHT_DRIFT_STEER_MAX = 0.24;
 const STRAIGHT_DRIFT_SLIP_MAX = 0.16;
+const TOP_GEAR_REDLINE_MIN = 0.56;
+const TOP_GEAR_REDLINE_MAX = 0.65;
 
 // Per-gear "top speed" — speed at which RPM hits maxRpm in that gear.
 const GEAR_TOP = [0, 48, 82, 120, 162, 208, 258, 305, 355];
@@ -72,7 +74,7 @@ export function updatePhysics(car, input, dt, track) {
   if (input.gearDown) {
     car.transmission = 'manual';
     if (car.gear > 1) {
-      const newTop = _gearTop(car.gear - 1);
+      const newTop = _gearTop(car.gear - 1, car);
       if ((car.speed / newTop) < 1.05) car.gear -= 1;
     }
   }
@@ -157,7 +159,7 @@ export function updatePhysics(car, input, dt, track) {
   }
 
   // ── RPM from gear band ──
-  const gearTop  = _gearTop(car.gear);
+  const gearTop  = _gearTop(car.gear, car);
   const sNorm    = car.speed / gearTop;
   car.rpm = clamp(1000 + sNorm * (car.maxRpm - 1000), 800, car.maxRpm * 1.10);
 
@@ -386,8 +388,19 @@ function _updateDrs(car, input, track, dt) {
   car.drsPower = (car.drsPower || 0) + (target - (car.drsPower || 0)) * (1 - Math.exp(-(active ? 5.0 : 5.8) * dt));
 }
 
-function _gearTop(gear) {
-  return (GEAR_TOP[gear] || GEAR_TOP[1]) * TOP_SPEED_MULT;
+function _gearTop(gear, car = null) {
+  const baseTop = GEAR_TOP[8] || 355;
+  const gearTop = GEAR_TOP[gear] || GEAR_TOP[1];
+  if (!car?.maxSpeed) return gearTop * TOP_SPEED_MULT;
+  const topGearRedline = car.maxSpeed * TOP_SPEED_MULT * _topGearRedlineRatio(car);
+  return (gearTop / baseTop) * topGearRedline;
+}
+
+function _topGearRedlineRatio(car) {
+  const powerToWeight = (car.power || car.maxTorque || 520) / Math.max(650, car.mass || 1200);
+  const lowTopSpeedComp = Math.max(0, 320 - (car.maxSpeed || 320)) * 0.00135;
+  const highPowerComp = Math.max(0, powerToWeight - 0.70) * 0.11;
+  return clamp(0.56 + lowTopSpeedComp + highPowerComp, TOP_GEAR_REDLINE_MIN, TOP_GEAR_REDLINE_MAX);
 }
 
 function _closestCenterlineSegment(x, y, centerLine) {
