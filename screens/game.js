@@ -241,19 +241,8 @@ export function updateGame(dt, now) {
   if (timing.started && raceReleased) _sampleLapPath(now);
   if (event?.type === 'lapComplete') {
     const isNew = !!event.isNew;
-    saveBestLap(carData.id, track.id, event.lapMs);
-    addLapHistory(carData.id, track.id, {
-      lapMs: event.lapMs, sectors: event.sectors, date: Date.now(), path: lapPath.slice(0, 900)
-    });
-    saveBestSectors(track.id, event.sectors, { carName: carData.name });
-    if (isNew) {
-      saveBestGhost(track.id, {
-        lapMs: event.lapMs,
-        carName: carData.name,
-        path: lapPath.slice(0, 900),
-      });
-      bestGhost = getBestGhost(track.id);
-    }
+    const completedPath = lapPath.slice(0, 900);
+    _saveLapCompletion(event, isNew, completedPath);
     lapPath = [];
     // Show in-game banner first; results screen follows after a beat.
     lapBannerText  = formatTime(event.lapMs);
@@ -309,6 +298,26 @@ export function updateGame(dt, now) {
   // ── render ──
   renderer.render(scene, camera3d);
   _renderHUD(dt, kmh);
+}
+
+function _saveLapCompletion(event, isNew, completedPath) {
+  try {
+    saveBestLap(carData.id, track.id, event.lapMs);
+    addLapHistory(carData.id, track.id, {
+      lapMs: event.lapMs, sectors: event.sectors, date: Date.now(), path: completedPath
+    });
+    saveBestSectors(track.id, event.sectors, { carName: carData.name });
+    if (isNew) {
+      saveBestGhost(track.id, {
+        lapMs: event.lapMs,
+        carName: carData.name,
+        path: completedPath,
+      });
+      bestGhost = getBestGhost(track.id);
+    }
+  } catch (error) {
+    console.warn('Lap persistence failed, continuing to results:', error);
+  }
 }
 
 // ── drift smoke + skid mark emission ─────────────────────────

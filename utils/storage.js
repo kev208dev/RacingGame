@@ -5,7 +5,13 @@ function load() {
 }
 
 function save(data) {
-  localStorage.setItem(KEY, JSON.stringify(data));
+  try {
+    localStorage.setItem(KEY, JSON.stringify(data));
+    return true;
+  } catch (error) {
+    console.warn('Local race data could not be saved:', error);
+    return false;
+  }
 }
 
 export function getBestLap(carId, trackId) {
