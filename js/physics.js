@@ -7,7 +7,7 @@ const BRAKE_MULT = 1.55;
 const DRAG_MULT = 1 / (TOP_SPEED_MULT * TOP_SPEED_MULT);
 const DRS_MIN_SPEED = 85;
 const WALL_RIDE_TURN_MIN = 0.105;
-const WALL_RIDE_EXTRA = 16;
+const WALL_RIDE_EXTRA = 7;
 const WALL_RIDE_MIN_SPEED = 58;
 const STRAIGHT_DRIFT_STEER_MAX = 0.24;
 const STRAIGHT_DRIFT_SLIP_MAX = 0.16;
@@ -177,9 +177,7 @@ export function updatePhysics(car, input, dt, track) {
   }
 
   // ── move + 4-corner wall collision ──
-  const nextX = car.x + car.vx * dt;
-  const nextY = car.y + car.vy * dt;
-  _resolveCollision(car, nextX, nextY, track);
+  _moveWithCollisionSubsteps(car, dt, track);
   car.speed = Math.hypot(car.vx, car.vy);
 }
 
@@ -191,6 +189,18 @@ const CAR_CORNERS = [
   [-12,  12],  // RL
   [-12, -12],  // RR
 ];
+
+function _moveWithCollisionSubsteps(car, dt, track) {
+  const dx = car.vx * dt;
+  const dy = car.vy * dt;
+  const steps = Math.max(1, Math.min(12, Math.ceil(Math.hypot(dx, dy) / 10)));
+  for (let i = 0; i < steps; i++) {
+    const prevX = car.x;
+    const prevY = car.y;
+    _resolveCollision(car, prevX + dx / steps, prevY + dy / steps, track);
+    if (car.lastWallHit?.time && Math.hypot(car.x - (prevX + dx / steps), car.y - (prevY + dy / steps)) > 4) break;
+  }
+}
 
 function _resolveCollision(car, nextX, nextY, track) {
   let fx = nextX, fy = nextY;
@@ -225,11 +235,12 @@ function _resolveCollision(car, nextX, nextY, track) {
       }
 
       const activeLimit = rideable ? wallRideLimit : maxDist;
-      if (hit.dist <= activeLimit) continue;
+      const invalidSurface = hit.dist > maxDist * 0.62 && !_isPointOnRoad(cx, cy, track);
+      if (hit.dist <= activeLimit && !invalidSurface) continue;
 
       anyOff = true;
       const softRideHit = rideable && hit.dist <= wallRideLimit + 8;
-      const excess = hit.dist - activeLimit + (softRideHit ? 0.25 : 0.8);
+      const excess = Math.max(0, hit.dist - activeLimit) + (invalidSurface ? 2.4 : (softRideHit ? 0.25 : 0.8));
       const nx = hit.dx / (hit.dist || 1);
       const ny = hit.dy / (hit.dist || 1);
       pushX -= nx * excess;
@@ -446,6 +457,25 @@ function _closestCenterlineSegment(x, y, centerLine) {
   }
   if (best) best.localTurn = _localTurnMax(centerLine, bestIndex, 4);
   return best;
+}
+
+function _isPointOnRoad(x, y, track) {
+  const outer = track?.outerBoundary;
+  const inner = track?.innerBoundary;
+  if (!outer?.length || !inner?.length) return true;
+  return _pointInPoly(x, y, outer) && !_pointInPoly(x, y, inner);
+}
+
+function _pointInPoly(x, y, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i][0], yi = poly[i][1];
+    const xj = poly[j][0], yj = poly[j][1];
+    const intersect = ((yi > y) !== (yj > y)) &&
+      (x < (xj - xi) * (y - yi) / ((yj - yi) || 1e-9) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
 }
 
 function _isWallRideCorner(car, hit, maxDist) {

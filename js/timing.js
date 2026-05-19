@@ -15,6 +15,16 @@ export function createTiming(bestSectors = [null, null, null]) {
   };
 }
 
+export function startTiming(timing, now) {
+  timing.started = true;
+  timing.lapStart = now;
+  timing.currentLap = 0;
+  timing.lastSector = 0;
+  timing.sectorTimes = [null, null, null];
+  timing._sectorPassed = [false, false, false];
+  return { type: 'lapStart' };
+}
+
 export function updateTiming(timing, car, track, now) {
   const cur = [car.x, car.y];
   if (!timing.prevPos) { timing.prevPos = cur; return null; }
@@ -30,16 +40,10 @@ export function updateTiming(timing, car, track, now) {
     [sl.x1, sl.y1], [sl.x2, sl.y2]
   );
 
-  if (startCrossed && !car.offTrack) {
+  if (startCrossed && !car.offTrack && _crossedForward(prev, cur, sl)) {
     if (!timing.started) {
       // first crossing — start lap
-      timing.started   = true;
-      timing.lapStart  = now;
-      timing.currentLap = 0;
-      timing.lastSector = 0;
-      timing.sectorTimes = [null, null, null];
-      timing._sectorPassed = [false, false, false];
-      event = { type: 'lapStart' };
+      event = startTiming(timing, now);
     } else {
       // complete lap
       const lapMs = now - timing.lapStart;
@@ -68,7 +72,7 @@ export function updateTiming(timing, car, track, now) {
       prev, cur,
       [sc.x1, sc.y1], [sc.x2, sc.y2]
     );
-    if (crossed && timing.started) {
+    if (crossed && timing.started && !car.offTrack && i === timing.lastSector && _crossedForward(prev, cur, sc)) {
       timing.sectorTimes[i] = now - timing.lapStart - (i === 0 ? 0 : (timing.sectorTimes.slice(0,i).reduce((a,b)=>a+(b||0),0)));
       const isNewBest = !timing.sectorBest[i] || timing.sectorTimes[i] < timing.sectorBest[i];
       if (isNewBest) timing.sectorBest[i] = timing.sectorTimes[i];
@@ -79,4 +83,13 @@ export function updateTiming(timing, car, track, now) {
   }
 
   return event;
+}
+
+function _crossedForward(prev, cur, line) {
+  const tx = Number(line.tx || 0);
+  const ty = Number(line.ty || 0);
+  if (!tx && !ty) return true;
+  const vx = cur[0] - prev[0];
+  const vy = cur[1] - prev[1];
+  return vx * tx + vy * ty > 0;
 }

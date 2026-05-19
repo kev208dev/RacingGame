@@ -87,7 +87,9 @@ export function saveBestGhost(trackId, ghost) {
   if (!d.ghosts) d.ghosts = {};
   d.ghosts[trackId] = {
     lapMs: ghost.lapMs,
+    carId: ghost.carId,
     carName: ghost.carName,
+    skin: ghost.skin || null,
     path: ghost.path.slice(0, 900),
     savedAt: Date.now(),
   };

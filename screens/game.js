@@ -3,7 +3,7 @@ import { createCar, createCar3D, updateCar3D } from '../js/car.js';
 import { updatePhysics, KMH_PER_UNIT, TOP_SPEED_MULT }  from '../js/physics.js';
 import { getTrackGroup }  from '../js/track3d.js';
 import { drawHUD }        from '../js/hud.js';
-import { createTiming, updateTiming } from '../js/timing.js';
+import { createTiming, startTiming, updateTiming } from '../js/timing.js';
 import { getInput }       from '../utils/input.js';
 import { startEngine, stopEngine, updateEngineSound, resumeContext, playLapDing, playWallThud } from '../js/audio.js';
 import { formatTime } from '../utils/math.js';
@@ -18,6 +18,7 @@ import {
 } from '../js/effects.js';
 import { scatterProps, updateScenery } from '../js/scenery.js';
 import { awardMissions } from '../utils/profile.js';
+import { CAR_DATA } from '../data/cars.js';
 
 // ── Three.js renderer (persists across retries) ──────────────
 let renderer = null;
@@ -27,6 +28,7 @@ let scene     = null;
 let camera3d  = null;
 let car       = null;
 let carMesh   = null;
+let ghostMesh = null;
 let track     = null;
 let carData   = null;
 let timing    = null;
@@ -59,6 +61,8 @@ let raceReleased = false;
 let lapPath = [];
 let bestGhost = null;
 let resultsTimeout = null;
+let raceOptions = {};
+let lapStats = null;
 
 // fixed-step physics
 const FIXED_DT  = 1 / 60;
@@ -70,9 +74,10 @@ const _camLook   = new THREE.Vector3();
 let   _camAngle  = 0;     // smoothed heading (rad)
 
 // ── public API ───────────────────────────────────────────────
-export function initGame(cd, tr, resultsCb, menuCb) {
+export function initGame(cd, tr, resultsCb, menuCb, options = {}) {
   carData     = cd;
   track       = tr;
+  raceOptions = options || {};
   onResults   = resultsCb;
   onMenu      = menuCb;
   running     = true;
@@ -83,7 +88,8 @@ export function initGame(cd, tr, resultsCb, menuCb) {
   startReadyAt = performance.now() + 3200;
   raceReleased = false;
   lapPath = [];
-  bestGhost = getBestGhost(tr.id);
+  bestGhost = raceOptions.ghostEnabled ? getBestGhost(tr.id) : null;
+  lapStats = _makeLapStats();
   if (resultsTimeout) {
     clearTimeout(resultsTimeout);
     resultsTimeout = null;
@@ -161,6 +167,7 @@ export function initGame(cd, tr, resultsCb, menuCb) {
   carMesh = createCar3D(cd);
   scene.add(carMesh);
   updateCar3D(carMesh, car, { brake: 0 });
+  ghostMesh = _createGhostMesh(bestGhost);
 
   // ── effects ──
   smokePool  = createSmokePool(scene, 80);
@@ -217,7 +224,12 @@ export function updateGame(dt, now) {
   if (input.escape) { stopGame(); if (onMenu) onMenu(); return; }
 
   startCountdown = Math.max(0, (startReadyAt - now) / 1000);
+  const wasReleased = raceReleased;
   raceReleased = startCountdown <= 0;
+  if (!wasReleased && raceReleased && timing && !timing.started) {
+    startTiming(timing, now);
+    lapStats = _makeLapStats();
+  }
   const driveInput = raceReleased ? input : {
     ...input,
     throttle: 0, brake: 0, steer: 0, handbrake: false,
@@ -229,6 +241,11 @@ export function updateGame(dt, now) {
   let steps = 0;
   while (accumulator >= FIXED_DT && steps < 5) {
     updatePhysics(car, driveInput, FIXED_DT, track);
+    if (raceReleased && lapStats) {
+      if (driveInput.throttle > 0) lapStats.throttleUsed = true;
+      lapStats.maxSpeed = Math.max(lapStats.maxSpeed, car.speed * KMH_PER_UNIT);
+      lapStats.offTrack = lapStats.offTrack || !!car.offTrack;
+    }
     accumulator -= FIXED_DT;
     steps++;
   }
@@ -250,7 +267,7 @@ export function updateGame(dt, now) {
     lapBannerNew   = isNew;
     lapBannerTimer = 2.4;
     pendingResults = { ...event };
-    awardMissions(track.id, event.lapMs)
+    awardMissions(track.id, event.lapMs, _completionContext())
       .then(rewards => {
         if (pendingResults === event || pendingResults?.lapMs === event.lapMs) pendingResults.rewards = rewards;
       })
@@ -288,6 +305,7 @@ export function updateGame(dt, now) {
 
   // ── 3D update ──
   updateCar3D(carMesh, car, driveInput, track);
+  _updateGhostMesh(now);
   updateScenery(propsGroup, now);
   _updateCamera(dt);
 
@@ -310,7 +328,9 @@ function _saveLapCompletion(event, isNew, completedPath) {
     if (isNew) {
       saveBestGhost(track.id, {
         lapMs: event.lapMs,
+        carId: carData.id,
         carName: carData.name,
+        skin: carData.skin || null,
         path: completedPath,
       });
       bestGhost = getBestGhost(track.id);
@@ -318,6 +338,59 @@ function _saveLapCompletion(event, isNew, completedPath) {
   } catch (error) {
     console.warn('Lap persistence failed, continuing to results:', error);
   }
+}
+
+function _makeLapStats() {
+  return {
+    throttleUsed: false,
+    offTrack: false,
+    maxSpeed: 0,
+  };
+}
+
+function _completionContext() {
+  return {
+    mode: raceOptions.mode || 'online',
+    noThrottle: !lapStats?.throttleUsed,
+    offTrack: !!lapStats?.offTrack,
+    maxSpeed: lapStats?.maxSpeed || 0,
+  };
+}
+
+function _createGhostMesh(ghost) {
+  if (!ghost?.path?.length || !scene) return null;
+  const ghostCar = CAR_DATA.find(item => item.id === ghost.carId) || carData;
+  const mesh = createCar3D({ ...ghostCar, skin: ghost.skin });
+  mesh.name = 'best-lap-ghost';
+  mesh.traverse(child => {
+    if (!child.isMesh || !child.material) return;
+    const mat = child.material.clone();
+    mat.transparent = true;
+    mat.opacity = child.name.toLowerCase().includes('tire') ? 0.22 : 0.36;
+    mat.depthWrite = false;
+    if (mat.emissive) mat.emissiveIntensity = Math.max(mat.emissiveIntensity || 0, 0.22);
+    child.material = mat;
+  });
+  scene.add(mesh);
+  return mesh;
+}
+
+function _updateGhostMesh(now) {
+  if (!ghostMesh || !bestGhost?.path?.length || !timing?.started || timing.lapStart === null) return;
+  const elapsed = now - timing.lapStart;
+  const path = bestGhost.path;
+  let index = path.findIndex(point => point.t >= elapsed);
+  if (index <= 0) index = Math.min(1, path.length - 1);
+  const prev = path[index - 1] || path[0];
+  const next = path[index] || path[path.length - 1];
+  const span = Math.max(1, (next.t || 0) - (prev.t || 0));
+  const k = Math.max(0, Math.min(1, (elapsed - (prev.t || 0)) / span));
+  const x = prev.x + (next.x - prev.x) * k;
+  const y = prev.y + (next.y - prev.y) * k;
+  const angle = Math.atan2(next.y - prev.y, next.x - prev.x);
+  ghostMesh.position.set(x, 1.4, -y);
+  ghostMesh.rotation.y = Number.isFinite(angle) ? angle : ghostMesh.rotation.y;
+  ghostMesh.visible = elapsed <= (path[path.length - 1]?.t || 0) + 800;
 }
 
 // ── drift smoke + skid mark emission ─────────────────────────
@@ -595,6 +668,8 @@ function _resetCar() {
   startCountdown = 0;
   startReadyAt = performance.now();
   raceReleased = true;
+  startTiming(timing, performance.now());
+  lapStats = _makeLapStats();
   lapBannerTimer = 0;
   pendingResults = null;
   if (resultsTimeout) {

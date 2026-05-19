@@ -1,4 +1,6 @@
 import { initCarSelect }   from './screens/carSelect.js';
+import { initSkinSelect }  from './screens/skinSelect.js';
+import { initModeSelect }  from './screens/modeSelect.js';
 import { initTrackSelect }  from './screens/trackSelect.js';
 import { TRACKS }           from './data/tracks.js';
 import { initGame, updateGame, stopGame } from './screens/game.js';
@@ -27,7 +29,10 @@ import { nicknameRejectMessage } from './utils/nicknameFilter.js';
 
 let currentScreen = 'auth';
 let selectedCar   = null;
+let selectedSkin  = null;
 let selectedTrack = null;
+let selectedMode  = 'online';
+let selectedRaceOptions = {};
 let lastTime      = 0;
 let authMode      = 'login';
 
@@ -53,26 +58,51 @@ function goToCarSelect() {
   showScreen('screen-carselect');
   initCarSelect((car) => {
     selectedCar = car;
-    goToTrackSelect();
+    goToSkinSelect();
   });
+}
+
+function goToSkinSelect() {
+  currentScreen = 'skinSelect';
+  showScreen('screen-skinselect');
+  initSkinSelect(
+    (skin) => { selectedSkin = skin; goToModeSelect(); },
+    () => { goToCarSelect(); }
+  );
+}
+
+function goToModeSelect() {
+  currentScreen = 'modeSelect';
+  showScreen('screen-modeselect');
+  initModeSelect(
+    (mode) => { selectedMode = mode; goToTrackSelect(); },
+    () => { goToSkinSelect(); }
+  );
 }
 
 function goToTrackSelect() {
   currentScreen = 'trackSelect';
   showScreen('screen-trackselect');
   initTrackSelect(
-    (track) => { selectedTrack = track; goToGame(); },
-    ()      => { goToCarSelect(); }
+    (track, options = {}) => {
+      selectedTrack = track;
+      selectedRaceOptions = { ...options, mode: selectedMode };
+      goToGame();
+    },
+    ()      => { goToModeSelect(); },
+    { mode: selectedMode }
   );
 }
 
 function goToGame() {
   currentScreen = 'game';
   hideScreens();
+  const raceCar = { ...selectedCar, skin: selectedSkin };
   initGame(
-    selectedCar, selectedTrack,
+    raceCar, selectedTrack,
     (lapData) => { goToResults(lapData); },
-    ()        => { goToCarSelect(); }
+    ()        => { goToCarSelect(); },
+    selectedRaceOptions
   );
 }
 
@@ -82,8 +112,9 @@ function goToResults(lapData) {
   showScreen('screen-results');
   initResults(
     lapData,
-    selectedCar,
+    { ...selectedCar, skin: selectedSkin },
     selectedTrack,
+    selectedRaceOptions,
     () => { goToGame(); },       // retry
     () => { goToCarSelect(); }   // menu
   );

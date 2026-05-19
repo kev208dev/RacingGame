@@ -126,6 +126,7 @@ function makeOfficialCircuit({
   const startLine = {
     x1: sc.x + perpDx * halfW, y1: sc.y + perpDy * halfW,
     x2: sc.x - perpDx * halfW, y2: sc.y - perpDy * halfW,
+    tx: Math.cos(sAngle), ty: Math.sin(sAngle),
   };
 
   const sectors = [];
@@ -141,6 +142,7 @@ function makeOfficialCircuit({
       checkLine: {
         x1: c.x + px * halfW, y1: c.y + py * halfW,
         x2: c.x - px * halfW, y2: c.y - py * halfW,
+        tx: Math.cos(a), ty: Math.sin(a),
       },
       color: s === 1 ? (theme.sector1 || '#2ec4b6') : (theme.sector2 || '#c77dff'),
     });
@@ -351,6 +353,43 @@ export const TRACKS = [
       [850, 440], [710, 535], [540, 605], [380, 680], [270, 785],
       [255, 900], [355, 980], [560, 1000], [720, 925], [610, 835],
       [220, 800],
+    ],
+  }),
+  makeOfficialCircuit({
+    id: 'aurora_endurance',
+    name: 'Aurora Endurance',
+    length: '11.620 km',
+    difficulty: '매우 어려움',
+    desc: '기존 맵보다 약 두 배 긴 장거리 변수형 서킷',
+    character: '초장거리 직선 + 연속 S 코너 + 고저차 리듬 + 마지막 헤어핀',
+    width: 150,
+    scale: 4.15,
+    startBackOffset: 120,
+    sourceSize: { width: 1940, height: 1080 },
+    theme: { accent: '#38bdf8', sector1: '#facc15', sector2: '#fb7185', map: '#ecfeff', background: '#26384a', track: '#2f343b' },
+    info: {
+      country: 'Fantasy',
+      gpName: 'Aurora Long Trial',
+      laps: 24,
+      turns: 28,
+      elevationChangeM: 64,
+      firstGrandPrix: 2026,
+      fastestLapRecord: 'No record',
+      fastestLapDriver: 'Open',
+      polePositionRecord: 'No record',
+      polePositionDriver: 'Open',
+      mostWinsDriver: 'Open',
+      mostWinsCount: 0,
+      iconicMomentTitle: 'Double-Length Variable Course',
+      famousCorners: ['North Lights', 'Mirror Esses', 'Last Dawn Hairpin'],
+      roadProfile: { type: 'climb', height: 34 },
+    },
+    trace: [
+      [170, 815], [510, 760], [875, 820], [1275, 775], [1700, 705],
+      [1835, 545], [1725, 390], [1465, 310], [1190, 190], [860, 170],
+      [590, 250], [360, 385], [235, 555], [305, 720], [570, 825],
+      [890, 900], [1225, 875], [1515, 785], [1640, 895], [1480, 1000],
+      [1115, 1015], [770, 945], [465, 990], [250, 930], [170, 815],
     ],
   }),
 ];

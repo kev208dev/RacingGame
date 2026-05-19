@@ -5,11 +5,12 @@ import {
   submitLeaderboard,
   subscribeLeaderboard,
 } from '../utils/leaderboard.js';
+import { awardRankOneSkin } from '../utils/profile.js';
 
 let unsubscribeLeaderboard = null;
 let renderToken = 0;
 
-export function initResults(data, car, track, retryCb, menuCb) {
+export function initResults(data, car, track, raceOptions = {}, retryCb, menuCb) {
   cleanupLeaderboard();
   const token = ++renderToken;
 
@@ -42,24 +43,39 @@ export function initResults(data, car, track, retryCb, menuCb) {
       `;
       sectorsEl.appendChild(row);
     });
-    if (data.rewards?.length) {
-      const reward = data.rewards.reduce((sum, mission) => sum + mission.reward, 0);
+    const coinRewards = (data.rewards || []).filter(mission => Number(mission.reward || 0) > 0);
+    const skinRewards = (data.rewards || []).filter(mission => mission.skin);
+    if (coinRewards.length) {
+      const reward = coinRewards.reduce((sum, mission) => sum + mission.reward, 0);
       const row = document.createElement('div');
       row.className = 'sector-row reward-row';
       row.innerHTML = `
         <span class="sector-label">미션</span>
         <span class="sector-time best">+${reward.toLocaleString()} coins</span>
-        <span class="sector-best">${data.rewards.length}개 완료</span>
+        <span class="sector-best">${coinRewards.length}개 완료</span>
+      `;
+      sectorsEl.appendChild(row);
+    }
+    for (const reward of skinRewards) {
+      const row = document.createElement('div');
+      row.className = 'sector-row reward-row';
+      row.innerHTML = `
+        <span class="sector-label">스킨</span>
+        <span class="sector-time best">${reward.skin.name}</span>
+        <span class="sector-best">해금 완료</span>
       `;
       sectorsEl.appendChild(row);
     }
   }
 
-  if (subtitleEl) subtitleEl.textContent = car && track ? `${track.name} 전체 랭킹 / ${car.name}` : '--';
+  const online = raceOptions.mode !== 'offline';
+  if (subtitleEl) subtitleEl.textContent = car && track
+    ? `${track.name} / ${car.name} / ${online ? '온라인 랭킹' : '오프라인 연습'}`
+    : '--';
   _renderLeaderboard(listEl, null);
-  _setStatus(statusEl, '기록을 서버에 업로드 중...');
+  _setStatus(statusEl, online ? '기록을 서버에 업로드 중...' : '오프라인 모드라 서버 업로드를 건너뜁니다.');
 
-  if (car && track) {
+  if (car && track && online) {
     _syncLeaderboard({ data, car, track, token, listEl, statusEl });
     unsubscribeLeaderboard = subscribeLeaderboard(payload => {
       if (token !== renderToken) return;
@@ -67,6 +83,8 @@ export function initResults(data, car, track, retryCb, menuCb) {
       _renderLeaderboard(listEl, payload.leaderboard);
       _setStatus(statusEl, '실시간 갱신됨');
     });
+  } else if (car && track) {
+    _renderLeaderboard(listEl, []);
   } else {
     _setStatus(statusEl, '차량/트랙 정보가 없어 온라인 랭킹을 불러오지 못했습니다.');
   }
@@ -96,6 +114,10 @@ async function _syncLeaderboard({ data, car, track, token, listEl, statusEl }) {
       _setStatus(statusEl, `내 최고 기록 기준 현재 ${result.rank}위`);
     } else {
       _setStatus(statusEl, '기록은 저장됐지만 TOP 10에는 아직 들지 못했습니다.');
+    }
+    if (result.rank === 1) {
+      const skinReward = awardRankOneSkin();
+      if (skinReward) _setStatus(statusEl, `온라인 1위 달성. ${skinReward.skin.name} 해금!`);
     }
   } catch {
     try {

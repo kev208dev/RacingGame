@@ -114,12 +114,50 @@
   <div id="screen-trackselect" class="screen">
     <div class="screen-header">
       <h1>트랙 선택</h1>
-      <p class="subtitle">서킷을 선택하세요</p>
+      <p class="subtitle">서킷을 선택하세요 · <span id="track-mode-label">온라인 랭킹</span></p>
     </div>
+    <label class="ghost-option hidden" id="ghost-option-box">
+      <input id="track-ghost-toggle" type="checkbox" checked />
+      <span>내 최고 기록 유령 켜기</span>
+    </label>
     <div class="track-grid" id="track-grid"></div>
     <div class="screen-footer">
-      <button class="btn-secondary" id="btn-back-car">← 차량 선택</button>
+      <button class="btn-secondary" id="btn-back-car">← 모드 선택</button>
       <button class="btn-primary" id="btn-start-game">게임 시작 →</button>
+    </div>
+  </div>
+
+  <div id="screen-skinselect" class="screen">
+    <div class="screen-header">
+      <h1>스킨 선택</h1>
+      <p class="subtitle">이벤트 스킨을 장착하세요</p>
+    </div>
+    <div class="skin-grid" id="skin-grid"></div>
+    <div class="screen-footer">
+      <button class="btn-secondary" id="btn-back-skin-car">← 차량 선택</button>
+      <div class="car-desc" id="skin-desc"></div>
+      <button class="btn-primary" id="btn-to-mode">모드 선택 →</button>
+    </div>
+  </div>
+
+  <div id="screen-modeselect" class="screen">
+    <div class="screen-header">
+      <h1>모드 선택</h1>
+      <p class="subtitle">온라인 랭킹 또는 오프라인 유령 주행</p>
+    </div>
+    <div class="mode-grid">
+      <button class="mode-card" id="btn-mode-online" type="button">
+        <b>ONLINE</b>
+        <span>완주 기록을 서버 랭킹에 올리고 실시간 기록 알림을 받습니다.</span>
+      </button>
+      <button class="mode-card" id="btn-mode-offline" type="button">
+        <b>OFFLINE</b>
+        <span>서버 업로드 없이 연습합니다. 맵 선택 후 내 최고 기록 유령을 켤 수 있습니다.</span>
+      </button>
+    </div>
+    <div class="screen-footer">
+      <button class="btn-secondary" id="btn-back-mode-skin">← 스킨 선택</button>
+      <div></div>
     </div>
   </div>
 

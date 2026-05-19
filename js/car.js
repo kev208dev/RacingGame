@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { createCarDesign } from './carDesigns.js';
+import { getSkinById } from '../data/skins.js';
 
 const CAR_DESIGN_BY_ID = {
   apex_gt3: 'gt_silver',
@@ -10,6 +11,9 @@ const CAR_DESIGN_BY_ID = {
   shadow_rs: 'rally_blue',
   neon_wraith: 'hyper_purple',
   zero_f1: 'formula_red',
+  singularity_vmax: 'cyber_black',
+  grip_oracle: 'classic_green',
+  boost_phoenix: 'muscle_orange',
 };
 
 // ── physics state ────────────────────────────────────────────
@@ -32,6 +36,7 @@ export function createCar(carData, startPos) {
     boostSpeedMult: carData.boostSpeedMult || 1.23,
     boostAccelMult: carData.boostAccelMult || 1.35,
     flameScale:  carData.flameScale || 1,
+    skin:        carData.skin || null,
     color:       carData.color,
     bodyColor:   carData.color,
     x: startPos.x, y: startPos.y, angle: startPos.angle,
@@ -70,6 +75,7 @@ export function createCar3D(carData = {}) {
   const root = new THREE.Group();
   const designType = carData.designType || CAR_DESIGN_BY_ID[carData.id] || 'formula_red';
   const model = createCarDesign(designType);
+  _applySkin(model, carData.skin);
   model.rotation.y = Math.PI / 2;
   model.scale.set(5.2, 5.2, 5.2);
   root.add(model);
@@ -93,6 +99,28 @@ export function createCar3D(carData = {}) {
   root._lastWheelTime = performance.now();
 
   return root;
+}
+
+function _applySkin(model, skinData) {
+  const skin = getSkinById(skinData?.id || skinData);
+  if (!skin || skin.id === 'factory') return;
+  const paint = new THREE.Color(skin.color || '#ffffff');
+  const accent = new THREE.Color(skin.accent || skin.color || '#ffffff');
+  const emissive = skin.emissive ? new THREE.Color(skin.emissive) : accent.clone().multiplyScalar(0.22);
+
+  model.traverse(child => {
+    if (!child.isMesh || !child.material) return;
+    const name = child.name.toLowerCase();
+    if (name.includes('tire') || name.includes('glass') || name.includes('brakelight') || name.includes('flame')) return;
+    const isAccent = name.includes('rim') || name.includes('wing') || name.includes('stripe') || name.includes('spoiler');
+    const mat = child.material.clone();
+    mat.color.copy(isAccent ? accent : paint);
+    if (skin.emissive || skin.id === 'ori' || skin.id === 'flame') {
+      mat.emissive = (isAccent ? accent : emissive).clone();
+      mat.emissiveIntensity = isAccent ? 0.45 : 0.18;
+    }
+    child.material = mat;
+  });
 }
 
 // ── per-frame mesh sync ──────────────────────────────────────

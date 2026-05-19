@@ -7,7 +7,7 @@ let selectedCategory = 'All';
 let onSelect         = null;
 let profileUnsub     = null;
 
-const CATEGORIES = ['All', 'GT3', 'Lightweight', 'Prototype', 'Road Car', 'Heavyweight', 'Formula'];
+const CATEGORIES = ['All', 'GT3', 'Lightweight', 'Prototype', 'Road Car', 'Heavyweight', 'Formula', 'Transcendent'];
 
 export function initCarSelect(cb) {
   onSelect         = cb;
@@ -139,9 +139,10 @@ function _isLocked(car) {
 }
 
 function _statRow(label, value) {
+  const over = value > 1.05;
   const pct = Math.max(8, Math.min(100, Math.round(value * 100)));
   return `
-    <div class="stat-row">
+    <div class="stat-row${over ? ' over' : ''}">
       <span>${label}</span>
       <b><i style="width:${pct}%"></i></b>
     </div>
@@ -158,6 +159,9 @@ const PREVIEW_DESIGNS = {
   shadow_rs: { kind: 'rally', body: '#1565c0', accent: '#f2f5f6', wheel: '#f2f5f6', stripe: 'center', wing: true, length: 108, height: 33 },
   neon_wraith: { kind: 'hyper', body: '#7b1fa2', accent: '#00d9ff', wheel: '#00d9ff', stripe: 'channel', wing: true, length: 126, height: 25 },
   zero_f1: { kind: 'formula', body: '#e11218', accent: '#f2f5f6', wheel: '#050505', stripe: 'center', length: 126, height: 23 },
+  singularity_vmax: { kind: 'hyper', body: '#35f5ff', accent: '#ffd166', wheel: '#35f5ff', stripe: 'channel', wing: true, length: 130, height: 23 },
+  grip_oracle: { kind: 'formula', body: '#4ade80', accent: '#f2f5f6', wheel: '#050505', stripe: 'center', length: 118, height: 22 },
+  boost_phoenix: { kind: 'muscle', body: '#ff4a08', accent: '#ffd166', wheel: '#ff4a08', stripe: 'dual', scoop: true, length: 122, height: 31 },
 };
 
 function _drawCarPreview(canvas, car) {

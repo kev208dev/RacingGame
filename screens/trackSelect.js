@@ -3,10 +3,12 @@ import { TRACKS } from '../data/tracks.js';
 let selectedIndex = 0;
 let onSelect      = null;
 let onBack        = null;
+let raceMode      = 'online';
 
-export function initTrackSelect(cb, backCb) {
+export function initTrackSelect(cb, backCb, options = {}) {
   onSelect      = cb;
   onBack        = backCb;
+  raceMode      = options.mode || 'online';
   selectedIndex = 0;
   _render();
 }
@@ -65,8 +67,18 @@ function _render() {
   // ── buttons ──
   const backBtn  = document.getElementById('btn-back-car');
   const startBtn = document.getElementById('btn-start-game');
+  const modeEl = document.getElementById('track-mode-label');
+  const ghostBox = document.getElementById('ghost-option-box');
+  const ghostToggle = document.getElementById('track-ghost-toggle');
+  if (modeEl) modeEl.textContent = raceMode === 'offline' ? '오프라인 연습' : '온라인 랭킹';
+  if (ghostBox) ghostBox.classList.toggle('hidden', raceMode !== 'offline');
   if (backBtn)  backBtn.onclick  = () => { if (onBack)   onBack(); };
-  if (startBtn) startBtn.onclick = () => { if (onSelect) onSelect(TRACKS[selectedIndex]); };
+  if (startBtn) startBtn.onclick = () => {
+    if (onSelect) onSelect(TRACKS[selectedIndex], {
+      mode: raceMode,
+      ghostEnabled: raceMode === 'offline' && !!ghostToggle?.checked,
+    });
+  };
 }
 
 // ── mini map drawing ─────────────────────────────────────────

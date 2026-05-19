@@ -1,11 +1,13 @@
 import { CAR_DATA } from '../data/cars.js';
 import { MISSIONS } from '../data/missions.js';
+import { SKIN_DATA } from '../data/skins.js';
 import { getCurrentUser, onAuthChange } from './auth.js';
 import { getPlayerProfile, setLeaderboardIdentity, setPlayerName } from './leaderboard.js';
 import { safeNickname, validateNickname } from './nicknameFilter.js';
 
 const PROFILES_KEY = 'racing_local_profiles';
 const DEFAULT_OWNED = ['apex_gt3', 'feather_sprint'];
+const DEFAULT_SKINS = ['factory'];
 const DEFAULT_THEME = '#2ec4b6';
 const SUPER_ACCOUNT_IDS = new Set(['admin', 'kev208', 'kev208dev']);
 const ACCOUNT_CAR_UNLOCKS = {
@@ -13,6 +15,7 @@ const ACCOUNT_CAR_UNLOCKS = {
   'i-mtheking': ['zero_f1'],
 };
 const ALL_CAR_IDS = CAR_DATA.map(car => car.id);
+const ALL_SKIN_IDS = SKIN_DATA.map(skin => skin.id);
 
 let profile = null;
 let loading = false;
@@ -78,6 +81,13 @@ export function isOwned(carId) {
   return !!profile?.owned_car_ids?.includes(carId);
 }
 
+export function isSkinOwned(skinId) {
+  if (isSuperAccount()) return ALL_SKIN_IDS.includes(skinId);
+  if (!skinId) return false;
+  if (!getCurrentUser()) return DEFAULT_SKINS.includes(skinId);
+  return !!profile?.owned_skin_ids?.includes(skinId);
+}
+
 export async function updateProfileSettings({ nickname, themeColor }) {
   if (!profile) throw new Error('login-required');
   const cleanName = validateNickname(nickname, profile.nickname);
@@ -113,7 +123,7 @@ export async function claimStarterCar(carId) {
   return profile;
 }
 
-export async function awardMissions(trackId, lapMs) {
+export async function awardMissions(trackId, lapMs, context = {}) {
   if (!profile) return [];
   const completed = new Set(profile.completed_missions || []);
   const rewards = MISSIONS.filter(mission =>
@@ -121,7 +131,8 @@ export async function awardMissions(trackId, lapMs) {
     lapMs <= mission.lapMs &&
     !completed.has(mission.id)
   );
-  if (!rewards.length) return [];
+  const skinRewards = awardSkinProgress(trackId, context);
+  if (!rewards.length && !skinRewards.length) return [];
   const rewardCoins = rewards.reduce((sum, mission) => sum + mission.reward, 0);
   const nextCompleted = unique([...(profile.completed_missions || []), ...rewards.map(m => m.id)]);
   profile = saveProfile({
@@ -130,7 +141,81 @@ export async function awardMissions(trackId, lapMs) {
     completed_missions: nextCompleted,
   });
   notify();
-  return rewards;
+  return [...rewards, ...skinRewards];
+}
+
+export function awardSkinProgress(trackId, context = {}) {
+  if (!profile) return [];
+  const stats = profile.stats || {};
+  const trackPlays = { ...(stats.track_plays || {}) };
+  trackPlays[trackId] = Number(trackPlays[trackId] || 0) + 1;
+
+  const nextStats = {
+    ...stats,
+    track_plays: trackPlays,
+    no_throttle_finishes: Number(stats.no_throttle_finishes || 0) + (context.noThrottle ? 1 : 0),
+    finishes: Number(stats.finishes || 0) + 1,
+  };
+
+  const owned = new Set(profile.owned_skin_ids || DEFAULT_SKINS);
+  const gained = [];
+  for (const skin of SKIN_DATA) {
+    if (owned.has(skin.id)) continue;
+    const unlock = skin.unlock || {};
+    const ok =
+      unlock.type === 'noThrottleFinish' ? !!context.noThrottle :
+      unlock.type === 'trackPlays' ? Object.values(trackPlays).some(count => Number(count) >= Number(unlock.count || 0)) :
+      unlock.type === 'trackFinish' ? unlock.trackId === trackId :
+      false;
+    if (ok) {
+      owned.add(skin.id);
+      gained.push({ id: `skin_${skin.id}`, name: `${skin.name} 획득`, reward: 0, skin });
+    }
+  }
+
+  profile = saveProfile({
+    ...profile,
+    stats: nextStats,
+    owned_skin_ids: [...owned],
+  });
+  notify();
+  return gained;
+}
+
+export function awardRankOneSkin() {
+  if (!profile) return null;
+  const skin = SKIN_DATA.find(item => item.unlock?.type === 'rankOne');
+  if (!skin || isSkinOwned(skin.id)) return null;
+  profile = saveProfile({
+    ...profile,
+    owned_skin_ids: unique([...(profile.owned_skin_ids || DEFAULT_SKINS), skin.id]),
+  });
+  notify();
+  return { id: `skin_${skin.id}`, name: `${skin.name} 획득`, reward: 0, skin };
+}
+
+export function getSkinUnlockText(skin) {
+  if (!skin) return '';
+  if (isSkinOwned(skin.id)) return '보유 중';
+  if (!getCurrentUser()) return '로그인 후 이벤트 해금';
+  return skin.unlock?.text || '이벤트 조건 달성';
+}
+
+export function getSkinProgressText(skin) {
+  if (!skin) return '';
+  if (isSkinOwned(skin.id)) return '바로 장착 가능';
+  const stats = profile?.stats || {};
+  const unlock = skin.unlock || {};
+  if (unlock.type === 'trackPlays') {
+    const best = Math.max(0, ...Object.values(stats.track_plays || {}).map(Number));
+    return `${best.toLocaleString()}/${Number(unlock.count || 0).toLocaleString()} 플레이`;
+  }
+  if (unlock.type === 'noThrottleFinish') {
+    return `${Number(stats.no_throttle_finishes || 0)}회 달성`;
+  }
+  if (unlock.type === 'rankOne') return '온라인 랭킹 1위 필요';
+  if (unlock.type === 'trackFinish') return `${unlock.trackId} 완주 필요`;
+  return '조건을 달성하면 해금';
 }
 
 export function rollStarterCar() {
@@ -176,8 +261,11 @@ function ensureProfile(user) {
     if (accountUnlocks.some(id => !normalized.owned_car_ids.includes(id))) {
       normalized = saveProfile({ ...normalized, owned_car_ids: unique([...normalized.owned_car_ids, ...accountUnlocks]) });
     }
-    if (isSuperAccount(user) && !ALL_CAR_IDS.every(id => normalized.owned_car_ids.includes(id))) {
-      normalized = saveProfile({ ...normalized, owned_car_ids: ALL_CAR_IDS, starter_claimed: true });
+    if (isSuperAccount(user) && (
+      !ALL_CAR_IDS.every(id => normalized.owned_car_ids.includes(id)) ||
+      !ALL_SKIN_IDS.every(id => normalized.owned_skin_ids.includes(id))
+    )) {
+      normalized = saveProfile({ ...normalized, owned_car_ids: ALL_CAR_IDS, owned_skin_ids: ALL_SKIN_IDS, starter_claimed: true });
     }
     return normalized;
   }
@@ -189,7 +277,9 @@ function ensureProfile(user) {
     theme_color: DEFAULT_THEME,
     coins: 0,
     owned_car_ids: isSuperAccount(user) ? ALL_CAR_IDS : unique([...DEFAULT_OWNED, ...accountUnlockIds(user)]),
+    owned_skin_ids: isSuperAccount(user) ? ALL_SKIN_IDS : [...DEFAULT_SKINS],
     completed_missions: [],
+    stats: {},
     starter_claimed: isSuperAccount(user),
   };
   return saveProfile(fresh);
@@ -205,6 +295,7 @@ function saveProfile(next) {
 
 function normalizeProfile(row, user = getCurrentUser()) {
   const owned = Array.isArray(row.owned_car_ids) ? row.owned_car_ids : DEFAULT_OWNED;
+  const ownedSkins = Array.isArray(row.owned_skin_ids) ? row.owned_skin_ids : DEFAULT_SKINS;
   const userId = row.user_id || user?.id;
   const accountUnlocks = accountUnlockIds({ id: userId });
   return {
@@ -213,7 +304,9 @@ function normalizeProfile(row, user = getCurrentUser()) {
     theme_color: normalizeColor(row.theme_color) || DEFAULT_THEME,
     coins: Number(row.coins || 0),
     owned_car_ids: isSuperAccount({ id: userId }) ? ALL_CAR_IDS : unique([...owned, ...accountUnlocks]),
+    owned_skin_ids: isSuperAccount({ id: userId }) ? ALL_SKIN_IDS : unique([...DEFAULT_SKINS, ...ownedSkins]),
     completed_missions: Array.isArray(row.completed_missions) ? row.completed_missions : [],
+    stats: row.stats && typeof row.stats === 'object' ? row.stats : {},
     starter_claimed: isSuperAccount({ id: userId }) || !!row.starter_claimed,
   };
 }
