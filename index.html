@@ -148,7 +148,7 @@
     <div class="mode-grid">
       <button class="mode-card" id="btn-mode-online" type="button">
         <b>ONLINE</b>
-        <span>완주 기록을 서버 랭킹에 올리고 실시간 기록 알림을 받습니다.</span>
+        <span>서버 방에 접속해 친구방 또는 빠른 매칭으로 같이 달립니다.</span>
       </button>
       <button class="mode-card" id="btn-mode-offline" type="button">
         <b>OFFLINE</b>
@@ -158,6 +158,97 @@
     <div class="screen-footer">
       <button class="btn-secondary" id="btn-back-mode-skin">← 스킨 선택</button>
       <div></div>
+    </div>
+  </div>
+
+  <div id="screen-lobby" class="screen">
+    <div class="screen-header">
+      <h1>온라인 멀티플레이</h1>
+      <p class="subtitle" id="lobby-subtitle">친구와 함께 달리거나 매칭으로 새 라이벌을 만나세요</p>
+    </div>
+    <div class="lobby-layout">
+      <aside class="lobby-mode-pane">
+        <div class="lobby-mode-tabs">
+          <button class="lobby-tab active" id="lobby-tab-quick" type="button">빠른 매칭</button>
+          <button class="lobby-tab" id="lobby-tab-private" type="button">친구방</button>
+        </div>
+
+        <div id="lobby-pane-quick" class="lobby-pane">
+          <p class="lobby-pane-hint">트랙을 골라 매칭 큐에 입장하세요. 2명 이상 모이면 자동 출발합니다.</p>
+          <label class="lobby-field">
+            <span>매칭 트랙</span>
+            <select id="lobby-quick-track"></select>
+          </label>
+          <div class="lobby-queue-status" id="lobby-queue-status">대기 인원: -</div>
+          <button class="btn-primary" id="btn-lobby-quick" type="button">매칭 시작</button>
+          <button class="btn-secondary hidden" id="btn-lobby-quick-cancel" type="button">매칭 취소</button>
+        </div>
+
+        <div id="lobby-pane-private" class="lobby-pane hidden">
+          <p class="lobby-pane-hint">6자리 코드를 친구에게 공유하거나 받은 코드를 입력하세요.</p>
+          <label class="lobby-field">
+            <span>방 만들기 - 트랙</span>
+            <select id="lobby-private-track"></select>
+          </label>
+          <button class="btn-primary" id="btn-lobby-create" type="button">새 방 만들기</button>
+          <div class="lobby-divider"><span>또는</span></div>
+          <label class="lobby-field">
+            <span>코드 입력</span>
+            <input id="lobby-private-code" type="text" maxlength="8" placeholder="예: K9PR2X" autocomplete="off" />
+          </label>
+          <button class="btn-secondary" id="btn-lobby-join" type="button">방 입장</button>
+        </div>
+
+        <button class="btn-link" id="btn-lobby-back" type="button">← 모드 선택으로</button>
+        <div class="lobby-conn-state" id="lobby-conn-state">서버 연결 중...</div>
+      </aside>
+
+      <section class="lobby-room-pane hidden" id="lobby-room-pane">
+        <header class="lobby-room-head">
+          <div>
+            <span class="lobby-room-label" id="lobby-room-label">방 코드</span>
+            <h2 id="lobby-room-code">------</h2>
+          </div>
+          <div class="lobby-room-meta">
+            <span id="lobby-room-track">트랙</span>
+            <span id="lobby-room-laps">3 LAP</span>
+          </div>
+        </header>
+        <div class="lobby-room-controls" id="lobby-room-controls">
+          <label class="lobby-field">
+            <span>트랙 변경</span>
+            <select id="lobby-room-track-select"></select>
+          </label>
+          <label class="lobby-field">
+            <span>랩 수</span>
+            <select id="lobby-room-laps-select">
+              <option value="1">1 LAP</option>
+              <option value="2">2 LAP</option>
+              <option value="3" selected>3 LAP</option>
+              <option value="4">4 LAP</option>
+              <option value="5">5 LAP</option>
+            </select>
+          </label>
+        </div>
+        <ul class="lobby-player-list" id="lobby-player-list"></ul>
+        <div class="lobby-room-actions">
+          <button class="btn-secondary" id="btn-lobby-ready" type="button">준비 완료</button>
+          <button class="btn-primary" id="btn-lobby-start" type="button">레이스 시작</button>
+          <button class="btn-link" id="btn-lobby-leave" type="button">방 나가기</button>
+        </div>
+      </section>
+    </div>
+    <div id="lobby-toast" class="lobby-toast hidden"></div>
+  </div>
+
+  <div id="screen-mpresults" class="screen">
+    <div class="mpresults-box">
+      <h2 id="mpresults-title">레이스 종료</h2>
+      <ol class="mpresults-list" id="mpresults-list"></ol>
+      <div class="mpresults-actions">
+        <button class="btn-primary" id="btn-mp-rematch">로비로 돌아가기</button>
+        <button class="btn-secondary" id="btn-mp-to-menu">메뉴로</button>
+      </div>
     </div>
   </div>
 

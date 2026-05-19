@@ -382,7 +382,6 @@ export const TRACKS = [
       mostWinsCount: 0,
       iconicMomentTitle: 'Double-Length Variable Course',
       famousCorners: ['North Lights', 'Mirror Esses', 'Last Dawn Hairpin'],
-      roadProfile: { type: 'climb', height: 34 },
     },
     trace: [
       [170, 815], [510, 760], [875, 820], [1275, 775], [1700, 705],

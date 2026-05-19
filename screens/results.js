@@ -115,10 +115,7 @@ async function _syncLeaderboard({ data, car, track, token, listEl, statusEl }) {
     } else {
       _setStatus(statusEl, '기록은 저장됐지만 TOP 10에는 아직 들지 못했습니다.');
     }
-    if (result.rank === 1) {
-      const skinReward = awardRankOneSkin();
-      if (skinReward) _setStatus(statusEl, `온라인 1위 달성. ${skinReward.skin.name} 해금!`);
-    }
+    _unlockRankOneIfLeader(result.leaderboard, statusEl);
   } catch {
     try {
       const fallback = await fetchLeaderboard('', track.id, 10);
@@ -174,6 +171,14 @@ function _renderLeaderboard(listEl, rows) {
     li.append(rank, name, time);
     listEl.appendChild(li);
   });
+}
+
+function _unlockRankOneIfLeader(rows, statusEl) {
+  const me = getPlayerProfile().id;
+  const isLeader = (rows || []).some(row => row.rank === 1 && row.playerId === me);
+  if (!isLeader) return;
+  const skinReward = awardRankOneSkin();
+  if (skinReward) _setStatus(statusEl, `온라인 1위 달성. ${skinReward.skin.name} 해금!`);
 }
 
 function _themeColor(value) {

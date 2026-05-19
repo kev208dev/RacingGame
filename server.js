@@ -4,6 +4,7 @@ import { createReadStream, existsSync, readFileSync } from 'node:fs';
 import { extname, join, normalize, resolve } from 'node:path';
 import { networkInterfaces } from 'node:os';
 import { safeNickname } from './utils/nicknameFilter.js';
+import { attachMultiplayer, mpStats } from './js/net/mpServer.js';
 
 loadEnvFile('.env.local');
 loadEnvFile('.env');
@@ -287,7 +288,7 @@ async function handlePostLeaderboard(req, res) {
   }
 
   const nextDb = (DATABASE_URL || (SUPABASE_URL && SUPABASE_KEY)) ? await loadDb() : db;
-  const leaderboard = getLeaderboard(nextDb, carId, trackId, 10);
+  const leaderboard = getLeaderboard(nextDb, '', trackId, 20);
   const rank = leaderboard.find(r => r.playerId === playerId)?.rank ?? null;
   if (improved) broadcast({ carId, trackId, leaderboard });
 
@@ -424,6 +425,8 @@ const server = createServer(async (req, res) => {
       await handleGetLeaderboard(req, res);
     } else if (req.method === 'POST' && req.url === '/api/leaderboard') {
       await handlePostLeaderboard(req, res);
+    } else if (req.method === 'GET' && req.url === '/api/mp/stats') {
+      sendJson(res, 200, mpStats());
     } else if (req.method === 'GET' || req.method === 'HEAD') {
       serveStatic(req, res);
     } else {
@@ -435,7 +438,10 @@ const server = createServer(async (req, res) => {
   }
 });
 
+attachMultiplayer(server, '/api/mp');
+
 server.listen(PORT, '0.0.0.0', () => {
   console.log('Racing leaderboard server is running:');
   for (const url of getLanUrls()) console.log(`  ${url}`);
+  console.log('Multiplayer WebSocket: ws://<host>/api/mp');
 });

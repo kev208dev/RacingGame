@@ -5,6 +5,9 @@ import { initTrackSelect }  from './screens/trackSelect.js';
 import { TRACKS }           from './data/tracks.js';
 import { initGame, updateGame, stopGame } from './screens/game.js';
 import { initResults }      from './screens/results.js';
+import { initLobby, teardownLobby, detachNet } from './screens/lobby.js';
+import { initMpGame, updateMpGame, stopMpGame } from './screens/mpGame.js';
+import { initMpResults }    from './screens/mpResults.js';
 import { initAuth }         from './utils/auth.js';
 import { getCurrentUser, onAuthChange, signOut, signInLocal, signUpLocal } from './utils/auth.js';
 import { clearFrameKeys }   from './utils/input.js';
@@ -75,8 +78,54 @@ function goToModeSelect() {
   currentScreen = 'modeSelect';
   showScreen('screen-modeselect');
   initModeSelect(
-    (mode) => { selectedMode = mode; goToTrackSelect(); },
+    (mode) => {
+      selectedMode = mode;
+      if (mode === 'online') goToLobby();
+      else goToTrackSelect();
+    },
     () => { goToSkinSelect(); }
+  );
+}
+
+function goToLobby() {
+  if (!selectedCar) { goToCarSelect(); return; }
+  currentScreen = 'lobby';
+  showScreen('screen-lobby');
+  const raceCar = { ...selectedCar, skin: selectedSkin };
+  initLobby(
+    raceCar,
+    (car, track, room, net, startAt, myClientId) => {
+      goToMpGame(car, track, room, net, startAt, myClientId);
+    },
+    () => { goToModeSelect(); }
+  );
+}
+
+function goToMpGame(car, track, room, net, startAt, myClientId) {
+  currentScreen = 'mpGame';
+  hideScreens();
+  detachNet();
+  initMpGame({
+    car,
+    track,
+    net,
+    startAt,
+    lapTarget: room.lapTarget,
+    myClientId,
+    roomPlayers: room.players,
+    onFinish: (payload) => goToMpResults(payload, net),
+    onLeave: () => { net.disconnect(); goToCarSelect(); },
+  });
+}
+
+function goToMpResults(payload, net) {
+  currentScreen = 'mpResults';
+  stopMpGame();
+  showScreen('screen-mpresults');
+  initMpResults(
+    payload,
+    () => { net.disconnect(); goToLobby(); },
+    () => { net.disconnect(); goToCarSelect(); }
   );
 }
 
@@ -127,6 +176,8 @@ function gameLoop(timestamp) {
 
   if (currentScreen === 'game') {
     updateGame(dt, timestamp);
+  } else if (currentScreen === 'mpGame') {
+    updateMpGame(dt, timestamp);
   }
 
   clearFrameKeys();
