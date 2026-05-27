@@ -9,6 +9,8 @@ const DRS_MIN_SPEED = 85;
 const WALL_RIDE_TURN_MIN = 0.105;
 const WALL_RIDE_EXTRA = 7;
 const WALL_RIDE_MIN_SPEED = 58;
+const COLLISION_EDGE_GRACE = 24;
+const OFF_ROAD_GRACE = 18;
 const STRAIGHT_DRIFT_STEER_MAX = 0.24;
 const STRAIGHT_DRIFT_SLIP_MAX = 0.16;
 const TOP_GEAR_REDLINE_MIN = 0.56;
@@ -184,11 +186,13 @@ export function updatePhysics(car, input, dt, track) {
 // Car corners (mesh-local x, z) — match wheel positions in car.js so the
 // hitbox actually covers what the player sees on screen.
 const CAR_CORNERS = [
-  [ 14,  12],  // FL
-  [ 14, -12],  // FR
-  [-12,  12],  // RL
-  [-12, -12],  // RR
+  [ 11,   8],  // FL
+  [ 11,  -8],  // FR
+  [-10,   8],  // RL
+  [-10,  -8],  // RR
 ];
+
+const _trackCollisionCaches = new WeakMap();
 
 function _moveWithCollisionSubsteps(car, dt, track) {
   const dx = car.vx * dt;
@@ -207,9 +211,9 @@ function _resolveCollision(car, nextX, nextY, track) {
   const a  = car.angle;
   const ca = Math.cos(a), sa = Math.sin(a);
   const halfTrack = (track.width || 100) / 2;
-  const guardrailOffset = halfTrack + 18;
-  const maxDist = Math.max(18, guardrailOffset - 4);
+  const maxDist = Math.max(18, halfTrack + COLLISION_EDGE_GRACE);
   const wallRideLimit = maxDist + WALL_RIDE_EXTRA;
+  const offRoadLimit = halfTrack + OFF_ROAD_GRACE;
 
   let collided = false;
   let rideTouch = false;
@@ -225,8 +229,9 @@ function _resolveCollision(car, nextX, nextY, track) {
     for (const [lx, lz] of CAR_CORNERS) {
       const cx = fx + lx * ca + lz * sa;
       const cy = fy + lx * sa - lz * ca;
-      const hit = _closestCenterlineSegment(cx, cy, track.centerLine || []);
+      const hit = _closestCenterlineSegment(cx, cy, track.centerLine || [], car._collisionSegmentHint);
       if (!hit) continue;
+      car._collisionSegmentHint = hit.index;
 
       const rideable = _isWallRideCorner(car, hit, maxDist);
       if (rideable && hit.dist > maxDist - 2 && hit.dist <= wallRideLimit + 2) {
@@ -235,7 +240,7 @@ function _resolveCollision(car, nextX, nextY, track) {
       }
 
       const activeLimit = rideable ? wallRideLimit : maxDist;
-      const invalidSurface = hit.dist > maxDist * 0.62 && !_isPointOnRoad(cx, cy, track);
+      const invalidSurface = hit.dist > offRoadLimit && !_isPointOnRoad(cx, cy, track);
       if (hit.dist <= activeLimit && !invalidSurface) continue;
 
       anyOff = true;
@@ -423,40 +428,84 @@ function _topGearRedlineRatio(car) {
   return clamp(0.56 + lowTopSpeedComp + highPowerComp, TOP_GEAR_REDLINE_MIN, TOP_GEAR_REDLINE_MAX);
 }
 
-function _closestCenterlineSegment(x, y, centerLine) {
+function _closestCenterlineSegment(x, y, centerLine, hintIndex = null) {
+  const cache = _getCollisionCache(centerLine);
+  const segments = cache.segments;
+  if (!segments.length) return null;
+
   let best = null;
   let bestD2 = Infinity;
-  let bestIndex = 0;
+  const scanSegment = (seg) => {
+    const t  = clamp(((x - seg.x1) * seg.ex + (y - seg.y1) * seg.ey) / seg.len2, 0, 1);
+    const px = seg.x1 + t * seg.ex, py = seg.y1 + t * seg.ey;
+    const ddx = x - px, ddy = y - py;
+    const d2 = ddx * ddx + ddy * ddy;
+    if (d2 < bestD2) {
+      bestD2 = d2;
+      best = {
+        px, py, dx: ddx, dy: ddy,
+        dist: Math.sqrt(d2),
+        tx: seg.tx, ty: seg.ty,
+        straightness: seg.straightness,
+        localTurn: seg.localTurn,
+        index: seg.index,
+      };
+    }
+  };
+
+  const hinted = Number.isFinite(hintIndex);
+  if (hinted) {
+    const radius = 14;
+    for (let off = -radius; off <= radius; off++) {
+      const idx = (hintIndex + off + segments.length) % segments.length;
+      scanSegment(segments[idx]);
+    }
+  } else {
+    for (const seg of segments) scanSegment(seg);
+  }
+
+  if (hinted) {
+    const maxExpected = 260;
+    if (!best || bestD2 > maxExpected * maxExpected) {
+      best = null;
+      bestD2 = Infinity;
+      for (const seg of segments) scanSegment(seg);
+    }
+  }
+
+  return best;
+}
+
+function _getCollisionCache(centerLine) {
+  if (!centerLine?.length) return { segments: [] };
+  let cache = _trackCollisionCaches.get(centerLine);
+  if (cache) return cache;
+
+  const segments = [];
   for (let i = 0; i < centerLine.length; i++) {
     const [x1, y1] = centerLine[i];
     const [x2, y2] = centerLine[(i + 1) % centerLine.length];
     const ex = x2 - x1, ey = y2 - y1;
     const len2 = ex * ex + ey * ey;
     if (len2 < 1e-6) continue;
-    const t  = clamp(((x - x1) * ex + (y - y1) * ey) / len2, 0, 1);
-    const px = x1 + t * ex, py = y1 + t * ey;
-    const ddx = x - px, ddy = y - py;
-    const d2 = ddx * ddx + ddy * ddy;
-    if (d2 < bestD2) {
-      bestD2 = d2;
-      const len = Math.sqrt(len2) || 1;
-      const prev = centerLine[(i - 4 + centerLine.length) % centerLine.length];
-      const next = centerLine[(i + 5) % centerLine.length];
-      const vx = next[0] - prev[0];
-      const vy = next[1] - prev[1];
-      const vl = Math.hypot(vx, vy) || 1;
-      const straightness = Math.abs((ex / len) * (vx / vl) + (ey / len) * (vy / vl));
-      best = {
-        px, py, dx: ddx, dy: ddy,
-        dist: Math.sqrt(d2),
-        tx: ex / len, ty: ey / len,
-        straightness,
-      };
-      bestIndex = i;
-    }
+    const len = Math.sqrt(len2) || 1;
+    const prev = centerLine[(i - 4 + centerLine.length) % centerLine.length];
+    const next = centerLine[(i + 5) % centerLine.length];
+    const vx = next[0] - prev[0];
+    const vy = next[1] - prev[1];
+    const vl = Math.hypot(vx, vy) || 1;
+    segments.push({
+      index: i,
+      x1, y1, ex, ey, len2,
+      tx: ex / len,
+      ty: ey / len,
+      straightness: Math.abs((ex / len) * (vx / vl) + (ey / len) * (vy / vl)),
+      localTurn: _localTurnMax(centerLine, i, 4),
+    });
   }
-  if (best) best.localTurn = _localTurnMax(centerLine, bestIndex, 4);
-  return best;
+  cache = { segments };
+  _trackCollisionCaches.set(centerLine, cache);
+  return cache;
 }
 
 function _isPointOnRoad(x, y, track) {

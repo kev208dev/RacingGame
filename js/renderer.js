@@ -11,6 +11,6 @@ export function getSharedRenderer(canvas) {
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   }
   renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1));
   return renderer;
 }

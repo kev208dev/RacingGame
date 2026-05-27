@@ -115,7 +115,7 @@ export function initGame(cd, tr, resultsCb, menuCb, options = {}) {
     renderer.shadowMap.type    = THREE.PCFSoftShadowMap;
   }
   renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1));
 
   // ── scene ──
   scene = new THREE.Scene();
@@ -520,8 +520,8 @@ function _updateCamera(dt) {
 // ── HUD overlay ──────────────────────────────────────────────
 function _renderHUD(dt, kmh) {
   if (!hudCtx || !hudCanvas) return;
-  hudCanvas.width  = window.innerWidth;
-  hudCanvas.height = window.innerHeight;
+  if (hudCanvas.width !== window.innerWidth) hudCanvas.width = window.innerWidth;
+  if (hudCanvas.height !== window.innerHeight) hudCanvas.height = window.innerHeight;
   hudCtx.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
   // speed-line streaks below normal HUD
   drawSpeedLines(hudCtx, speedLines, kmh, hudCanvas.width, hudCanvas.height, dt, cameraMode);

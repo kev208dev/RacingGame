@@ -578,8 +578,8 @@ function _updateCamera(dt) {
 
 function _renderHUD(dt, kmh, msUntilStart) {
   if (!hudCtx || !hudCanvas) return;
-  hudCanvas.width = window.innerWidth;
-  hudCanvas.height = window.innerHeight;
+  if (hudCanvas.width !== window.innerWidth) hudCanvas.width = window.innerWidth;
+  if (hudCanvas.height !== window.innerHeight) hudCanvas.height = window.innerHeight;
   hudCtx.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
   drawSpeedLines(hudCtx, speedLines, kmh, hudCanvas.width, hudCanvas.height, dt, cameraMode);
   drawHUD(hudCtx, car, timing, hudCanvas.width, hudCanvas.height, track, null);
