@@ -1,5 +1,6 @@
 import { SKIN_DATA } from '../data/skins.js';
 import { getSkinProgressText, getSkinUnlockText, isSkinOwned } from '../utils/profile.js';
+import { trackEvent } from '../js/analytics.js';
 
 let selectedIndex = 0;
 let onSelect = null;
@@ -36,8 +37,14 @@ function _render() {
       <span>${owned ? skin.description : getSkinProgressText(skin)}</span>
     `;
     card.addEventListener('click', () => {
-      if (!owned) return;
+      if (!owned) {
+        const desc = document.getElementById('skin-desc');
+        if (desc) desc.textContent = 'Unlock feature coming soon';
+        alert('Unlock feature coming soon');
+        return;
+      }
       selectedIndex = index;
+      trackEvent('car_skin_select', { skin_id: skin.id });
       _render();
     });
     grid.appendChild(card);

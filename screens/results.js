@@ -6,6 +6,10 @@ import {
   subscribeLeaderboard,
 } from '../utils/leaderboard.js';
 import { awardRankOneSkin } from '../utils/profile.js';
+import { getBestLap } from '../utils/storage.js';
+import { showBannerAd, showRewardedAd } from '../js/ads.js';
+import { trackEvent } from '../js/analytics.js';
+import { shareScore } from '../js/share.js';
 
 let unsubscribeLeaderboard = null;
 let renderToken = 0;
@@ -26,6 +30,17 @@ export function initResults(data, car, track, raceOptions = {}, retryCb, menuCb)
     titleEl.className   = 'results-title' + (data.isNew ? ' new' : '');
   }
   if (timeEl) timeEl.textContent = formatTime(data.lapMs);
+  const score = _scoreFromLap(data.lapMs);
+  sessionStorage.setItem('last_racing_score', String(score));
+  const scoreEl = document.getElementById('res-score');
+  const playTimeEl = document.getElementById('res-play-time');
+  const bestRecordEl = document.getElementById('res-best-record');
+  if (scoreEl) scoreEl.textContent = score.toLocaleString();
+  if (playTimeEl) playTimeEl.textContent = formatTime(data.lapMs);
+  if (bestRecordEl) {
+    const best = car && track ? getBestLap(car.id, track.id) : null;
+    bestRecordEl.textContent = best ? formatTime(best) : formatTime(data.lapMs);
+  }
 
   if (sectorsEl) {
     sectorsEl.innerHTML = '';
@@ -91,8 +106,20 @@ export function initResults(data, car, track, raceOptions = {}, retryCb, menuCb)
 
   const retryBtn = document.getElementById('btn-retry');
   const menuBtn  = document.getElementById('btn-to-menu');
+  const leaderboardBtn = document.getElementById('btn-results-leaderboard');
+  const shareBtn = document.getElementById('btn-share-score');
+  const rewardedBtn = document.getElementById('btn-rewarded-continue');
+  if (retryBtn) retryBtn.textContent = 'Retry';
+  if (menuBtn) menuBtn.textContent = 'Main Menu';
   if (retryBtn) retryBtn.onclick = () => { cleanupLeaderboard(); if (retryCb) retryCb(); };
   if (menuBtn)  menuBtn.onclick  = () => { cleanupLeaderboard(); if (menuCb)  menuCb();  };
+  if (leaderboardBtn) leaderboardBtn.onclick = () => document.getElementById('btn-open-leaderboard')?.click();
+  if (shareBtn) shareBtn.onclick = () => shareScore(score).catch(error => console.warn('share failed', error));
+  if (rewardedBtn) rewardedBtn.onclick = () => {
+    trackEvent('rewarded_ad_click', { placement: 'game_over' });
+    showRewardedAd(() => console.log('Reward callback placeholder'));
+  };
+  showBannerAd('ad-game-over-banner');
 }
 
 function cleanupLeaderboard() {
@@ -188,4 +215,8 @@ function _themeColor(value) {
 
 function _setStatus(statusEl, text) {
   if (statusEl) statusEl.textContent = text;
+}
+
+function _scoreFromLap(lapMs) {
+  return Math.max(0, Math.round(1000000 - Number(lapMs || 0) * 3));
 }

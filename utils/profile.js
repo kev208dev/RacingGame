@@ -7,7 +7,7 @@ import { safeNickname, validateNickname } from './nicknameFilter.js';
 
 const PROFILES_KEY = 'racing_local_profiles';
 const DEFAULT_OWNED = ['apex_gt3', 'feather_sprint'];
-const DEFAULT_SKINS = ['factory'];
+const DEFAULT_SKINS = ['factory', 'neon', 'classic'];
 const DEFAULT_THEME = '#2ec4b6';
 const SUPER_ACCOUNT_IDS = new Set(['admin', 'kev208', 'kev208dev']);
 const ACCOUNT_CAR_UNLOCKS = {
@@ -236,6 +236,7 @@ export function getSkinProgressText(skin) {
     return `${Number(stats.no_throttle_finishes || 0)}회 달성`;
   }
   if (unlock.type === 'rankOne') return '온라인 랭킹 1위 필요';
+  if (unlock.type === 'comingSoon') return 'Unlock feature coming soon';
   if (unlock.type === 'trackFinish') {
     return `${unlock.trackId === 'aurora_endurance' ? 'Aurora Endurance' : unlock.trackId} 완주 필요`;
   }

@@ -57,7 +57,48 @@
   </div>
 
   <!-- UI screens -->
-  <div id="screen-auth" class="screen active">
+  <div id="screen-main" class="screen active">
+    <main class="main-menu">
+      <section class="main-hero">
+        <p class="main-kicker">Browser 3D racing</p>
+        <h1>Racing Sandbox 3D</h1>
+        <p class="main-copy">Pick a car, master drift corners, chase your best lap, and climb the leaderboard.</p>
+        <div class="main-controls">
+          <span>WASD / Arrows drive</span>
+          <span>Space drift</span>
+          <span>Enter burst turn</span>
+          <span>Shift boost</span>
+        </div>
+        <div class="main-actions">
+          <button class="btn-primary main-play" id="btn-main-play" type="button">Play</button>
+          <button class="btn-secondary" id="btn-main-login" type="button">Login optional</button>
+          <button class="btn-secondary" id="btn-main-leaderboard" type="button">Leaderboard</button>
+        </div>
+        <div id="ad-main-menu-banner" class="ad-placeholder"><span>Advertisement</span><small>Ad Space</small></div>
+      </section>
+      <section class="main-info">
+        <article id="about">
+          <h2>About</h2>
+          <p>Racing Sandbox 3D is a lightweight browser racing game with drift handling, lap timing, unlockable cars, and online ranking hooks.</p>
+        </article>
+        <article id="how-to-play">
+          <h2>How to Play</h2>
+          <p>Press Play, choose a car and skin, then race. Use Space for drift, Enter for tight burst turns, and Shift for boost.</p>
+        </article>
+        <article id="privacy-policy">
+          <h2>Privacy Policy</h2>
+          <p>This placeholder policy will be updated before production ad approval. The game may store local gameplay settings, leaderboard names, and future analytics/ad events.</p>
+          <!-- TODO: Replace this placeholder with a full production privacy policy before launching ads. -->
+        </article>
+        <article id="contact">
+          <h2>Contact</h2>
+          <p>For support or business inquiries: contact@example.com</p>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <div id="screen-auth" class="screen">
     <div class="auth-card">
       <h1 class="auth-title">RACING SANDBOX</h1>
       <p class="auth-subtitle" id="auth-mode-subtitle">아이디와 비밀번호로 로그인</p>
@@ -256,6 +297,11 @@
     <div class="results-box">
       <div class="results-title" id="res-title">랩 완주</div>
       <div class="results-time" id="res-time">--:--.---</div>
+      <div class="results-summary" id="results-summary">
+        <div><span>Final Score</span><b id="res-score">0</b></div>
+        <div><span>Play Time</span><b id="res-play-time">--:--.---</b></div>
+        <div><span>Best Record</span><b id="res-best-record">--:--.---</b></div>
+      </div>
       <div class="results-sectors" id="res-sectors"></div>
       <div class="leaderboard-panel" id="leaderboard-panel">
         <div class="leaderboard-head">
@@ -271,6 +317,12 @@
         <button class="btn-primary" id="btn-retry">재도전</button>
         <button class="btn-secondary" id="btn-to-menu">메뉴로</button>
       </div>
+      <div class="results-extra-actions">
+        <button class="btn-secondary" id="btn-results-leaderboard" type="button">Leaderboard</button>
+        <button class="btn-secondary" id="btn-share-score" type="button">Share</button>
+      </div>
+      <div id="ad-game-over-banner" class="ad-placeholder"><span>Advertisement</span><small>Ad Space</small></div>
+      <button class="btn-secondary rewarded-ad-button" id="btn-rewarded-continue" type="button">Watch Ad to Continue</button>
     </div>
   </div>
 
@@ -294,6 +346,14 @@
         <select id="leaderboard-track-filter" aria-label="랭킹 맵 선택"></select>
         <button class="btn-icon" id="btn-leaderboard-close" aria-label="닫기">×</button>
       </div>
+      <div class="leaderboard-tabs" role="tablist">
+        <button class="leaderboard-tab active" id="leaderboard-tab-today" data-board-type="today" type="button">Today</button>
+        <button class="leaderboard-tab" id="leaderboard-tab-all" data-board-type="all-time" type="button">All-time</button>
+      </div>
+      <form class="leaderboard-submit" id="leaderboard-submit-form">
+        <input id="leaderboard-nickname" maxlength="24" placeholder="Nickname" autocomplete="nickname" />
+        <button class="btn-secondary btn-small" type="submit">Submit Score</button>
+      </form>
       <ol class="global-leaderboard-list" id="global-leaderboard-list"></ol>
       <button class="btn-secondary" id="btn-leaderboard-refresh">새로고침</button>
     </div>

@@ -29,8 +29,11 @@ import {
   updateProfileSettings,
 } from './utils/profile.js';
 import { nicknameRejectMessage } from './utils/nicknameFilter.js';
+import { initAds, showBannerAd } from './js/ads.js';
+import { initAnalytics, trackEvent } from './js/analytics.js';
+import { submitScore as submitPlaceholderScore } from './js/leaderboard.js';
 
-let currentScreen = 'auth';
+let currentScreen = 'main';
 let selectedCar   = null;
 let selectedSkin  = null;
 let selectedTrack = null;
@@ -50,10 +53,20 @@ function hideScreens() {
 }
 
 // ── transitions ─────────────────────────────────────────────
-function goToAuth() {
+function goToMain() {
+  currentScreen = 'main';
+  showScreen('screen-main');
+  showBannerAd('ad-main-menu-banner');
+}
+
+function _openAuth() {
   currentScreen = 'auth';
   showScreen('screen-auth');
   _resetAuthForm();
+}
+
+function goToAuth() {
+  goToMain();
 }
 
 function goToCarSelect() {
@@ -102,6 +115,7 @@ function goToLobby() {
 }
 
 function goToMpGame(car, track, room, net, startAt, myClientId) {
+  trackEvent('game_start', { mode: 'online', track_id: track?.id, car_id: car?.id });
   currentScreen = 'mpGame';
   hideScreens();
   detachNet();
@@ -119,6 +133,7 @@ function goToMpGame(car, track, room, net, startAt, myClientId) {
 }
 
 function goToMpResults(payload, net) {
+  trackEvent('game_over', { mode: 'online', reason: payload?.reason });
   currentScreen = 'mpResults';
   stopMpGame();
   showScreen('screen-mpresults');
@@ -144,6 +159,7 @@ function goToTrackSelect() {
 }
 
 function goToGame() {
+  trackEvent('game_start', { mode: selectedRaceOptions?.mode || selectedMode, track_id: selectedTrack?.id, car_id: selectedCar?.id });
   currentScreen = 'game';
   hideScreens();
   const raceCar = { ...selectedCar, skin: selectedSkin };
@@ -156,6 +172,7 @@ function goToGame() {
 }
 
 function goToResults(lapData) {
+  trackEvent('game_over', { mode: selectedRaceOptions?.mode || selectedMode, score: _scoreFromLap(lapData?.lapMs), lap_ms: lapData?.lapMs });
   currentScreen = 'results';
   stopGame();
   showScreen('screen-results');
@@ -164,9 +181,13 @@ function goToResults(lapData) {
     { ...selectedCar, skin: selectedSkin },
     selectedTrack,
     selectedRaceOptions,
-    () => { goToGame(); },       // retry
-    () => { goToCarSelect(); }   // menu
+    () => { trackEvent('retry_click', { source: 'results' }); goToGame(); },
+    () => { goToMain(); }
   );
+}
+
+function _scoreFromLap(lapMs) {
+  return Math.max(0, Math.round(1000000 - Number(lapMs || 0) * 3));
 }
 
 // ── game loop ────────────────────────────────────────────────
@@ -207,6 +228,27 @@ function _wireHelpButton() {
 }
 _wireHelpButton();
 
+function _wireMainMenu() {
+  document.getElementById('btn-main-play')?.addEventListener('click', () => {
+    trackEvent('game_start', { source: 'main_menu_play' });
+    goToCarSelect();
+  });
+  document.getElementById('btn-main-login')?.addEventListener('click', () => {
+    _openAuth();
+  });
+  document.getElementById('btn-main-leaderboard')?.addEventListener('click', () => {
+    _openLeaderboardOverlay();
+  });
+}
+
+function _openLeaderboardOverlay() {
+  const overlay = document.getElementById('leaderboard-overlay');
+  if (!overlay) return;
+  overlay.classList.remove('hidden');
+  trackEvent('leaderboard_open', { source: currentScreen });
+  _loadGlobalLeaderboard();
+}
+
 function _wireGlobalLeaderboard() {
   const openBtn = document.getElementById('btn-open-leaderboard');
   const overlay = document.getElementById('leaderboard-overlay');
@@ -222,10 +264,7 @@ function _wireGlobalLeaderboard() {
     trackFilter.addEventListener('change', () => _loadGlobalLeaderboard());
   }
 
-  const open = () => {
-    overlay.classList.remove('hidden');
-    _loadGlobalLeaderboard();
-  };
+  const open = () => _openLeaderboardOverlay();
   const close = () => overlay.classList.add('hidden');
 
   openBtn.addEventListener('click', open);
@@ -233,6 +272,20 @@ function _wireGlobalLeaderboard() {
   refreshBtn && refreshBtn.addEventListener('click', () => _loadGlobalLeaderboard());
   overlay.addEventListener('click', e => {
     if (e.target === overlay) close();
+  });
+  document.querySelectorAll('.leaderboard-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.leaderboard-tab').forEach(item => item.classList.toggle('active', item === tab));
+      _loadGlobalLeaderboard();
+    });
+  });
+  document.getElementById('leaderboard-submit-form')?.addEventListener('submit', async event => {
+    event.preventDefault();
+    const nickname = document.getElementById('leaderboard-nickname')?.value || getPlayerProfile().name;
+    const score = Number(sessionStorage.getItem('last_racing_score') || 0);
+    await submitPlaceholderScore(nickname, score);
+    const status = document.getElementById('global-leaderboard-status');
+    if (status) status.textContent = 'Score submit placeholder ready.';
   });
 
   subscribeLeaderboard(() => {
@@ -591,6 +644,9 @@ function _escape(value) {
   ));
 }
 
+initAnalytics();
+initAds();
+_wireMainMenu();
 _wireAuthScreen();
 _wireProfilePanel();
 _wireStarterRoulette();
@@ -600,11 +656,10 @@ _wireGlobalCompletionToast();
 await initAuth();
 initProfile();
 
-onAuthChange(user => {
-  if (!user && currentScreen !== 'auth') goToAuth();
+onAuthChange(() => {
+  _renderProfilePanel();
 });
 
 // ── start ────────────────────────────────────────────────────
-if (getCurrentUser()) goToCarSelect();
-else goToAuth();
+goToMain();
 requestAnimationFrame(gameLoop);
