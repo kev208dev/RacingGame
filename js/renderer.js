@@ -6,7 +6,7 @@ let renderer = null;
 
 export function getSharedRenderer(canvas) {
   if (!renderer) {
-    renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
     renderer.shadowMap.enabled = false;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   }

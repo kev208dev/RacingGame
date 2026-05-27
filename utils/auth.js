@@ -5,7 +5,6 @@ const LEGACY_KEYS = [
   'racing_player_profile',
   'racing_auth_email_cooldown_until',
   'sb-fcexjurcapptmiagdcxn-auth-token',
-  'racing_local_profiles',
   'racing_accounts_purged_v1',
 ];
 

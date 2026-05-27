@@ -110,7 +110,7 @@ export function initGame(cd, tr, resultsCb, menuCb, options = {}) {
   if (threeCanvas) threeCanvas.style.display = 'block';
 
   if (!renderer) {
-    renderer = new THREE.WebGLRenderer({ canvas: threeCanvas, antialias: true });
+    renderer = new THREE.WebGLRenderer({ canvas: threeCanvas, antialias: false, powerPreference: 'high-performance' });
     renderer.shadowMap.enabled = false;
     renderer.shadowMap.type    = THREE.PCFSoftShadowMap;
   }
@@ -175,11 +175,11 @@ export function initGame(cd, tr, resultsCb, menuCb, options = {}) {
   ghostMesh = _createGhostMesh(bestGhost);
 
   // ── effects ──
-  smokePool  = createSmokePool(scene, 80);
-  skidBuf    = createSkidBuffer(scene, 850);
-  sparkPool  = createSparkPool(scene, 40);
+  smokePool  = createSmokePool(scene, 48);
+  skidBuf    = createSkidBuffer(scene, 360);
+  sparkPool  = createSparkPool(scene, 28);
   shake      = makeShake();
-  speedLines = makeSpeedLines(60);
+  speedLines = makeSpeedLines(36);
 
   // ── timing ──
   timing = createTiming(getBestSectors(track.id));
@@ -254,6 +254,7 @@ export function updateGame(dt, now) {
     accumulator -= FIXED_DT;
     steps++;
   }
+  if (steps >= 5) accumulator = 0;
 
   // ── audio ──
   updateEngineSound(car.rpm, car.maxRpm);
@@ -272,11 +273,7 @@ export function updateGame(dt, now) {
     lapBannerNew   = isNew;
     lapBannerTimer = 2.4;
     pendingResults = { ...event };
-    awardMissions(track.id, event.lapMs, _completionContext())
-      .then(rewards => {
-        if (pendingResults === event || pendingResults?.lapMs === event.lapMs) pendingResults.rewards = rewards;
-      })
-      .catch(() => {});
+    _awardCompletionRewards(event, _completionContext());
     _scheduleResults({ ...event });
     playLapDing(isNew);
   }
@@ -342,6 +339,15 @@ function _saveLapCompletion(event, isNew, completedPath) {
     }
   } catch (error) {
     console.warn('Lap persistence failed, continuing to results:', error);
+  }
+}
+
+async function _awardCompletionRewards(event, context) {
+  try {
+    const rewards = await awardMissions(track.id, event.lapMs, context);
+    if (pendingResults?.lapMs === event.lapMs) pendingResults.rewards = rewards;
+  } catch (error) {
+    console.warn('Reward persistence failed:', error);
   }
 }
 
@@ -428,7 +434,7 @@ function _emitDriftFx(dt, driveInput) {
     const prev = car[key];
     if (prev) {
       const dx = wx - prev.x, dz = w3z - prev.z;
-      if (dx*dx + dz*dz > 0.35) {
+      if (dx*dx + dz*dz > 4.0) {
         skidBuf.appendTrail(prev.x, prev.z, wx, w3z, 1.15, _driftTrailColor());
         car[key] = { x: wx, z: w3z };
       }

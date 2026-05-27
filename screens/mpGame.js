@@ -159,11 +159,11 @@ export function initMpGame({
   scene.add(carMesh);
   updateCar3D(carMesh, car, { brake: 0 });
 
-  smokePool = createSmokePool(scene, 80);
-  skidBuf = createSkidBuffer(scene, 850);
-  sparkPool = createSparkPool(scene, 40);
+  smokePool = createSmokePool(scene, 48);
+  skidBuf = createSkidBuffer(scene, 360);
+  sparkPool = createSparkPool(scene, 28);
   shake = makeShake();
-  speedLines = makeSpeedLines(60);
+  speedLines = makeSpeedLines(36);
 
   timing = createTiming([null, null, null]);
 
@@ -263,6 +263,7 @@ export function updateMpGame(dt, now) {
     accumulator -= FIXED_DT;
     steps++;
   }
+  if (steps >= 5) accumulator = 0;
 
   updateEngineSound(car.rpm, car.maxRpm);
 
@@ -518,7 +519,7 @@ function _emitDriftFx(dt, driveInput) {
     const prev = car[key];
     if (prev) {
       const dx = wx - prev.x, dz = w3z - prev.z;
-      if (dx * dx + dz * dz > 0.35) {
+      if (dx * dx + dz * dz > 4.0) {
         skidBuf.appendTrail(prev.x, prev.z, wx, w3z, 1.15, 0x35f5ff);
         car[key] = { x: wx, z: w3z };
       }
