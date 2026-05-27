@@ -3,9 +3,9 @@
 // back state 100ms behind "now" so we always have two samples to lerp between.
 // Falls back to extrapolation up to 250ms when newer samples haven't arrived.
 
-const RENDER_DELAY_MS = 100;
-const MAX_EXTRAPOLATION_MS = 250;
-const BUFFER_MAX = 8;
+const RENDER_DELAY_MS = 150;
+const MAX_EXTRAPOLATION_MS = 120;
+const BUFFER_MAX = 12;
 
 export class RemoteCarInterp {
   constructor() {

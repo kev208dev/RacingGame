@@ -427,12 +427,23 @@ function _updateRemoteCars(now) {
     const sample = ghost.interp.sample(performance.now());
     if (!sample) continue;
     const synth = ghost.syntheticCar;
-    // Smooth-blend visual state from interpolated sample.
-    synth.x = sample.x;
-    synth.y = sample.y;
-    synth.angle = sample.a;
-    synth.vx = sample.vx;
-    synth.vy = sample.vy;
+    // Smooth remote visuals so 20Hz network snapshots do not pop or twitch.
+    const blend = 0.34;
+    const snapDist2 = (sample.x - synth.x) ** 2 + (sample.y - synth.y) ** 2;
+    if (snapDist2 > 90000) {
+      synth.x = sample.x;
+      synth.y = sample.y;
+      synth.angle = sample.a;
+    } else {
+      synth.x += (sample.x - synth.x) * blend;
+      synth.y += (sample.y - synth.y) * blend;
+      let da = sample.a - synth.angle;
+      while (da > Math.PI) da -= Math.PI * 2;
+      while (da < -Math.PI) da += Math.PI * 2;
+      synth.angle += da * 0.42;
+    }
+    synth.vx += (sample.vx - synth.vx) * 0.28;
+    synth.vy += (sample.vy - synth.vy) * 0.28;
     synth.gear = sample.g;
     synth.drifting = sample.drift;
     synth.boosting = sample.boost;
