@@ -1,3 +1,5 @@
+import { getMobileInput } from '../js/mobileControls.js';
+
 export const keys = {};
 const justPressed = {};
 const justReleased = {};
@@ -23,7 +25,7 @@ window.addEventListener('keydown', e => {
     }
   }
   keys[e.code] = true;
-  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','Enter'].includes(e.code)) {
+  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','Enter','NumpadEnter','KeyE'].includes(e.code)) {
     e.preventDefault();
   }
 }, { capture: true });
@@ -64,22 +66,24 @@ export function clearFrameKeys() {
 }
 
 export function getInput() {
-  const throttle = (keys['KeyW'] || keys['ArrowUp'])    ? 1 : 0;
+  const mobile = getMobileInput();
+  const throttle = (keys['KeyW'] || keys['ArrowUp'] || mobile.throttle) ? 1 : 0;
   const brake    = (keys['KeyS'] || keys['ArrowDown'])  ? 1 : 0;
-  const steer    = ((keys['KeyD'] || keys['ArrowRight']) ? 1 : 0)
-                 - ((keys['KeyA'] || keys['ArrowLeft'])  ? 1 : 0);
+  const keyboardSteer = ((keys['KeyD'] || keys['ArrowRight']) ? 1 : 0)
+                      - ((keys['KeyA'] || keys['ArrowLeft'])  ? 1 : 0);
+  const steer = Math.max(-1, Math.min(1, keyboardSteer + mobile.steer));
   return {
     throttle,
     brake,
     steer,
-    handbrake:    !!keys['Space'],
+    handbrake:    !!keys['Space'] || mobile.drift,
     handbrakeJust:   wasJustPressed('Space'),
-    driftBurst:      wasJustPressed('Enter') || wasJustPressed('NumpadEnter'),
+    driftBurst:      wasJustPressed('Enter') || wasJustPressed('NumpadEnter') || wasJustPressed('KeyE') || mobile.doubleDriftJust,
     boost:        !!(keys['ShiftLeft'] || keys['ShiftRight']),
-    boostJust:    wasJustPressed('ShiftLeft') || wasJustPressed('ShiftRight'),
+    boostJust:    wasJustPressed('ShiftLeft') || wasJustPressed('ShiftRight') || mobile.boostJust,
     boostDouble:  wasJustPressed('ShiftDouble'),
     gearUp:       wasJustPressed('KeyQ'),
-    gearDown:     wasJustPressed('KeyE'),
+    gearDown:     wasJustPressed('KeyX'),
     autoToggle:   wasJustPressed('KeyT'),
     engineToggle: wasJustPressed('KeyJ'),
     parkingBrake: wasJustPressed('KeyP'),

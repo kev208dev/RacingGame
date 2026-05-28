@@ -3,6 +3,8 @@ import { safeNickname } from './nicknameFilter.js';
 
 const API_BASE = '';
 const PROFILE_KEY = 'racing_player_profile';
+export const LOCAL_LEADERBOARD_KEY = 'racingLeaderboardRecords';
+const GUEST_NICKNAME_KEY = 'racingGuestNickname';
 const TABLE = 'leaderboard_records';
 const DEFAULT_THEME = '#2ec4b6';
 
@@ -62,7 +64,12 @@ export function setLeaderboardIdentity(identity) {
     : null;
 }
 
-export async function fetchLeaderboard(carId, trackId, limit = 10) {
+export async function fetchLeaderboard(typeOrCarId = '', modeOrTrackId = '', limit = 10) {
+  if (isBoardType(typeOrCarId)) {
+    return fetchModeLeaderboard(typeOrCarId, modeOrTrackId || 'timeTrial', limit);
+  }
+  const carId = typeOrCarId;
+  const trackId = modeOrTrackId;
   try {
     return await fetchSupabaseLeaderboard(carId, trackId, limit);
   } catch (error) {
@@ -73,6 +80,28 @@ export async function fetchLeaderboard(carId, trackId, limit = 10) {
   const res = await fetch(`${API_BASE}/api/leaderboard?${params}`);
   if (!res.ok) throw new Error('leaderboard-fetch-failed');
   return res.json();
+}
+
+export async function fetchModeLeaderboard(type = 'allTime', mode = 'timeTrial', limit = 20) {
+  const normalizedType = normalizeBoardType(type);
+  const normalizedMode = normalizeMode(mode);
+  try {
+    const server = await fetchLeaderboard('', '', 50);
+    const rows = (server.leaderboard || [])
+      .map(row => ({
+        ...row,
+        nickname: row.playerName,
+        mode: 'timeTrial',
+        finishTime: Number(row.lapMs || 0),
+        score: scoreFromTime(row.lapMs),
+        completedAt: timestampToIso(row.createdAt || row.updatedAt),
+      }))
+      .filter(row => normalizedMode === 'timeTrial' && matchesBoardType(row, normalizedType));
+    const local = getLocalLeaderboardRecords({ type: normalizedType, mode: normalizedMode, limit: 200 });
+    return { leaderboard: rankRecords([...local, ...rows], normalizedMode).slice(0, limit) };
+  } catch {
+    return { leaderboard: getLocalLeaderboardRecords({ type: normalizedType, mode: normalizedMode, limit }) };
+  }
 }
 
 export async function submitLeaderboard(car, track, lapData) {
@@ -102,6 +131,68 @@ export async function submitLeaderboard(car, track, lapData) {
   });
   if (!res.ok) throw new Error('leaderboard-submit-failed');
   return res.json();
+}
+
+export async function submitResultRecord(result) {
+  const normalized = normalizeResultRecord(result);
+  let onlineSaved = false;
+  let onlineError = null;
+  if (normalized.mode === 'timeTrial' && normalized.car?.id && normalized.track?.id) {
+    try {
+      await submitLeaderboard(normalized.car, normalized.track, {
+        lapMs: normalized.finishTime,
+        sectors: normalized.sectors || [],
+      });
+      onlineSaved = true;
+    } catch (error) {
+      onlineError = error;
+    }
+  }
+  saveLocalLeaderboardRecord(normalized);
+  const leaderboard = getLocalLeaderboardRecords({ type: 'today', mode: normalized.mode, limit: 20 });
+  return {
+    accepted: true,
+    onlineSaved,
+    onlineError,
+    localSaved: true,
+    leaderboard,
+    message: onlineSaved ? 'Record saved to leaderboard' : 'Online save failed. Saved locally.',
+  };
+}
+
+export function saveLocalLeaderboardRecord(result) {
+  const record = normalizeResultRecord(result);
+  const records = readLocalRecords();
+  const duplicate = records.some(item =>
+    item.playerId === record.playerId
+    && item.mode === record.mode
+    && item.trackId === record.trackId
+    && item.carId === record.carId
+    && Number(item.finishTime || 0) === Number(record.finishTime || 0)
+  );
+  if (!duplicate) records.push(record);
+  localStorage.setItem(LOCAL_LEADERBOARD_KEY, JSON.stringify(records.slice(-300)));
+  return record;
+}
+
+export function getLocalLeaderboardRecords({ type = 'allTime', mode = 'timeTrial', limit = 20 } = {}) {
+  const normalizedType = normalizeBoardType(type);
+  const normalizedMode = normalizeMode(mode);
+  return rankRecords(
+    readLocalRecords().filter(record =>
+      normalizeMode(record.mode) === normalizedMode && matchesBoardType(record, normalizedType)
+    ),
+    normalizedMode
+  ).slice(0, limit);
+}
+
+export function getGuestNickname() {
+  let nickname = localStorage.getItem(GUEST_NICKNAME_KEY);
+  if (!nickname) {
+    nickname = `Guest_${Math.floor(1000 + Math.random() * 9000)}`;
+    localStorage.setItem(GUEST_NICKNAME_KEY, nickname);
+  }
+  return nickname;
 }
 
 export function subscribeLapCompletion(listener) {
@@ -289,6 +380,96 @@ function toLeaderboardRows(rows) {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }));
+}
+
+function readLocalRecords() {
+  try {
+    const raw = localStorage.getItem(LOCAL_LEADERBOARD_KEY);
+    const records = raw ? JSON.parse(raw) : [];
+    return Array.isArray(records) ? records : [];
+  } catch {
+    return [];
+  }
+}
+
+function normalizeResultRecord(result = {}) {
+  const profile = getPlayerProfile();
+  const mode = normalizeMode(result.mode || 'timeTrial');
+  const finishTime = Math.round(Number(result.finishTime ?? result.lapMs ?? 0));
+  const completedAt = result.completedAt || new Date().toISOString();
+  const nickname = safeNickname(result.nickname || profile.name || getGuestNickname(), getGuestNickname());
+  const track = result.track || {};
+  const car = result.car || {};
+  return {
+    id: result.id || `record_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    playerId: result.playerId || profile.id,
+    playerName: nickname,
+    nickname,
+    playerThemeColor: normalizeColor(result.playerThemeColor || profile.themeColor) || DEFAULT_THEME,
+    mode,
+    finishTime,
+    lapMs: finishTime,
+    score: Number(result.score ?? scoreFromTime(finishTime)),
+    rating: Number(result.rating ?? result.rankedScore ?? result.score ?? 0),
+    ratingChange: Number(result.ratingChange || 0),
+    trackId: track.id || result.trackId || '',
+    trackName: track.name || result.trackName || 'Track',
+    carId: car.id || result.carId || '',
+    carName: car.name || result.carName || 'Car',
+    car,
+    track,
+    sectors: result.sectors || [],
+    completedAt,
+    createdAt: Date.parse(completedAt) || Date.now(),
+    isGuest: result.isGuest ?? true,
+  };
+}
+
+function rankRecords(records, mode) {
+  const sorted = [...records].sort((a, b) => {
+    if (mode === 'ranked') return Number(b.rating || b.score || 0) - Number(a.rating || a.score || 0);
+    return Number(a.finishTime || a.lapMs || Infinity) - Number(b.finishTime || b.lapMs || Infinity);
+  });
+  return sorted.map((row, index) => ({
+    ...row,
+    rank: index + 1,
+    lapMs: row.finishTime || row.lapMs,
+    playerName: row.playerName || row.nickname || 'Driver',
+  }));
+}
+
+function matchesBoardType(record, type) {
+  if (normalizeBoardType(type) !== 'today') return true;
+  const date = new Date(record.completedAt || record.createdAt || Date.now());
+  const now = new Date();
+  return date.getFullYear() === now.getFullYear()
+    && date.getMonth() === now.getMonth()
+    && date.getDate() === now.getDate();
+}
+
+function normalizeBoardType(type) {
+  return String(type || 'allTime').toLowerCase().replace('-', '') === 'today' ? 'today' : 'allTime';
+}
+
+function isBoardType(value) {
+  const text = String(value || '').toLowerCase();
+  return ['today', 'alltime', 'all-time'].includes(text);
+}
+
+function normalizeMode(mode) {
+  const text = String(mode || 'timeTrial');
+  if (text === 'online') return 'ranked';
+  if (text === 'offline') return 'timeTrial';
+  return ['ranked', 'timeTrial', 'friendly'].includes(text) ? text : 'timeTrial';
+}
+
+function scoreFromTime(ms) {
+  return Math.max(0, Math.round(1000000 - Number(ms || 0) * 3));
+}
+
+function timestampToIso(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? new Date(n).toISOString() : new Date().toISOString();
 }
 
 function normalizeColor(value) {

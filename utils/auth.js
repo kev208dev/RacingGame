@@ -15,8 +15,6 @@ const listeners = new Set();
 
 function purgeLegacyAccounts() {
   if (localStorage.getItem(PURGE_FLAG_KEY) === '1') return;
-  localStorage.removeItem(ACCOUNTS_KEY);
-  localStorage.removeItem(SESSION_KEY);
   for (const key of LEGACY_KEYS) localStorage.removeItem(key);
   for (let i = localStorage.length - 1; i >= 0; i--) {
     const key = localStorage.key(i);
@@ -32,7 +30,18 @@ function readAccounts() {
   try {
     const raw = localStorage.getItem(ACCOUNTS_KEY);
     const data = raw ? JSON.parse(raw) : {};
-    return data && typeof data === 'object' ? data : {};
+    if (!data || typeof data !== 'object') return {};
+    const normalized = {};
+    let changed = false;
+    for (const [key, account] of Object.entries(data)) {
+      if (!account || typeof account !== 'object') continue;
+      const cleanId = normalizeId(account.id || key);
+      if (!cleanId) continue;
+      normalized[cleanId] = { ...account, id: cleanId };
+      if (key !== cleanId || account.id !== cleanId) changed = true;
+    }
+    if (changed) writeAccounts(normalized);
+    return normalized;
   } catch {
     return {};
   }
@@ -69,7 +78,7 @@ function makeSalt() {
 }
 
 function normalizeId(id) {
-  return String(id || '').trim();
+  return String(id || '').trim().toLowerCase();
 }
 
 function toUser(account) {

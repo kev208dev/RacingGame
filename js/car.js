@@ -111,7 +111,18 @@ function _applySkin(model, skinData) {
   model.traverse(child => {
     if (!child.isMesh || !child.material) return;
     const name = child.name.toLowerCase();
-    if (name.includes('tire') || name.includes('glass') || name.includes('brakelight') || name.includes('flame')) return;
+    if (
+      name.includes('tire')
+      || name.includes('glass')
+      || name.includes('brakelight')
+      || name.includes('headlight')
+      || name.includes('splitter')
+      || name.includes('diffuser')
+      || name.includes('intake')
+      || name.includes('canard')
+      || name.includes('skirt')
+      || name.includes('flame')
+    ) return;
     const isAccent = name.includes('rim') || name.includes('wing') || name.includes('stripe') || name.includes('spoiler');
     const mat = child.material.clone();
     mat.color.copy(isAccent ? accent : paint);

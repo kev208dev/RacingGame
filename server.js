@@ -20,6 +20,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABAS
 const SUPABASE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 const RECORD_TIME_ADJUSTMENT_ID = 'add-13s-to-existing-records-2026-05-27';
 const RECORD_TIME_ADJUSTMENT_MS = 13000;
+const RECORD_RESET_ID = 'clear-existing-records-2026-05-27';
 let pgPool = null;
 let pgReady = false;
 let supabaseClient = null;
@@ -34,6 +35,7 @@ const MIME = {
   '.jpeg': 'image/jpeg',
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
+  '.mp4': 'video/mp4',
 };
 
 function loadEnvFile(path) {
@@ -103,12 +105,13 @@ async function loadDb() {
       error = legacy.error;
     }
     if (error) throw error;
-    return { records: (data || []).map(rowToRecord) };
+    const db = await applySupabaseRecordReset({ records: (data || []).map(rowToRecord) });
+    return db;
   }
 
   try {
     const raw = await readFile(DB_PATH, 'utf8');
-    const db = applyLocalRecordAdjustment(JSON.parse(raw));
+    const db = applyLocalRecordReset(JSON.parse(raw));
     return { records: Array.isArray(db.records) ? db.records : [] };
   } catch {
     return { records: [] };
@@ -161,6 +164,7 @@ async function getPgPool() {
     await pgPool.query('ALTER TABLE leaderboard_records ENABLE ROW LEVEL SECURITY');
     await pgPool.query('REVOKE ALL ON TABLE leaderboard_records FROM anon, authenticated');
     await applyPgRecordAdjustment();
+    await applyPgRecordReset();
     pgReady = true;
   }
   return pgPool;
@@ -205,6 +209,52 @@ function applyLocalRecordAdjustment(db) {
   }
   db.migrations = [...migrations, RECORD_TIME_ADJUSTMENT_ID];
   saveDb(db).catch(error => console.warn('Local record adjustment save failed:', error));
+  return db;
+}
+
+async function applyPgRecordReset() {
+  const applied = await pgPool.query('SELECT id FROM app_migrations WHERE id = $1', [RECORD_RESET_ID]);
+  if (applied.rowCount > 0) return;
+  await pgPool.query('BEGIN');
+  try {
+    await pgPool.query('DELETE FROM leaderboard_records');
+    await pgPool.query('INSERT INTO app_migrations (id, applied_at) VALUES ($1, $2)', [
+      RECORD_RESET_ID,
+      Date.now(),
+    ]);
+    await pgPool.query('COMMIT');
+  } catch (error) {
+    await pgPool.query('ROLLBACK');
+    throw error;
+  }
+}
+
+async function applySupabaseRecordReset(db) {
+  if (!SUPABASE_URL || !SUPABASE_KEY) return db;
+  const migrations = Array.isArray(db.migrations) ? db.migrations : [];
+  if (migrations.includes(RECORD_RESET_ID)) return db;
+
+  try {
+    const supabase = await getSupabaseClient();
+    const { error } = await supabase
+      .from('leaderboard_records')
+      .delete()
+      .not('player_id', 'is', null);
+    if (error) throw error;
+    return { records: [] };
+  } catch (error) {
+    console.warn('Supabase record reset failed:', error);
+    return db;
+  }
+}
+
+function applyLocalRecordReset(db) {
+  if (!db || typeof db !== 'object') return { records: [], migrations: [RECORD_RESET_ID] };
+  const migrations = Array.isArray(db.migrations) ? db.migrations : [];
+  if (migrations.includes(RECORD_RESET_ID)) return db;
+  db.records = [];
+  db.migrations = [...migrations, RECORD_RESET_ID];
+  saveDb(db).catch(error => console.warn('Local record reset save failed:', error));
   return db;
 }
 

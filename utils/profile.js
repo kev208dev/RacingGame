@@ -9,7 +9,7 @@ const PROFILES_KEY = 'racing_local_profiles';
 const DEFAULT_OWNED = ['apex_gt3', 'feather_sprint'];
 const DEFAULT_SKINS = ['factory', 'neon', 'classic'];
 const DEFAULT_THEME = '#2ec4b6';
-const SUPER_ACCOUNT_IDS = new Set(['admin', 'kev208', 'kev208dev', 'tiger0208']);
+const SUPER_ACCOUNT_IDS = new Set(['admin', 'kev208', 'kev208dev', 'tiger0208', 'wkddodls']);
 const SUPER_ACCOUNT_NICKNAMES = {
   tiger0208: 'ㅈㅈㅈ',
 };
@@ -330,17 +330,33 @@ function normalizeProfile(row, user = getCurrentUser()) {
   const ownedSkins = Array.isArray(row.owned_skin_ids) ? row.owned_skin_ids : DEFAULT_SKINS;
   const userId = row.user_id || user?.id;
   const accountUnlocks = accountUnlockIds({ id: userId });
+  const superAccount = isSuperAccount({ id: userId });
+  const safeOwnedCars = superAccount ? ALL_CAR_IDS : repairOwnedCars(owned, row, userId);
   return {
     user_id: userId,
     nickname: getSuperNickname({ id: userId }) || safeNickname(row.nickname, 'Driver'),
     theme_color: normalizeColor(row.theme_color) || DEFAULT_THEME,
     coins: Number(row.coins || 0),
-    owned_car_ids: isSuperAccount({ id: userId }) ? ALL_CAR_IDS : unique([...owned, ...accountUnlocks]),
-    owned_skin_ids: isSuperAccount({ id: userId }) ? ALL_SKIN_IDS : unique([...DEFAULT_SKINS, ...ownedSkins]),
+    owned_car_ids: superAccount ? ALL_CAR_IDS : unique([...safeOwnedCars, ...accountUnlocks]),
+    owned_skin_ids: superAccount ? ALL_SKIN_IDS : unique([...DEFAULT_SKINS, ...ownedSkins]),
     completed_missions: Array.isArray(row.completed_missions) ? row.completed_missions : [],
     stats: row.stats && typeof row.stats === 'object' ? row.stats : {},
-    starter_claimed: isSuperAccount({ id: userId }) || !!row.starter_claimed,
+    starter_claimed: superAccount || !!row.starter_claimed,
   };
+}
+
+function repairOwnedCars(owned, row, userId) {
+  const cleanOwned = unique(owned);
+  const ownsEveryCar = ALL_CAR_IDS.every(id => cleanOwned.includes(id));
+  if (!ownsEveryCar) return cleanOwned;
+
+  const noProgressSignals =
+    Number(row.coins || 0) === 0
+    && (!Array.isArray(row.completed_missions) || row.completed_missions.length === 0)
+    && (!row.stats || Object.keys(row.stats).length === 0);
+
+  if (!noProgressSignals) return cleanOwned;
+  return unique([...DEFAULT_OWNED, ...accountUnlockIds({ id: userId })]);
 }
 
 function isSuperAccount(user = getCurrentUser()) {

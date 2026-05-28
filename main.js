@@ -32,18 +32,21 @@ import { nicknameRejectMessage } from './utils/nicknameFilter.js';
 import { initAds, showBannerAd } from './js/ads.js';
 import { initAnalytics, trackEvent } from './js/analytics.js';
 import { submitScore as submitPlaceholderScore } from './js/leaderboard.js';
+import { clearRaceRecordsOnce } from './utils/storage.js';
+import { initMobileControls, setMobileControlsVisible } from './js/mobileControls.js';
 
 let currentScreen = 'main';
 let selectedCar   = null;
 let selectedSkin  = null;
 let selectedTrack = null;
-let selectedMode  = 'online';
+let selectedMode  = 'timeTrial';
 let selectedRaceOptions = {};
 let lastTime      = 0;
 let authMode      = 'login';
 
 // ── screen helpers ──────────────────────────────────────────
 function showScreen(id) {
+  setMobileControlsVisible(false);
   document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
   const el = document.getElementById(id);
   if (el) el.classList.add('active');
@@ -93,7 +96,7 @@ function goToModeSelect() {
   initModeSelect(
     (mode) => {
       selectedMode = mode;
-      if (mode === 'online') goToLobby();
+      if (mode === 'ranked' || mode === 'friendly') goToLobby();
       else goToTrackSelect();
     },
     () => { goToSkinSelect(); }
@@ -118,6 +121,7 @@ function goToMpGame(car, track, room, net, startAt, myClientId) {
   trackEvent('game_start', { mode: 'online', track_id: track?.id, car_id: car?.id });
   currentScreen = 'mpGame';
   hideScreens();
+  setMobileControlsVisible(true);
   detachNet();
   initMpGame({
     car,
@@ -162,6 +166,7 @@ function goToGame() {
   trackEvent('game_start', { mode: selectedRaceOptions?.mode || selectedMode, track_id: selectedTrack?.id, car_id: selectedCar?.id });
   currentScreen = 'game';
   hideScreens();
+  setMobileControlsVisible(true);
   const raceCar = { ...selectedCar, skin: selectedSkin };
   initGame(
     raceCar, selectedTrack,
@@ -174,6 +179,7 @@ function goToGame() {
 function goToResults(lapData) {
   trackEvent('game_over', { mode: selectedRaceOptions?.mode || selectedMode, score: _scoreFromLap(lapData?.lapMs), lap_ms: lapData?.lapMs });
   currentScreen = 'results';
+  setMobileControlsVisible(false);
   stopGame();
   showScreen('screen-results');
   initResults(
@@ -230,7 +236,7 @@ _wireHelpButton();
 
 function _wireMainMenu() {
   document.getElementById('btn-main-play')?.addEventListener('click', () => {
-    trackEvent('game_start', { source: 'main_menu_play' });
+    trackEvent('guest_play_click', { source: 'main_menu' });
     goToCarSelect();
   });
   document.getElementById('btn-main-login')?.addEventListener('click', () => {
@@ -239,6 +245,37 @@ function _wireMainMenu() {
   document.getElementById('btn-main-leaderboard')?.addEventListener('click', () => {
     _openLeaderboardOverlay();
   });
+}
+
+function _wireMainLeaderboardPreview() {
+  document.querySelectorAll('.main-board-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.main-board-tab').forEach(item => item.classList.toggle('active', item === tab));
+      _loadMainLeaderboardPreview();
+    });
+  });
+  _loadMainLeaderboardPreview();
+}
+
+async function _loadMainLeaderboardPreview(statusText = 'Loading racers...') {
+  const list = document.getElementById('main-leaderboard-list');
+  const status = document.getElementById('main-leaderboard-status');
+  if (!list || !status) return;
+  const activeTab = document.querySelector('.main-board-tab.active');
+  const boardType = activeTab?.dataset?.mainBoardType === 'all-time' ? 'allTime' : 'today';
+  status.textContent = boardType === 'today' ? statusText : 'All-time leaders';
+  list.innerHTML = '<li class="leaderboard-empty">Loading leaderboard...</li>';
+  try {
+    const result = await fetchLeaderboard(boardType, 'timeTrial', 5);
+    const rows = result.leaderboard?.slice(0, 5) || [];
+    renderLeaderboardPreview(rows);
+    status.textContent = rows.length
+      ? (boardType === 'today' ? 'Today Top 5' : 'All-time Top 5')
+      : 'No records yet';
+  } catch {
+    renderLeaderboardPreview([]);
+    status.textContent = 'No records yet';
+  }
 }
 
 function _openLeaderboardOverlay() {
@@ -275,8 +312,7 @@ function _wireGlobalLeaderboard() {
   });
   document.querySelectorAll('.leaderboard-tab').forEach(tab => {
     tab.addEventListener('click', () => {
-      document.querySelectorAll('.leaderboard-tab').forEach(item => item.classList.toggle('active', item === tab));
-      _loadGlobalLeaderboard();
+      setLeaderboardTab(tab.dataset.boardType || 'all-time');
     });
   });
   document.getElementById('leaderboard-submit-form')?.addEventListener('submit', async event => {
@@ -299,6 +335,19 @@ async function _loadGlobalLeaderboard(statusText = '서버 연결 중...') {
   const status = document.getElementById('global-leaderboard-status');
   const trackFilter = document.getElementById('leaderboard-track-filter');
   if (!list || !status) return;
+  const activeTab = document.querySelector('.leaderboard-tab.active');
+  const boardType = activeTab?.dataset?.boardType === 'today' ? 'today' : 'allTime';
+  status.textContent = statusText;
+  list.innerHTML = '<li class="leaderboard-empty">Loading leaderboard...</li>';
+  try {
+    const result = await fetchLeaderboard(boardType, 'timeTrial', 20);
+    _renderGlobalLeaderboard(result.leaderboard || []);
+    status.textContent = result.leaderboard?.length ? `${boardType === 'today' ? 'Today' : 'All-time'} TOP 20` : 'No records yet';
+  } catch {
+    list.innerHTML = '<li class="leaderboard-empty">No records yet</li>';
+    status.textContent = 'No records yet';
+  }
+  return;
   const trackId = trackFilter?.value || TRACKS[0]?.id || '';
   const trackName = TRACKS.find(t => t.id === trackId)?.name || '선택 맵';
 
@@ -344,9 +393,19 @@ async function _loadHomeLeaderboard(statusText = '서버 연결 중...') {
 }
 
 function _renderGlobalLeaderboard(rows) {
+  renderLeaderboard(rows, 'allTime', 'timeTrial');
+}
+
+function renderLeaderboard(scores, type = 'allTime', mode = 'timeTrial') {
   const list = document.getElementById('global-leaderboard-list');
   if (!list) return;
-  _renderLeaderboardInto(list, rows);
+  _renderLeaderboardInto(list, scores || []);
+}
+
+function renderLeaderboardPreview(scores) {
+  const list = document.getElementById('main-leaderboard-list');
+  if (!list) return;
+  _renderLeaderboardInto(list, scores || []);
 }
 
 function _renderLeaderboardInto(list, rows) {
@@ -586,6 +645,14 @@ function _wireStarterRewardPack() {
   };
 }
 
+function setLeaderboardTab(type) {
+  const normalized = type === 'today' ? 'today' : 'all-time';
+  document.querySelectorAll('.leaderboard-tab').forEach(item => {
+    item.classList.toggle('active', item.dataset.boardType === normalized);
+  });
+  _loadGlobalLeaderboard();
+}
+
 function _openStarterRewardPack() {
   const overlay = document.getElementById('starter-reward-overlay');
   if (overlay) overlay.classList.remove('hidden');
@@ -645,8 +712,11 @@ function _escape(value) {
 }
 
 initAnalytics();
+clearRaceRecordsOnce();
+initMobileControls();
 initAds();
 _wireMainMenu();
+_wireMainLeaderboardPreview();
 _wireAuthScreen();
 _wireProfilePanel();
 _wireStarterRewardPack();

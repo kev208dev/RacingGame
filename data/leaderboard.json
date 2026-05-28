@@ -1,3 +1,6 @@
 {
-  "records": []
+  "records": [],
+  "migrations": [
+    "clear-existing-records-2026-05-27"
+  ]
 }

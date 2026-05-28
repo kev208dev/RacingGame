@@ -47,7 +47,7 @@ export function createCarDesign(type = 'formula_red') {
 
   const factory = factories[type] || factories.formula_red;
   const car = factory();
-  addCurvedSportsShellTo(car, type);
+  if (type !== 'gt_silver') addCurvedSportsShellTo(car, type);
   addBoostFlameTo(car);
   car.userData.designType = type;
   return car;
@@ -167,6 +167,42 @@ function addWheelTo(group, name, x, z, radius, width, tireMat, rimMat, y = 0.48)
   arm.castShadow = true;
   group.add(arm);
 
+  return wheel;
+}
+
+function addGT3WheelTo(group, name, x, z, radius, width, tireMat, rimMat, y = 0.5) {
+  const wheel = new THREE.Group();
+  wheel.name = name;
+  wheel.position.set(x, y, z);
+  wheel.rotation.z = Math.PI / 2;
+
+  const pivot = new THREE.Group();
+  pivot.name = name + '_pivot';
+  wheel.add(pivot);
+  wheel.userData.spinPivot = pivot;
+  wheel.userData.baseY = y;
+
+  const tire = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, width, 28), tireMat);
+  tire.name = 'black tire';
+  tire.castShadow = true;
+  tire.receiveShadow = true;
+  pivot.add(tire);
+
+  const rim = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.58, radius * 0.58, width + 0.03, 18), rimMat);
+  rim.name = 'metal wheel rim';
+  rim.castShadow = true;
+  rim.receiveShadow = true;
+  pivot.add(rim);
+
+  for (let i = 0; i < 6; i++) {
+    const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.055, radius * 1.1, 0.035), rimMat);
+    spoke.name = 'metal wheel spoke';
+    spoke.rotation.z = (Math.PI / 6) * i;
+    spoke.castShadow = true;
+    pivot.add(spoke);
+  }
+
+  group.add(wheel);
   return wheel;
 }
 
@@ -314,34 +350,94 @@ function createFormulaRedCarModel() {
   return car;
 }
 
-function createGTSilverCarModel() {
-  const m = createCarMaterials();
+function createGTSilverCarModel(options = {}) {
+  const {
+    bodyColor = 0xff2b2b,
+    accentColor = 0xffffff,
+    glassColor = 0x111827,
+    wheelColor = 0x9ca3af
+  } = options;
   const car = new THREE.Group();
-  car.name = 'gt_silver_track_car_model';
+  car.name = 'gt3_rs_prototype_model';
 
-  addTaperedBlockTo(car, 'wide silver gt body', [2.7, 0.5, 4.65], [0, 0.7, 0], m.silver, 0.72, 0.95);
-  addTaperedBlockTo(car, 'front hood', [2.25, 0.28, 1.55], [0, 1.0, 1.35], m.silver, 0.72, 0.95);
-  addTaperedBlockTo(car, 'wide rear haunch', [2.95, 0.38, 1.45], [0, 0.92, -1.25], m.silver, 0.92, 1.1);
-  addSphereTo(car, 'dark rounded cabin', 0.82, [0, 1.23, -0.28], [1.05, 0.45, 1.2], m.glass);
+  const bodyMat = new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.24, metalness: 0.34 });
+  const accentMat = new THREE.MeshStandardMaterial({ color: accentColor, roughness: 0.3, metalness: 0.22 });
+  const glassMat = new THREE.MeshStandardMaterial({
+    color: glassColor,
+    roughness: 0.08,
+    metalness: 0.12,
+    transparent: true,
+    opacity: 0.68,
+  });
+  const aeroMat = new THREE.MeshStandardMaterial({ color: 0x05070a, roughness: 0.58, metalness: 0.22 });
+  const tireMat = new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 0.76, metalness: 0.05 });
+  const wheelMat = new THREE.MeshStandardMaterial({ color: wheelColor, roughness: 0.22, metalness: 0.72 });
+  const headlightMat = new THREE.MeshStandardMaterial({
+    color: 0xf8fbff,
+    emissive: 0xb8d7ff,
+    emissiveIntensity: 0.75,
+    roughness: 0.16,
+    metalness: 0.08,
+  });
+  const tailMat = new THREE.MeshStandardMaterial({
+    color: 0xff1f2d,
+    emissive: 0xaa0610,
+    emissiveIntensity: 0.9,
+    roughness: 0.2,
+    metalness: 0.08,
+  });
 
-  addBoxTo(car, 'black front splitter', [2.95, 0.14, 0.35], [0, 0.42, 2.5], m.black);
-  addBoxTo(car, 'black side skirt left', [0.14, 0.18, 3.6], [-1.43, 0.48, -0.08], m.black);
-  addBoxTo(car, 'black side skirt right', [0.14, 0.18, 3.6], [1.43, 0.48, -0.08], m.black);
-  addBoxTo(car, 'red left side stripe', [0.06, 0.1, 1.9], [-1.52, 0.76, -0.2], m.red);
-  addBoxTo(car, 'red right side stripe', [0.06, 0.1, 1.9], [1.52, 0.76, -0.2], m.red);
-  addBoxTo(car, 'large black rear wing', [3.3, 0.14, 0.45], [0, 1.8, -2.35], m.black);
-  addBoxTo(car, 'left rear wing stand', [0.12, 0.7, 0.16], [-0.78, 1.42, -2.2], m.black);
-  addBoxTo(car, 'right rear wing stand', [0.12, 0.7, 0.16], [0.78, 1.42, -2.2], m.black);
-  addBoxTo(car, 'left hood vent', [0.35, 0.06, 0.55], [-0.55, 1.18, 1.45], m.black);
-  addBoxTo(car, 'right hood vent', [0.35, 0.06, 0.55], [0.55, 1.18, 1.45], m.black);
+  // mainBody: low, wide GT3 stance with a slightly raised rear deck.
+  addTaperedBlockTo(car, 'mainBody gt3 wide body', [2.9, 0.42, 4.75], [0, 0.68, -0.04], bodyMat, 0.72, 1.05);
+  addTaperedBlockTo(car, 'mainBody rear haunches widebody', [3.18, 0.38, 1.6], [0, 0.82, -1.32], bodyMat, 0.88, 1.12);
 
-  addSphereTo(car, 'left round headlight', 0.22, [-0.82, 0.98, 2.1], [0.85, 0.24, 1.0], m.white);
-  addSphereTo(car, 'right round headlight', 0.22, [0.82, 0.98, 2.1], [0.85, 0.24, 1.0], m.white);
+  // frontHood and aggressive nose.
+  addTaperedBlockTo(car, 'frontHood long flat hood', [2.32, 0.2, 1.75], [0, 0.96, 1.2], bodyMat, 0.64, 0.98);
+  addBoxTo(car, 'front bumper black intake', [1.7, 0.18, 0.2], [0, 0.62, 2.32], aeroMat);
+  addBoxTo(car, 'front bumper left canard', [0.58, 0.06, 0.18], [-1.05, 0.68, 2.2], aeroMat, [0, 0.22, 0]);
+  addBoxTo(car, 'front bumper right canard', [0.58, 0.06, 0.18], [1.05, 0.68, 2.2], aeroMat, [0, -0.22, 0]);
 
-  addWheelTo(car, 'front left red wheel', -1.38, 1.35, 0.45, 0.34, m.tire, m.red);
-  addWheelTo(car, 'front right red wheel', 1.38, 1.35, 0.45, 0.34, m.tire, m.red);
-  addWheelTo(car, 'rear left red wheel', -1.38, -1.45, 0.48, 0.36, m.tire, m.red);
-  addWheelTo(car, 'rear right red wheel', 1.38, -1.45, 0.48, 0.36, m.tire, m.red);
+  // cockpit, windshield, and sideWindows sit low and slightly rearward.
+  addTaperedBlockTo(car, 'cockpit low roof body color', [1.48, 0.38, 1.22], [0, 1.12, -0.38], bodyMat, 0.74, 0.96);
+  addBoxTo(car, 'windshield dark raked glass', [1.18, 0.06, 0.72], [0, 1.18, 0.18], glassMat, [-0.32, 0, 0]);
+  addBoxTo(car, 'rear glass dark fastback', [1.08, 0.06, 0.68], [0, 1.18, -0.9], glassMat, [0.26, 0, 0]);
+  addBoxTo(car, 'sideWindows left dark glass', [0.06, 0.42, 0.86], [-0.77, 1.1, -0.38], glassMat);
+  addBoxTo(car, 'sideWindows right dark glass', [0.06, 0.42, 0.86], [0.77, 1.1, -0.38], glassMat);
+
+  // aero package: splitter, skirts, diffuser, and large rearWing.
+  addBoxTo(car, 'frontSplitter black long blade', [3.2, 0.08, 0.42], [0, 0.39, 2.55], aeroMat);
+  addBoxTo(car, 'sideSkirts left black low blade', [0.14, 0.16, 3.55], [-1.54, 0.48, -0.08], aeroMat);
+  addBoxTo(car, 'sideSkirts right black low blade', [0.14, 0.16, 3.55], [1.54, 0.48, -0.08], aeroMat);
+  addBoxTo(car, 'rearDiffuser black lower tray', [2.65, 0.16, 0.48], [0, 0.43, -2.42], aeroMat, [0.08, 0, 0]);
+  addBoxTo(car, 'rearDiffuser left fin', [0.08, 0.28, 0.5], [-0.62, 0.52, -2.48], aeroMat);
+  addBoxTo(car, 'rearDiffuser right fin', [0.08, 0.28, 0.5], [0.62, 0.52, -2.48], aeroMat);
+  addBoxTo(car, 'rearWing main blade', [3.36, 0.12, 0.46], [0, 1.72, -2.28], aeroMat, [-0.06, 0, 0]);
+  addBoxTo(car, 'rearWing upper flap accent', [3.18, 0.08, 0.24], [0, 1.88, -2.2], accentMat, [-0.08, 0, 0]);
+  addBoxTo(car, 'rearWing left support', [0.1, 0.68, 0.14], [-0.68, 1.35, -2.2], aeroMat);
+  addBoxTo(car, 'rearWing right support', [0.1, 0.68, 0.14], [0.68, 1.35, -2.2], aeroMat);
+  addBoxTo(car, 'rearWing left endplate', [0.1, 0.48, 0.62], [-1.76, 1.75, -2.26], aeroMat);
+  addBoxTo(car, 'rearWing right endplate', [0.1, 0.48, 0.62], [1.76, 1.75, -2.26], aeroMat);
+
+  // wheelArches/fenders emphasize the widebody silhouette without heavy geometry.
+  addBoxTo(car, 'wheelArches front left fender', [0.5, 0.24, 0.86], [-1.28, 0.83, 1.38], bodyMat);
+  addBoxTo(car, 'wheelArches front right fender', [0.5, 0.24, 0.86], [1.28, 0.83, 1.38], bodyMat);
+  addBoxTo(car, 'wheelArches rear left fender', [0.56, 0.28, 0.94], [-1.35, 0.86, -1.38], bodyMat);
+  addBoxTo(car, 'wheelArches rear right fender', [0.56, 0.28, 0.94], [1.35, 0.86, -1.38], bodyMat);
+
+  // lights and racing graphics.
+  addBoxTo(car, 'headlights left sharp slash', [0.55, 0.055, 0.12], [-0.76, 0.9, 2.22], headlightMat, [0, 0.38, 0]);
+  addBoxTo(car, 'headlights right sharp slash', [0.55, 0.055, 0.12], [0.76, 0.9, 2.22], headlightMat, [0, -0.38, 0]);
+  addBoxTo(car, 'brakelight', [0.52, 0.06, 0.08], [-0.72, 0.82, -2.3], tailMat);
+  addBoxTo(car, 'brakelight', [0.52, 0.06, 0.08], [0.72, 0.82, -2.3], tailMat);
+  addBoxTo(car, 'racingStripe center stripe', [0.2, 0.035, 3.9], [0, 1.085, 0.2], accentMat);
+  addBoxTo(car, 'accentLine left speed line', [0.055, 0.08, 2.3], [-1.49, 0.82, -0.15], accentMat);
+  addBoxTo(car, 'accentLine right speed line', [0.055, 0.08, 2.3], [1.49, 0.82, -0.15], accentMat);
+
+  // wheels: four slightly exposed, naturally scaled GT tires.
+  addGT3WheelTo(car, 'wheels front left wheel', -1.55, 1.34, 0.46, 0.34, tireMat, wheelMat, 0.52);
+  addGT3WheelTo(car, 'wheels front right wheel', 1.55, 1.34, 0.46, 0.34, tireMat, wheelMat, 0.52);
+  addGT3WheelTo(car, 'wheels rear left wheel', -1.58, -1.42, 0.49, 0.38, tireMat, wheelMat, 0.55);
+  addGT3WheelTo(car, 'wheels rear right wheel', 1.58, -1.42, 0.49, 0.38, tireMat, wheelMat, 0.55);
 
   return car;
 }

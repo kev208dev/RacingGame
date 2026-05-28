@@ -1,4 +1,5 @@
 const KEY = 'racing_sandbox';
+const RECORD_RESET_ID = 'clear-race-records-2026-05-27';
 
 function load() {
   try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch { return {}; }
@@ -105,4 +106,18 @@ export function saveSettings(s) {
   const d = load();
   d.settings = { ...d.settings, ...s };
   save(d);
+}
+
+export function clearRaceRecordsOnce() {
+  const d = load();
+  const migrations = Array.isArray(d.migrations) ? d.migrations : [];
+  if (migrations.includes(RECORD_RESET_ID)) return false;
+
+  delete d.laps;
+  delete d.history;
+  delete d.sectorBest;
+  delete d.sectorBestMeta;
+  delete d.ghosts;
+  d.migrations = [...migrations, RECORD_RESET_ID];
+  return save(d);
 }
