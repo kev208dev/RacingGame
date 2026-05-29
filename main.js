@@ -445,6 +445,13 @@ function initGarageOnce() {
   initCarSelect((car) => {
     selectedCar = car;
     selectCarAndSkin(car?.id, selectedSkin?.id || 'default');
+    localStorage.setItem('selectedCarId', car?.id || '');
+    if (carSelectContext === 'raceSetup') {
+      const next = carSelectAfterSkin;
+      carSelectAfterSkin = null;
+      if (next) next();
+      return;
+    }
     goToSkinSelect();
   });
   console.timeEnd('initGarage');

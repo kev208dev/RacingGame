@@ -175,7 +175,7 @@ select:focus-visible {
 .main-menu {
   width: 100%;
   height: 100%;
-  overflow-y: auto;
+  overflow: hidden;
   padding: 0;
 }
 .main-hero {
@@ -283,6 +283,8 @@ select:focus-visible {
   grid-column: 1;
   align-self: start;
   pointer-events: auto;
+  max-height: calc(100vh - 128px);
+  overflow: hidden;
 }
 .lobby-mode-panel {
   grid-column: 3;
@@ -366,8 +368,8 @@ select:focus-visible {
 .lobby-car-strip {
   display: grid;
   gap: 8px;
-  max-height: 34vh;
-  overflow: auto;
+  max-height: 230px;
+  overflow: hidden;
 }
 .lobby-car-card {
   display: grid;
@@ -394,6 +396,7 @@ select:focus-visible {
   font-weight: 800;
 }
 .lobby-compact-board {
+  display: none;
   grid-column: 3;
   align-self: end;
   width: 100%;
@@ -620,9 +623,9 @@ select:focus-visible {
   display: none !important;
 }
 .car-grid {
-  display: flex; gap: 20px; flex-wrap: wrap;
+  display: flex; gap: 20px; flex-wrap: nowrap;
   justify-content: center; padding: 0 4px 8px;
-  overflow-y: auto; max-height: 52vh;
+  overflow-x: auto; overflow-y: hidden; max-height: 46vh;
 }
 
 .car-card {

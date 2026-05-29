@@ -20,6 +20,7 @@ let driftPulse = 0;
 let camLook = new THREE.Vector3();
 let camTarget = new THREE.Vector3();
 let smokeParticles = [];
+let toyCooldown = 0;
 const FIXED_DT = 1 / 60;
 
 const START_POS = { x: 0, y: 0, angle: 0 };
@@ -69,6 +70,7 @@ export function updateLobbyPractice(dt) {
   if (input.reset) respawnLobbyCar();
   if (input.escape) document.querySelector('.lobby-hub')?.classList.toggle('panels-collapsed');
   const driveInput = makeLobbyDriveInput(input);
+  toyCooldown = Math.max(0, toyCooldown - dt);
   accumulator += Math.min(dt, 0.05);
   let steps = 0;
   while (accumulator >= FIXED_DT && steps < 4) {
@@ -79,12 +81,15 @@ export function updateLobbyPractice(dt) {
       driftPulse = Math.min(1, driftPulse + FIXED_DT * 5);
       spawnLobbyDriftSmoke();
     }
+    updateToyInteractions(FIXED_DT);
+    updateAirTrick(FIXED_DT);
     accumulator -= FIXED_DT;
     steps++;
   }
   boostFlash = Math.max(0, boostFlash - dt * 2.8);
   driftPulse = Math.max(0, driftPulse - dt * 2.4);
   updateCar3D(carMesh, car, driveInput, PRACTICE_TRACK);
+  applyAirTrickVisual();
   updateLobbyFx(dt);
   updateSmokeParticles(dt);
   updateLobbyCamera(dt);
@@ -112,6 +117,9 @@ export function respawnLobbyCar() {
   car.vx = 0;
   car.vy = 0;
   car.speed = 0;
+  car.airTime = 0;
+  car.airDuration = 0;
+  car.airHeight = 0;
 }
 
 export function showLobbyCarToast(name) {
@@ -186,12 +194,81 @@ function buildPracticeArena(target) {
     target.add(cone);
   }
 
+  addRamp(target, -360, -120, Math.PI * 0.08, 1.05);
+  addRamp(target, 330, 130, Math.PI * 1.08, 1.15);
+  addRamp(target, -40, 360, -Math.PI * 0.5, 1.0);
+  addBoostPad(target, -180, 0, 0);
+  addBoostPad(target, 180, 0, Math.PI);
+  addBoostPad(target, 0, -220, Math.PI * 0.5);
+  addLoopRing(target, 0, 410, 0);
+  addLoopRing(target, 430, -260, Math.PI * 0.22);
+
   for (const z of [-340, 340]) {
     const neon = new THREE.Mesh(new THREE.PlaneGeometry(1500, 4), cyanMat);
     neon.rotation.x = -Math.PI / 2;
     neon.position.set(0, 0.08, z);
     target.add(neon);
   }
+}
+
+function addRamp(target, x, z, angle, scale = 1) {
+  const group = new THREE.Group();
+  group.position.set(x, 0.2, z);
+  group.rotation.y = angle;
+  group.scale.setScalar(scale);
+  const shape = new THREE.Shape();
+  shape.moveTo(-32, 0);
+  shape.lineTo(32, 0);
+  shape.lineTo(32, 18);
+  shape.lineTo(-32, 0);
+  const geom = new THREE.ExtrudeGeometry(shape, { depth: 72, bevelEnabled: false });
+  geom.rotateY(Math.PI / 2);
+  geom.translate(0, 0, -36);
+  const ramp = new THREE.Mesh(geom, new THREE.MeshStandardMaterial({ color: 0xff7a1f, roughness: 0.45, metalness: 0.12 }));
+  group.add(ramp);
+  const arrow = new THREE.Mesh(new THREE.PlaneGeometry(42, 4), new THREE.MeshBasicMaterial({ color: 0xfacc15 }));
+  arrow.rotation.x = -Math.PI / 2;
+  arrow.position.set(0, 1.2, -10);
+  group.add(arrow);
+  target.add(group);
+}
+
+function addBoostPad(target, x, z, angle) {
+  const group = new THREE.Group();
+  group.position.set(x, 0.12, z);
+  group.rotation.y = angle;
+  const pad = new THREE.Mesh(
+    new THREE.PlaneGeometry(88, 34),
+    new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.62 })
+  );
+  pad.rotation.x = -Math.PI / 2;
+  group.add(pad);
+  for (let i = -1; i <= 1; i++) {
+    const stripe = new THREE.Mesh(new THREE.PlaneGeometry(48, 3), new THREE.MeshBasicMaterial({ color: 0xfacc15 }));
+    stripe.rotation.x = -Math.PI / 2;
+    stripe.position.z = i * 9;
+    group.add(stripe);
+  }
+  target.add(group);
+}
+
+function addLoopRing(target, x, z, angle) {
+  const group = new THREE.Group();
+  group.position.set(x, 58, z);
+  group.rotation.y = angle;
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(52, 4, 10, 72),
+    new THREE.MeshBasicMaterial({ color: 0xff5a1f })
+  );
+  ring.rotation.y = Math.PI / 2;
+  group.add(ring);
+  const inner = new THREE.Mesh(
+    new THREE.TorusGeometry(40, 1.5, 8, 72),
+    new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.75 })
+  );
+  inner.rotation.y = Math.PI / 2;
+  group.add(inner);
+  target.add(group);
 }
 
 function updateLobbyCamera(dt) {
@@ -245,6 +322,66 @@ function updateLobbyFx(dt) {
     const scale = 1 + boostFlash * 1.2;
     flame.scale.setScalar(scale);
   }
+}
+
+function updateToyInteractions(dt) {
+  if (!car || toyCooldown > 0) return;
+  const toys = [
+    { type: 'ramp', x: -360, y: 120, radius: 58, angle: Math.PI * 0.08 },
+    { type: 'ramp', x: 330, y: -130, radius: 64, angle: Math.PI * 1.08 },
+    { type: 'ramp', x: -40, y: -360, radius: 58, angle: -Math.PI * 0.5 },
+    { type: 'boost', x: -180, y: 0, radius: 52, angle: 0 },
+    { type: 'boost', x: 180, y: 0, radius: 52, angle: Math.PI },
+    { type: 'boost', x: 0, y: 220, radius: 52, angle: Math.PI * 0.5 },
+    { type: 'loop', x: 0, y: -410, radius: 82, angle: 0 },
+    { type: 'loop', x: 430, y: 260, radius: 82, angle: Math.PI * 0.22 },
+  ];
+  for (const toy of toys) {
+    const dx = car.x - toy.x;
+    const dy = car.y - toy.y;
+    if (dx * dx + dy * dy > toy.radius * toy.radius) continue;
+    if (toy.type === 'boost') {
+      const push = 155;
+      car.vx += Math.cos(toy.angle) * push * dt * 8;
+      car.vy += Math.sin(toy.angle) * push * dt * 8;
+      boostFlash = 1;
+      toyCooldown = 0.24;
+      return;
+    }
+    if ((car.speed || 0) > 22) {
+      startAirTrick(toy.type === 'loop' ? 1.35 : 1.05, toy.type === 'loop' ? 82 : 58);
+      const push = toy.type === 'loop' ? 90 : 52;
+      car.vx += Math.cos(car.angle) * push;
+      car.vy += Math.sin(car.angle) * push;
+      toyCooldown = 0.9;
+      return;
+    }
+  }
+}
+
+function startAirTrick(duration, height) {
+  car.airTime = duration;
+  car.airDuration = duration;
+  car.airHeight = height;
+  boostFlash = 1;
+}
+
+function updateAirTrick(dt) {
+  if (!car?.airTime) return;
+  car.airTime = Math.max(0, car.airTime - dt);
+}
+
+function applyAirTrickVisual() {
+  if (!carMesh) return;
+  if (!car?.airTime || !car.airDuration) {
+    carMesh.rotation.x *= 0.82;
+    carMesh.rotation.z *= 0.82;
+    return;
+  }
+  const progress = 1 - car.airTime / car.airDuration;
+  carMesh.position.y += Math.sin(progress * Math.PI) * car.airHeight;
+  carMesh.rotation.z = Math.sin(progress * Math.PI * 2) * 0.18;
+  carMesh.rotation.x = progress * Math.PI * 2;
 }
 
 function resizeHud() {
