@@ -8,11 +8,13 @@ import { initResults }      from './screens/results.js';
 import { initLobby, teardownLobby, detachNet } from './screens/lobby.js';
 import { initMpGame, updateMpGame, stopMpGame } from './screens/mpGame.js';
 import { initMpResults }    from './screens/mpResults.js';
+import { initLobbyPractice, updateLobbyPractice, stopLobbyPractice, switchLobbyCar, respawnLobbyCar, showLobbyCarToast } from './screens/lobbyPractice.js';
 import { initAuth }         from './utils/auth.js';
 import { getCurrentUser, onAuthChange, signOut, signInLocal, signUpLocal } from './utils/auth.js';
 import { clearFrameKeys }   from './utils/input.js';
 import { formatTime }       from './utils/math.js';
 import { CAR_DATA }         from './data/cars.js';
+import { isCarUnlocked }    from './utils/unlocks.js';
 import {
   fetchLeaderboard,
   getPlayerProfile,
@@ -157,8 +159,15 @@ function hideRaceCanvas() {
 
 // ── transitions ─────────────────────────────────────────────
 function goToMain() {
-  updateGameState({ currentScreen: 'main', isRaceRunning: false });
+  ensureDefaultLoadout();
+  updateGameState({ currentScreen: 'lobby', isRaceRunning: false, selectedCar: selectedCar?.id });
   showScreen('main');
+  currentScreen = 'lobbyPractice';
+  if (window.gameState) window.gameState.currentScreen = 'lobby';
+  showRaceCanvas();
+  initLobbyPractice({ ...selectedCar, skin: selectedSkin });
+  renderLobbyHub();
+  setMobileControlsVisible(true);
   showBannerAd('ad-main-menu-banner');
   initMainScreen();
 }
@@ -167,6 +176,67 @@ function initMainScreen() {
   renderSeasonPanel();
   renderMissionPanel();
   if (!initFlags.mainLeaderboardPreview) _loadMainLeaderboardPreview();
+}
+
+function renderLobbyHub() {
+  const nameEl = document.getElementById('lobby-car-name');
+  const currentEl = document.getElementById('lobby-current-car');
+  const badgeEl = document.getElementById('lobby-car-badge');
+  const statsEl = document.getElementById('lobby-car-stats');
+  const stripEl = document.getElementById('lobby-car-strip');
+  const car = selectedCar || CAR_DATA[0];
+  if (nameEl) nameEl.textContent = car.name;
+  if (currentEl) currentEl.textContent = car.name;
+  if (badgeEl) badgeEl.textContent = 'SELECTED';
+  if (statsEl) {
+    const stats = car.stats || {};
+    statsEl.innerHTML = [
+      ['Speed', stats.speed || Math.round((car.maxSpeed || 280) / 4)],
+      ['Acceleration', stats.acceleration || 70],
+      ['Handling', stats.handling || Math.round((car.grip || 1.6) * 42)],
+    ].map(([label, value]) => `
+      <div class="lobby-stat-row">
+        <span>${label}</span>
+        <i><em style="width:${Math.min(100, Math.max(8, value))}%"></em></i>
+        <b>${value}</b>
+      </div>
+    `).join('');
+  }
+  if (stripEl) {
+    stripEl.innerHTML = CAR_DATA.map(item => {
+      const owned = isCarUnlocked(item);
+      const selected = item.id === car.id;
+      return `
+        <button class="lobby-car-card${selected ? ' selected' : ''}${owned ? '' : ' locked'}" data-lobby-car="${item.id}" type="button" ${owned ? '' : 'disabled'}>
+          <b>${item.name}</b>
+          <small>${owned ? (selected ? 'SELECTED' : item.rarity || item.category) : 'LOCKED'}</small>
+        </button>
+      `;
+    }).join('');
+    stripEl.querySelectorAll('[data-lobby-car]').forEach(button => {
+      button.addEventListener('click', () => selectLobbyCar(button.dataset.lobbyCar));
+    });
+  }
+}
+
+function selectLobbyCar(carId) {
+  const car = CAR_DATA.find(item => item.id === carId);
+  if (!car || !isCarUnlocked(car)) return;
+  selectedCar = car;
+  localStorage.setItem('selectedCarId', car.id);
+  localStorage.setItem('racingSelectedCar', car.id);
+  selectCarAndSkin(car.id, selectedSkin?.id || 'default');
+  switchLobbyCar({ ...selectedCar, skin: selectedSkin });
+  renderLobbyHub();
+  showLobbyCarToast(car.name);
+}
+
+function selectAdjacentLobbyCar(direction) {
+  const owned = CAR_DATA.filter(isCarUnlocked);
+  if (!owned.length) return;
+  const currentIdx = Math.max(0, owned.findIndex(car => car.id === selectedCar?.id));
+  const next = owned[(currentIdx + direction + owned.length) % owned.length];
+  selectLobbyCar(next.id);
 }
 
 function _openAuth() {
@@ -188,7 +258,8 @@ function goToCarSelect(options = {}) {
 }
 
 function ensureDefaultLoadout() {
-  if (!selectedCar) selectedCar = CAR_DATA[0];
+  const storedCarId = localStorage.getItem('selectedCarId') || localStorage.getItem('racingSelectedCar');
+  if (!selectedCar) selectedCar = CAR_DATA.find(car => car.id === storedCarId && isCarUnlocked(car)) || CAR_DATA.find(isCarUnlocked) || CAR_DATA[0];
   if (!selectedSkin) selectedSkin = { id: 'default', name: 'Default' };
   selectCarAndSkin(selectedCar?.id, selectedSkin?.id || 'default');
 }
@@ -289,6 +360,8 @@ function goToMpResults(payload, net) {
 }
 
 function goToTrackSelect() {
+  stopLobbyPractice();
+  setMobileControlsVisible(false);
   showScreen('trackSelect');
   initTrackSelect(
     (track, options = {}) => {
@@ -310,6 +383,7 @@ function goToTrackSelect() {
 }
 
 function goToGame() {
+  stopLobbyPractice();
   trackEvent('game_start', { mode: selectedRaceOptions?.mode || selectedMode, track_id: selectedTrack?.id, car_id: selectedCar?.id });
   const mode = selectedRaceOptions?.mode || selectedMode;
   updateGameState({
@@ -333,7 +407,7 @@ function goToGame() {
   initGame(
     raceCar, selectedTrack,
     (lapData) => { goToResults(lapData); },
-    ()        => { goToCarSelect(); },
+    ()        => { goToMain(); },
     selectedRaceOptions
   );
 }
@@ -449,7 +523,9 @@ function gameLoop(timestamp) {
   const dt = Math.min((timestamp - lastTime) / 1000, 0.05);
   lastTime = timestamp;
 
-  if (currentScreen === 'game') {
+  if (currentScreen === 'lobbyPractice') {
+    updateLobbyPractice(dt);
+  } else if (currentScreen === 'game') {
     updateGame(dt, timestamp);
   } else if (currentScreen === 'mpGame') {
     updateMpGame(dt, timestamp);
@@ -493,8 +569,16 @@ _wireHelpButton();
 
 function _wireMainMenu() {
   document.getElementById('btn-main-play')?.addEventListener('click', () => {
-    trackEvent('guest_play_click', { source: 'main_menu' });
-    goToModeSelect(() => goToMain());
+    trackEvent('time_trial_click', { source: 'practice_lobby', car_id: selectedCar?.id });
+    selectedMode = 'timeTrial';
+    selectGameMode('timeTrial');
+    goToTrackSelect();
+  });
+  document.getElementById('btn-lobby-ranked')?.addEventListener('click', () => {
+    trackEvent('ranked_click', { source: 'practice_lobby', car_id: selectedCar?.id });
+    selectedMode = 'ranked';
+    selectGameMode('ranked');
+    goToTrackSelect();
   });
   document.getElementById('btn-main-login')?.addEventListener('click', () => {
     _openAuth();
@@ -513,6 +597,9 @@ function _wireMainMenu() {
   document.getElementById('btn-help-back')?.addEventListener('click', () => goToMain());
   document.getElementById('btn-auth-back')?.addEventListener('click', () => goToMain());
   document.getElementById('btn-garage-back')?.addEventListener('click', () => goToMain());
+  document.getElementById('btn-lobby-prev-car')?.addEventListener('click', () => selectAdjacentLobbyCar(-1));
+  document.getElementById('btn-lobby-next-car')?.addEventListener('click', () => selectAdjacentLobbyCar(1));
+  document.getElementById('btn-lobby-shop')?.addEventListener('click', () => _openStarterRewardPack());
   document.getElementById('btn-main-leaderboard')?.addEventListener('click', () => {
     _openLeaderboardOverlay();
   });
@@ -559,7 +646,7 @@ async function _loadMainLeaderboardPreview(statusText = 'Loading racers...') {
 function _openLeaderboardOverlay() {
   const overlay = document.getElementById('leaderboard-overlay');
   if (!overlay) return;
-  returnScreenAfterPanel = currentScreen || 'main';
+  returnScreenAfterPanel = currentScreen === 'lobbyPractice' ? 'main' : (currentScreen || 'main');
   initFullLeaderboardOnce();
   showScreen('leaderboard');
   trackEvent('leaderboard_open', { source: returnScreenAfterPanel });
@@ -577,7 +664,7 @@ function _wireGlobalLeaderboard() {
   if (trackFilter) trackFilter.addEventListener('change', () => _loadGlobalLeaderboard());
 
   const open = () => _openLeaderboardOverlay();
-  const close = () => showScreen(returnScreenAfterPanel || 'main');
+  const close = () => returnScreenAfterPanel === 'main' ? goToMain() : showScreen(returnScreenAfterPanel || 'main');
 
   openBtn.addEventListener('click', open);
   closeBtn && closeBtn.addEventListener('click', close);
@@ -926,13 +1013,13 @@ function setLeaderboardTab(type) {
 function _openStarterRewardPack() {
   const overlay = document.getElementById('starter-reward-overlay');
   if (overlay) {
-    returnScreenAfterPanel = currentScreen || 'main';
+    returnScreenAfterPanel = currentScreen === 'lobbyPractice' ? 'main' : (currentScreen || 'main');
     showScreen('bonusDraw');
   }
 }
 
 function _closeStarterRewardPack() {
-  showScreen(returnScreenAfterPanel || 'main');
+  returnScreenAfterPanel === 'main' ? goToMain() : showScreen(returnScreenAfterPanel || 'main');
 }
 
 const recentToastKeys = new Map();
