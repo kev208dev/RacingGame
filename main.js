@@ -259,7 +259,7 @@ function goToCarSelect(options = {}) {
   carSelectBackHandler = typeof options.onBack === 'function' ? options.onBack : () => goToMain();
   initGarageOnce();
   configureCarSelectScreen(carSelectContext);
-  showScreen('garage');
+  showScreen('carSelect');
 }
 
 function ensureDefaultLoadout() {
@@ -459,7 +459,7 @@ function configureCarSelectScreen(context = 'garage') {
   const leaderboard = document.querySelector('#screen-carselect .home-leaderboard');
   const layout = document.querySelector('#screen-carselect .home-layout');
 
-  if (title) title.textContent = isRaceSetup ? 'Car Select' : 'Garage';
+  if (title) title.textContent = 'Car Select';
   if (subtitle) {
     subtitle.textContent = isRaceSetup
       ? 'Choose the car you want to race with.'

@@ -58,9 +58,8 @@ function _render() {
     // mini preview canvas
     const previewDiv = document.createElement('div');
     previewDiv.className = 'car-preview';
-    previewDiv.style.background = car.color + '22';
     const cv = document.createElement('canvas');
-    cv.width = 160; cv.height = 70;
+    cv.width = 320; cv.height = 150;
     _drawCarPreview(cv, car);
     previewDiv.appendChild(cv);
 
@@ -240,17 +239,27 @@ function _drawCarPreview(canvas, car) {
   const spec = PREVIEW_DESIGNS[car.id] || { kind: 'gt', body: car.color, accent: '#ffd84a', wheel: car.color, length: 114, height: 30 };
   ctx.clearRect(0, 0, w, h);
 
-  const bg = ctx.createLinearGradient(12, 6, w - 10, h - 8);
-  bg.addColorStop(0, 'rgba(255,255,255,0.16)');
-  bg.addColorStop(1, 'rgba(0,0,0,0.38)');
+  const bg = ctx.createLinearGradient(0, 0, w, h);
+  bg.addColorStop(0, '#233142');
+  bg.addColorStop(0.55, '#0f172a');
+  bg.addColorStop(1, '#030712');
   ctx.fillStyle = bg;
   ctx.beginPath();
-  ctx.roundRect(8, 8, w - 16, h - 16, 10);
+  ctx.roundRect(8, 8, w - 16, h - 16, 18);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.16)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(56,189,248,0.18)';
+  ctx.beginPath();
+  ctx.ellipse(w / 2, h - 28, w * 0.34, 14, 0, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.save();
-  ctx.translate(w / 2, h / 2 + 8);
-  ctx.rotate(-0.05);
+  const scale = Math.min(w / 190, h / 86);
+  ctx.translate(w / 2, h / 2 + 18);
+  ctx.scale(scale, scale);
+  ctx.rotate(-0.035);
 
   ctx.fillStyle = 'rgba(0,0,0,0.36)';
   ctx.beginPath();

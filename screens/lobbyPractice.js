@@ -19,6 +19,7 @@ let boostFlash = 0;
 let driftPulse = 0;
 let camLook = new THREE.Vector3();
 let camTarget = new THREE.Vector3();
+let smokeParticles = [];
 const FIXED_DT = 1 / 60;
 
 const START_POS = { x: 0, y: 0, angle: 0 };
@@ -44,13 +45,14 @@ export function initLobbyPractice(carData) {
   renderer.setSize(window.innerWidth, window.innerHeight);
 
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x050816);
-  scene.fog = new THREE.Fog(0x050816, 220, 900);
-  camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 1400);
+  scene.background = new THREE.Color(0x9bd7ff);
+  scene.fog = new THREE.Fog(0x9bd7ff, 520, 2600);
+  camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 3600);
   camLook.set(0, 8, -20);
   camTarget.set(0, 44, 92);
 
   buildPracticeArena(scene);
+  smokeParticles = createSmokeParticles(scene);
   spawnLobbyCar(carData);
   window.addEventListener('resize', onResize);
   running = true;
@@ -73,7 +75,10 @@ export function updateLobbyPractice(dt) {
     if (!car.boosting) car.boostMeter = Math.min(100, (car.boostMeter || 0) + FIXED_DT * 28);
     updatePhysics(car, driveInput, FIXED_DT, PRACTICE_TRACK);
     if (car.boosting) boostFlash = Math.min(1, boostFlash + FIXED_DT * 8);
-    if (car.drifting) driftPulse = Math.min(1, driftPulse + FIXED_DT * 5);
+    if (car.drifting) {
+      driftPulse = Math.min(1, driftPulse + FIXED_DT * 5);
+      spawnLobbyDriftSmoke();
+    }
     accumulator -= FIXED_DT;
     steps++;
   }
@@ -81,6 +86,7 @@ export function updateLobbyPractice(dt) {
   driftPulse = Math.max(0, driftPulse - dt * 2.4);
   updateCar3D(carMesh, car, driveInput, PRACTICE_TRACK);
   updateLobbyFx(dt);
+  updateSmokeParticles(dt);
   updateLobbyCamera(dt);
   renderer.render(scene, camera);
   drawLobbyHud(dt);
@@ -123,39 +129,51 @@ function spawnLobbyCar(carData) {
 }
 
 function buildPracticeArena(target) {
-  target.add(new THREE.AmbientLight(0xb8d4ff, 0.72));
-  const key = new THREE.DirectionalLight(0xffffff, 1.15);
-  key.position.set(180, 260, 120);
+  target.add(new THREE.HemisphereLight(0xdff4ff, 0x5f7f62, 1.25));
+  target.add(new THREE.AmbientLight(0xffffff, 0.72));
+  const key = new THREE.DirectionalLight(0xffffff, 1.35);
+  key.position.set(260, 360, 180);
   target.add(key);
-  const rim = new THREE.DirectionalLight(0xff5a1f, 0.7);
+  const rim = new THREE.DirectionalLight(0xff9a42, 0.62);
   rim.position.set(-160, 90, -180);
   target.add(rim);
 
   const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(900, 720),
-    new THREE.MeshStandardMaterial({ color: 0x07111f, roughness: 0.88, metalness: 0.05 })
+    new THREE.PlaneGeometry(9000, 9000),
+    new THREE.MeshStandardMaterial({ color: 0x304b5e, roughness: 0.9, metalness: 0.02 })
   );
   ground.rotation.x = -Math.PI / 2;
   target.add(ground);
 
-  const roadMat = new THREE.MeshStandardMaterial({ color: 0x171d27, roughness: 0.78, metalness: 0.08 });
-  const lineMat = new THREE.MeshBasicMaterial({ color: 0xff5a1f, transparent: true, opacity: 0.92 });
-  const cyanMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.72 });
+  const grid = new THREE.GridHelper(9000, 120, 0xffffff, 0x86c5e8);
+  grid.position.y = 0.05;
+  grid.material.transparent = true;
+  grid.material.opacity = 0.28;
+  target.add(grid);
 
-  const circle = new THREE.Mesh(new THREE.RingGeometry(112, 166, 96), roadMat);
+  const roadMat = new THREE.MeshStandardMaterial({ color: 0x3d4652, roughness: 0.72, metalness: 0.06 });
+  const lineMat = new THREE.MeshBasicMaterial({ color: 0xff7a1f, transparent: true, opacity: 0.94 });
+  const cyanMat = new THREE.MeshBasicMaterial({ color: 0x0077ff, transparent: true, opacity: 0.62 });
+
+  const circle = new THREE.Mesh(new THREE.RingGeometry(190, 270, 128), roadMat);
   circle.rotation.x = -Math.PI / 2;
   circle.position.y = 0.02;
   target.add(circle);
 
-  const straight = new THREE.Mesh(new THREE.PlaneGeometry(420, 74), roadMat);
+  const straight = new THREE.Mesh(new THREE.PlaneGeometry(1400, 96), roadMat);
   straight.rotation.x = -Math.PI / 2;
   straight.position.set(0, 0.03, 0);
   target.add(straight);
 
-  for (let i = -4; i <= 4; i++) {
-    const stripe = new THREE.Mesh(new THREE.PlaneGeometry(22, 2), lineMat);
+  const cross = new THREE.Mesh(new THREE.PlaneGeometry(96, 920), roadMat);
+  cross.rotation.x = -Math.PI / 2;
+  cross.position.set(0, 0.025, 0);
+  target.add(cross);
+
+  for (let i = -14; i <= 14; i++) {
+    const stripe = new THREE.Mesh(new THREE.PlaneGeometry(28, 2.2), lineMat);
     stripe.rotation.x = -Math.PI / 2;
-    stripe.position.set(i * 46, 0.06, 0);
+    stripe.position.set(i * 46, 0.07, 0);
     target.add(stripe);
   }
 
@@ -168,8 +186,8 @@ function buildPracticeArena(target) {
     target.add(cone);
   }
 
-  for (const z of [-230, 230]) {
-    const neon = new THREE.Mesh(new THREE.PlaneGeometry(720, 3), cyanMat);
+  for (const z of [-340, 340]) {
+    const neon = new THREE.Mesh(new THREE.PlaneGeometry(1500, 4), cyanMat);
     neon.rotation.x = -Math.PI / 2;
     neon.position.set(0, 0.08, z);
     target.add(neon);
@@ -321,18 +339,67 @@ function roundRect(ctx, x, y, w, h, r) {
 }
 
 function makePracticeTrack() {
-  const centerLine = [];
-  for (let i = 0; i < 96; i++) {
-    const a = (i / 96) * Math.PI * 2;
-    centerLine.push([Math.cos(a) * 140, Math.sin(a) * 140]);
-  }
-  centerLine.push(centerLine[0]);
   return {
     id: 'lobby_practice',
-    name: 'Lobby Practice Arena',
-    width: 360,
-    centerLine,
+    name: 'Infinite Practice Arena',
+    width: 999999,
+    centerLine: [],
     startPos: START_POS,
-    roadProfile: { type: 'practice', roughness: 0.35 },
+    roadProfile: { type: 'practice', roughness: 0.12 },
   };
+}
+
+function createSmokeParticles(target) {
+  const particles = [];
+  const geometry = new THREE.SphereGeometry(1, 10, 8);
+  for (let i = 0; i < 46; i++) {
+    const material = new THREE.MeshBasicMaterial({
+      color: 0xe9f2ff,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.visible = false;
+    target.add(mesh);
+    particles.push({ mesh, life: 0, maxLife: 1, vx: 0, vz: 0, vy: 0, scale: 1 });
+  }
+  return particles;
+}
+
+function spawnLobbyDriftSmoke() {
+  if (!smokeParticles.length || !car) return;
+  const speed = Math.max(0, car.speed || 0);
+  if (speed < 16) return;
+  const particle = smokeParticles.find(item => item.life <= 0) || smokeParticles[0];
+  const side = Math.sign(car.sideSpeed || car.steerAngle || 1);
+  const backX = car.x - Math.cos(car.angle) * 13 - Math.sin(car.angle) * side * 7;
+  const backY = car.y - Math.sin(car.angle) * 13 + Math.cos(car.angle) * side * 7;
+  particle.life = 0.75;
+  particle.maxLife = 0.75;
+  particle.vx = -Math.cos(car.angle) * 10 + (Math.random() - 0.5) * 8;
+  particle.vz = Math.sin(car.angle) * 10 + (Math.random() - 0.5) * 8;
+  particle.vy = 6 + Math.random() * 8;
+  particle.scale = 6 + Math.min(14, speed * 0.08);
+  particle.mesh.visible = true;
+  particle.mesh.position.set(backX, 3.5, -backY);
+  particle.mesh.scale.setScalar(1);
+  particle.mesh.material.opacity = 0.38;
+}
+
+function updateSmokeParticles(dt) {
+  for (const particle of smokeParticles) {
+    if (particle.life <= 0) continue;
+    particle.life -= dt;
+    const t = Math.max(0, particle.life / particle.maxLife);
+    particle.mesh.position.x += particle.vx * dt;
+    particle.mesh.position.y += particle.vy * dt;
+    particle.mesh.position.z += particle.vz * dt;
+    particle.mesh.scale.setScalar(particle.scale * (1.1 - t));
+    particle.mesh.material.opacity = 0.34 * t;
+    if (particle.life <= 0) {
+      particle.mesh.visible = false;
+      particle.mesh.material.opacity = 0;
+    }
+  }
 }
