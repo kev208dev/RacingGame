@@ -8,7 +8,7 @@ import { initResults }      from './screens/results.js';
 import { initLobby, teardownLobby, detachNet } from './screens/lobby.js';
 import { initMpGame, updateMpGame, stopMpGame } from './screens/mpGame.js';
 import { initMpResults }    from './screens/mpResults.js';
-import { initLobbyPractice, updateLobbyPractice, stopLobbyPractice, switchLobbyCar, respawnLobbyCar, showLobbyCarToast } from './screens/lobbyPractice.js';
+import { initLobbyPractice, updateLobbyPractice, stopLobbyPractice, switchLobbyCar, respawnLobbyCar, showLobbyCarToast, switchPracticeMap } from './screens/lobbyPractice.js';
 import { initAuth }         from './utils/auth.js';
 import { getCurrentUser, onAuthChange, signOut, signInLocal, signUpLocal } from './utils/auth.js';
 import { clearFrameKeys }   from './utils/input.js';
@@ -611,6 +611,7 @@ function _wireMainMenu() {
   document.getElementById('btn-garage-back')?.addEventListener('click', () => goToMain());
   document.getElementById('btn-lobby-prev-car')?.addEventListener('click', () => selectAdjacentLobbyCar(-1));
   document.getElementById('btn-lobby-next-car')?.addEventListener('click', () => selectAdjacentLobbyCar(1));
+  document.getElementById('btn-lobby-switch-map')?.addEventListener('click', () => switchPracticeMap());
   document.getElementById('btn-lobby-shop')?.addEventListener('click', () => _openStarterRewardPack());
   document.getElementById('btn-main-leaderboard')?.addEventListener('click', () => {
     _openLeaderboardOverlay();

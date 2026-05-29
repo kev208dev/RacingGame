@@ -22,6 +22,7 @@ import { CAR_DATA } from '../data/cars.js';
 import { initMiniMap, updateMiniMap } from '../js/minimap.js';
 import { startRecordLineCapture, captureRecordLineSample, loadBestRecordLine, renderRecordLine } from '../js/ghost.js';
 import { updateMissionProgress } from '../js/missions.js';
+import { getSharedRenderer } from '../js/renderer.js';
 
 // ── Three.js renderer (persists across retries) ──────────────
 let renderer = null;
@@ -113,13 +114,7 @@ export function initGame(cd, tr, resultsCb, menuCb, options = {}) {
   const threeCanvas = document.getElementById('three-canvas');
   if (threeCanvas) threeCanvas.style.display = 'block';
 
-  if (!renderer) {
-    renderer = new THREE.WebGLRenderer({ canvas: threeCanvas, antialias: false, powerPreference: 'high-performance' });
-    renderer.shadowMap.enabled = false;
-    renderer.shadowMap.type    = THREE.PCFSoftShadowMap;
-  }
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1));
+  renderer = getSharedRenderer(threeCanvas);
 
   // ── scene ──
   scene = new THREE.Scene();
@@ -241,8 +236,8 @@ export function updateGame(dt, now) {
     startRaceTimer(now);
     lapStats = _makeLapStats();
   }
-  initMiniMap(tr);
-  if ((raceOptions.mode || 'timeTrial') === 'timeTrial') startRecordLineCapture(tr.id, cd.id);
+  initMiniMap(track);
+  if ((raceOptions.mode || 'timeTrial') === 'timeTrial') startRecordLineCapture(track.id, carData.id);
   const driveInput = raceReleased ? input : {
     ...input,
     throttle: 0, brake: 0, steer: 0, handbrake: false,

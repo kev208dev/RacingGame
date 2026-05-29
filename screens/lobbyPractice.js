@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { createCar, createCar3D, updateCar3D } from '../js/car.js';
 import { KMH_PER_UNIT, TOP_SPEED_MULT, updatePhysics } from '../js/physics.js';
 import { getInput } from '../utils/input.js';
+import { getSharedRenderer } from '../js/renderer.js';
 
 let renderer = null;
 let scene = null;
@@ -12,6 +13,8 @@ let hudCanvas = null;
 let hudCtx = null;
 let running = false;
 let selectedCarData = null;
+let currentPracticeMap = 0;
+let mapGroup = null;
 let toastTimer = 0;
 let practiceName = '';
 let accumulator = 0;
@@ -38,21 +41,20 @@ export function initLobbyPractice(carData) {
     resizeHud();
   }
 
-  if (!renderer) {
-    renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-    renderer.shadowMap.enabled = false;
-  }
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.4));
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer = getSharedRenderer(canvas);
 
+  const bgColor = currentPracticeMap === 0 ? 0x9bd7ff : 0x8ecfb8;
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x9bd7ff);
-  scene.fog = new THREE.Fog(0x9bd7ff, 520, 2600);
-  camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 3600);
+  scene.background = new THREE.Color(bgColor);
+  scene.fog = new THREE.Fog(bgColor, 520, 3200);
+  camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 4200);
   camLook.set(0, 8, -20);
   camTarget.set(0, 44, 92);
 
-  buildPracticeArena(scene);
+  mapGroup = new THREE.Group();
+  scene.add(mapGroup);
+  if (currentPracticeMap === 0) buildPracticeArena(mapGroup);
+  else buildJumpCourse(mapGroup);
   smokeParticles = createSmokeParticles(scene);
   spawnLobbyCar(carData);
   window.addEventListener('resize', onResize);
@@ -125,6 +127,29 @@ export function respawnLobbyCar() {
 export function showLobbyCarToast(name) {
   practiceName = name;
   toastTimer = 1.4;
+}
+
+export function switchPracticeMap() {
+  currentPracticeMap = (currentPracticeMap + 1) % 2;
+  if (mapGroup) {
+    mapGroup.traverse(obj => {
+      if (obj.geometry) obj.geometry.dispose();
+      if (obj.material) {
+        if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose());
+        else obj.material.dispose();
+      }
+    });
+    mapGroup.clear();
+    if (currentPracticeMap === 0) buildPracticeArena(mapGroup);
+    else buildJumpCourse(mapGroup);
+  }
+  if (scene) {
+    const bgColor = currentPracticeMap === 0 ? 0x9bd7ff : 0x8ecfb8;
+    scene.background = new THREE.Color(bgColor);
+    scene.fog = new THREE.Fog(bgColor, 520, 3200);
+  }
+  respawnLobbyCar();
+  showLobbyCarToast(currentPracticeMap === 0 ? '연습장' : '점프 코스');
 }
 
 function spawnLobbyCar(carData) {
@@ -209,6 +234,109 @@ function buildPracticeArena(target) {
     neon.position.set(0, 0.08, z);
     target.add(neon);
   }
+}
+
+function buildJumpCourse(target) {
+  target.add(new THREE.HemisphereLight(0xd4f5e8, 0x2a4a30, 1.2));
+  target.add(new THREE.AmbientLight(0xffffff, 0.65));
+  const key = new THREE.DirectionalLight(0xfff8ee, 1.4);
+  key.position.set(500, 480, 100);
+  target.add(key);
+  const rim = new THREE.DirectionalLight(0x00ffcc, 0.48);
+  rim.position.set(-200, 120, -300);
+  target.add(rim);
+
+  const ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(9000, 9000),
+    new THREE.MeshStandardMaterial({ color: 0x1e3028, roughness: 0.88, metalness: 0.03 })
+  );
+  ground.rotation.x = -Math.PI / 2;
+  target.add(ground);
+
+  const grid = new THREE.GridHelper(9000, 120, 0x00ffcc, 0x00aa88);
+  grid.position.y = 0.05;
+  grid.material.transparent = true;
+  grid.material.opacity = 0.22;
+  target.add(grid);
+
+  const roadMat = new THREE.MeshStandardMaterial({ color: 0x252d3a, roughness: 0.68, metalness: 0.08 });
+  const road = new THREE.Mesh(new THREE.PlaneGeometry(1850, 110), roadMat);
+  road.rotation.x = -Math.PI / 2;
+  road.position.set(820, 0.03, 0);
+  target.add(road);
+
+  // Dashed center line (along x-axis)
+  const lineMat = new THREE.MeshBasicMaterial({ color: 0xfacc15, transparent: true, opacity: 0.85 });
+  for (let i = 0; i < 28; i++) {
+    const stripe = new THREE.Mesh(new THREE.PlaneGeometry(32, 3.5), lineMat);
+    stripe.rotation.x = -Math.PI / 2;
+    stripe.position.set(i * 64, 0.08, 0);
+    target.add(stripe);
+  }
+
+  // Neon edge strips along the road
+  const neonMat = new THREE.MeshBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.75 });
+  for (const z of [-57, 57]) {
+    const strip = new THREE.Mesh(new THREE.PlaneGeometry(1850, 3), neonMat);
+    strip.rotation.x = -Math.PI / 2;
+    strip.position.set(820, 0.1, z);
+    target.add(strip);
+  }
+
+  // Course pylons (alternating sides)
+  const coneMat = new THREE.MeshStandardMaterial({ color: 0xff2200, roughness: 0.5 });
+  const bandMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 });
+  const pylonXs = [0, 150, 350, 560, 750, 970, 1150, 1400, 1600];
+  pylonXs.forEach((x, i) => {
+    for (const side of [-1, 1]) {
+      const z = side * 68;
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(6, 18, 16), coneMat);
+      cone.position.set(x, 9, z);
+      target.add(cone);
+      const band = new THREE.Mesh(new THREE.CylinderGeometry(6.2, 6.2, 3, 16), bandMat);
+      band.position.set(x, 6.5, z);
+      target.add(band);
+    }
+  });
+
+  // Landing platform at the end
+  const platform = new THREE.Mesh(
+    new THREE.CylinderGeometry(160, 160, 4, 64),
+    new THREE.MeshStandardMaterial({ color: 0x1a4040, roughness: 0.6 })
+  );
+  platform.position.set(1750, -1, 0);
+  target.add(platform);
+  const ringMark = new THREE.Mesh(
+    new THREE.RingGeometry(120, 130, 64),
+    new THREE.MeshBasicMaterial({ color: 0x00ffcc, side: THREE.DoubleSide })
+  );
+  ringMark.rotation.x = -Math.PI / 2;
+  ringMark.position.set(1750, 2, 0);
+  target.add(ringMark);
+
+  // Start arrow marker
+  const arrowMat = new THREE.MeshBasicMaterial({ color: 0xfacc15, transparent: true, opacity: 0.9 });
+  const startArrow = new THREE.Mesh(new THREE.PlaneGeometry(60, 8), arrowMat);
+  startArrow.rotation.x = -Math.PI / 2;
+  startArrow.position.set(40, 0.12, 0);
+  target.add(startArrow);
+
+  // Ramps along the x-axis (angle = PI/2 = car approaches from -x going in +x)
+  addRamp(target,  280, 0, Math.PI * 0.5, 1.05);
+  addRamp(target,  700, 0, Math.PI * 0.5, 1.15);
+  addRamp(target, 1120, 0, Math.PI * 0.5, 1.25);
+  addRamp(target, 1480, 0, Math.PI * 0.5, 1.1);
+
+  // Boost pads before each ramp
+  addBoostPad(target,  100, 0, 0);
+  addBoostPad(target,  520, 0, 0);
+  addBoostPad(target,  960, 0, 0);
+  addBoostPad(target, 1300, 0, 0);
+
+  // Loop rings between ramps
+  addLoopRing(target,  450, 0, Math.PI * 0.5);
+  addLoopRing(target,  870, 0, Math.PI * 0.5);
+  addLoopRing(target, 1650, 0, Math.PI * 0.5);
 }
 
 function addRamp(target, x, z, angle, scale = 1) {
@@ -324,18 +452,33 @@ function updateLobbyFx(dt) {
   }
 }
 
+const MAP0_TOYS = [
+  { type: 'ramp',  x: -360, y:  120, radius: 58, angle: Math.PI * 0.08 },
+  { type: 'ramp',  x:  330, y: -130, radius: 64, angle: Math.PI * 1.08 },
+  { type: 'ramp',  x:  -40, y: -360, radius: 58, angle: -Math.PI * 0.5 },
+  { type: 'boost', x: -180, y:    0, radius: 52, angle: 0 },
+  { type: 'boost', x:  180, y:    0, radius: 52, angle: Math.PI },
+  { type: 'boost', x:    0, y:  220, radius: 52, angle: Math.PI * 0.5 },
+  { type: 'loop',  x:    0, y: -410, radius: 82, angle: 0 },
+  { type: 'loop',  x:  430, y:  260, radius: 82, angle: Math.PI * 0.22 },
+];
+const MAP1_TOYS = [
+  { type: 'boost', x:  100, y: 0, radius: 52, angle: 0 },
+  { type: 'ramp',  x:  280, y: 0, radius: 60, angle: 0 },
+  { type: 'loop',  x:  450, y: 0, radius: 82, angle: 0 },
+  { type: 'boost', x:  560, y: 0, radius: 52, angle: 0 },
+  { type: 'ramp',  x:  700, y: 0, radius: 60, angle: 0 },
+  { type: 'loop',  x:  870, y: 0, radius: 82, angle: 0 },
+  { type: 'boost', x:  980, y: 0, radius: 52, angle: 0 },
+  { type: 'ramp',  x: 1120, y: 0, radius: 60, angle: 0 },
+  { type: 'boost', x: 1300, y: 0, radius: 52, angle: 0 },
+  { type: 'ramp',  x: 1480, y: 0, radius: 60, angle: 0 },
+  { type: 'loop',  x: 1650, y: 0, radius: 82, angle: 0 },
+];
+
 function updateToyInteractions(dt) {
   if (!car || toyCooldown > 0) return;
-  const toys = [
-    { type: 'ramp', x: -360, y: 120, radius: 58, angle: Math.PI * 0.08 },
-    { type: 'ramp', x: 330, y: -130, radius: 64, angle: Math.PI * 1.08 },
-    { type: 'ramp', x: -40, y: -360, radius: 58, angle: -Math.PI * 0.5 },
-    { type: 'boost', x: -180, y: 0, radius: 52, angle: 0 },
-    { type: 'boost', x: 180, y: 0, radius: 52, angle: Math.PI },
-    { type: 'boost', x: 0, y: 220, radius: 52, angle: Math.PI * 0.5 },
-    { type: 'loop', x: 0, y: -410, radius: 82, angle: 0 },
-    { type: 'loop', x: 430, y: 260, radius: 82, angle: Math.PI * 0.22 },
-  ];
+  const toys = currentPracticeMap === 0 ? MAP0_TOYS : MAP1_TOYS;
   for (const toy of toys) {
     const dx = car.x - toy.x;
     const dy = car.y - toy.y;
