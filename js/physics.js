@@ -1,8 +1,8 @@
 import { clamp } from '../utils/math.js';
 
-export const TOP_SPEED_MULT = 2.25;
+export const TOP_SPEED_MULT = 2.45;
 export const KMH_PER_UNIT = 1;
-const ACCEL_MULT = 2.25;
+const ACCEL_MULT = 2.45;
 const BRAKE_MULT = 1.55;
 const DRAG_MULT = 1 / (TOP_SPEED_MULT * TOP_SPEED_MULT);
 const DRS_MIN_SPEED = 85;
@@ -135,8 +135,8 @@ export function updatePhysics(car, input, dt, track) {
     const sx = -fy,                  sy =  fx;
     const fSpeed = car.vx * fx + car.vy * fy;
     sSpeed = car.vx * sx + car.vy * sy;
-    // Looser grip while handbraking → bigger drift.
-    const decay  = input.handbrake ? 0.004 : (4.6 + car.grip * 1.55);
+    // Looser grip while handbraking → drift; snap back hard on release.
+    const decay  = input.handbrake ? 0.004 : (22 + car.grip * 4.0);
     const sNew   = sSpeed * Math.exp(-decay * dt);
     car.vx = fx * fSpeed + sx * sNew;
     car.vy = fy * fSpeed + sy * sNew;

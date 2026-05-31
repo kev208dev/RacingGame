@@ -374,7 +374,7 @@ select:focus-visible {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: #2E2E33;
+  background: #6E6E69;
 }
 .lobby-car-actions {
   display: grid;
@@ -416,9 +416,10 @@ select:focus-visible {
   display: flex;
   flex-direction: column;
   grid-column: 2;
-  align-self: stretch;
+  align-self: start;
   width: 100%;
   max-width: 100%;
+  max-height: calc(100vh - 280px);
   overflow: hidden;
   pointer-events: auto;
 }

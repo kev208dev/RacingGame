@@ -66,38 +66,50 @@ export function updateDriftSound(isDrifting, sideSpeedAbs = 0) {
   } catch {}
 }
 
-// Whoosh on boost / DRS activation.
+// Noise-based turbo whoosh on boost / DRS activation.
 export function playBoostActivate(isDRS = false) {
   try {
     init();
     if (ctx.state === 'suspended') ctx.resume();
     const now = ctx.currentTime;
-    const o = ctx.createOscillator();
+    const dur = isDRS ? 0.65 : 0.42;
+
+    // White noise burst
+    const bufSize = Math.floor(ctx.sampleRate * dur);
+    const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
+    const noise = ctx.createBufferSource();
+    noise.buffer = buf;
+
+    // Bandpass sweep: low → high → settle (air rush effect)
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.Q.value = isDRS ? 1.8 : 2.2;
+    bp.frequency.setValueAtTime(isDRS ? 200 : 320, now);
+    bp.frequency.exponentialRampToValueAtTime(isDRS ? 1800 : 2400, now + dur * 0.35);
+    bp.frequency.exponentialRampToValueAtTime(isDRS ? 900 : 1200, now + dur);
+
+    // Gain envelope: sharp attack, fast decay
     const g = ctx.createGain();
-    const f = ctx.createBiquadFilter();
-    f.type = 'lowpass';
-    f.frequency.value = isDRS ? 600 : 1100;
-    if (isDRS) {
-      o.type = 'sawtooth';
-      o.frequency.setValueAtTime(70, now);
-      o.frequency.exponentialRampToValueAtTime(160, now + 0.14);
-      o.frequency.exponentialRampToValueAtTime(110, now + 0.44);
-      g.gain.setValueAtTime(0.0001, now);
-      g.gain.linearRampToValueAtTime(0.13, now + 0.06);
-      g.gain.exponentialRampToValueAtTime(0.0001, now + 0.50);
-      o.connect(f); f.connect(g); g.connect(master);
-      o.start(now); o.stop(now + 0.55);
-    } else {
-      o.type = 'sawtooth';
-      o.frequency.setValueAtTime(180, now);
-      o.frequency.exponentialRampToValueAtTime(420, now + 0.10);
-      o.frequency.exponentialRampToValueAtTime(260, now + 0.28);
-      g.gain.setValueAtTime(0.0001, now);
-      g.gain.linearRampToValueAtTime(0.11, now + 0.03);
-      g.gain.exponentialRampToValueAtTime(0.0001, now + 0.32);
-      o.connect(f); f.connect(g); g.connect(master);
-      o.start(now); o.stop(now + 0.36);
-    }
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.linearRampToValueAtTime(isDRS ? 0.22 : 0.18, now + 0.025);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+
+    noise.connect(bp); bp.connect(g); g.connect(master);
+    noise.start(now); noise.stop(now + dur);
+
+    // Low bass thump underneath (adds punch)
+    const bass = ctx.createOscillator();
+    const bg = ctx.createGain();
+    bass.type = 'sine';
+    bass.frequency.setValueAtTime(isDRS ? 55 : 80, now);
+    bass.frequency.exponentialRampToValueAtTime(isDRS ? 35 : 45, now + dur * 0.5);
+    bg.gain.setValueAtTime(0.0001, now);
+    bg.gain.linearRampToValueAtTime(isDRS ? 0.15 : 0.10, now + 0.02);
+    bg.gain.exponentialRampToValueAtTime(0.0001, now + dur * 0.5);
+    bass.connect(bg); bg.connect(master);
+    bass.start(now); bass.stop(now + dur * 0.5);
   } catch {}
 }
 

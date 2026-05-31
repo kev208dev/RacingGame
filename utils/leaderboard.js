@@ -6,7 +6,7 @@ const PROFILE_KEY = 'racing_player_profile';
 export const LOCAL_LEADERBOARD_KEY = 'racingLeaderboardRecords';
 const GUEST_NICKNAME_KEY = 'racingGuestNickname';
 const TABLE = 'leaderboard_records';
-const DEFAULT_THEME = '#2ec4b6';
+const DEFAULT_THEME = '#6E6E69';
 
 let channel = null;
 const listeners = new Set();

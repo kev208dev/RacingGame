@@ -64,6 +64,8 @@ export function initLobbyPractice(carData) {
   spawnLobbyCar(carData);
   window.addEventListener('resize', onResize);
   running = true;
+  // Render one frame immediately so the canvas never shows a stale scene.
+  renderer.render(scene, camera);
 }
 
 export function stopLobbyPractice() {
