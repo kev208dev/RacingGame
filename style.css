@@ -561,6 +561,14 @@ select:focus-visible {
   max-width: 728px;
   height: 90px;
 }
+#ad-main-menu-banner {
+  grid-column: 1 / -1;
+  justify-self: center;
+  align-self: end;
+  width: 100%;
+  max-width: 980px;
+  margin-top: 8px;
+}
 .ad-lobby-side {
   grid-column: 1 / -1;
   width: 100%;
@@ -2380,48 +2388,6 @@ select:focus-visible {
   padding: 32px;
 }
 #help-overlay.hidden { display: none; }
-#starter-reward-overlay {
-  position: fixed; inset: 0; z-index: 70;
-  display: flex; align-items: center; justify-content: center;
-  background: rgba(0,0,0,0.82); padding: 24px;
-}
-#starter-reward-overlay.hidden { display: none; }
-.reward-pack-box {
-  width: min(560px, 100%);
-  background: #151b23;
-  border: 2px solid #30363d;
-  border-radius: 16px;
-  padding: 28px;
-  text-align: center;
-}
-.reward-pack-box h2 {
-  font-size: 1.6rem;
-  letter-spacing: 2px;
-  color: #ffd166;
-}
-.reward-pack-box p,
-.reward-pack-result {
-  color: #8b949e;
-  margin-top: 6px;
-}
-.reward-card-row {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-  margin: 22px 0;
-}
-.reward-card {
-  min-height: 86px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 10px;
-  border: 1px solid #30363d;
-  background: #0d1117;
-  color: #fff;
-  font-weight: 900;
-  padding: 10px;
-}
 #leaderboard-overlay {
   position: fixed; inset: 0; z-index: 58;
   background: rgba(0,0,0,0.78);
@@ -2430,13 +2396,11 @@ select:focus-visible {
 }
 #leaderboard-overlay.hidden { display: none; }
 #leaderboard-overlay.screen,
-#help-overlay.screen,
-#starter-reward-overlay.screen {
+#help-overlay.screen {
   display: none;
 }
 #leaderboard-overlay.screen.is-active,
-#help-overlay.screen.is-active,
-#starter-reward-overlay.screen.is-active {
+#help-overlay.screen.is-active {
   display: flex !important;
 }
 .leaderboard-modal {

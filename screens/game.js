@@ -125,16 +125,17 @@ export function initGame(cd, tr, resultsCb, menuCb, options = {}) {
   camera3d = new THREE.PerspectiveCamera(
     64, window.innerWidth / window.innerHeight, 1, 26000
   );
-  const sa = tr.startPos.angle;
+  const startPos = tr.startPos || { x: 0, y: 0, angle: 0 };
+  const sa = startPos.angle;
   _camPos.set(
-    tr.startPos.x - Math.cos(sa) * 78,
+    startPos.x - Math.cos(sa) * 78,
     36,
-    -(tr.startPos.y - Math.sin(sa) * 78)
+    -(startPos.y - Math.sin(sa) * 78)
   );
   _camLook.set(
-    tr.startPos.x + Math.cos(sa) * 45,
+    startPos.x + Math.cos(sa) * 45,
     12,
-    -(tr.startPos.y + Math.sin(sa) * 45)
+    -(startPos.y + Math.sin(sa) * 45)
   );
   _camAngle = sa;
   camera3d.position.copy(_camPos);

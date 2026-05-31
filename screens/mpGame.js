@@ -126,16 +126,17 @@ export function initMpGame({
   camera3d = new THREE.PerspectiveCamera(
     64, window.innerWidth / window.innerHeight, 1, 26000
   );
-  const sa = track.startPos.angle;
+  const startPos = track.startPos || { x: 0, y: 0, angle: 0 };
+  const sa = startPos.angle;
   _camPos.set(
-    track.startPos.x - Math.cos(sa) * 78,
+    startPos.x - Math.cos(sa) * 78,
     36,
-    -(track.startPos.y - Math.sin(sa) * 78)
+    -(startPos.y - Math.sin(sa) * 78)
   );
   _camLook.set(
-    track.startPos.x + Math.cos(sa) * 45,
+    startPos.x + Math.cos(sa) * 45,
     12,
-    -(track.startPos.y + Math.sin(sa) * 45)
+    -(startPos.y + Math.sin(sa) * 45)
   );
   _camAngle = sa;
   camera3d.position.copy(_camPos);

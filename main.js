@@ -22,12 +22,10 @@ import {
   subscribeLeaderboard,
 } from './utils/leaderboard.js';
 import {
-  claimStarterCar,
   getProfile,
   initProfile,
   isProfileLoading,
   onProfileChange,
-  rollStarterCar,
   updateProfileSettings,
 } from './utils/profile.js';
 import { nicknameRejectMessage } from './utils/nicknameFilter.js';
@@ -67,7 +65,6 @@ const initFlags = {
   recordLine: false,
   carPreview: false,
   lobby: false,
-  bonusDraw: false,
   homeLeaderboard: false,
   mainLeaderboardPreview: false,
 };
@@ -105,7 +102,6 @@ function screenId(screenName) {
     mpResults: 'screen-mpresults',
     leaderboard: 'leaderboard-overlay',
     help: 'screen-help',
-    bonusDraw: 'starter-reward-overlay',
   };
   return screenName?.startsWith?.('screen-') ? screenName : (aliases[screenName] || screenName);
 }
@@ -612,8 +608,10 @@ function _wireMainMenu() {
   document.getElementById('btn-lobby-prev-car')?.addEventListener('click', () => selectAdjacentLobbyCar(-1));
   document.getElementById('btn-lobby-next-car')?.addEventListener('click', () => selectAdjacentLobbyCar(1));
   document.getElementById('btn-lobby-switch-map')?.addEventListener('click', () => switchPracticeMap());
-  document.getElementById('btn-lobby-shop')?.addEventListener('click', () => _openStarterRewardPack());
   document.getElementById('btn-main-leaderboard')?.addEventListener('click', () => {
+    _openLeaderboardOverlay();
+  });
+  document.getElementById('btn-main-leaderboard-2')?.addEventListener('click', () => {
     _openLeaderboardOverlay();
   });
 }
@@ -838,7 +836,6 @@ function _wireProfilePanel() {
   onAuthChange(_renderProfilePanel);
   onProfileChange(profile => {
     _renderProfilePanel();
-    if (profile && !profile.starter_claimed) _openStarterRewardPack();
   });
 }
 
@@ -981,58 +978,12 @@ function _wireAuthScreen() {
   });
 }
 
-function _wireStarterRewardPack() {
-  const open = document.getElementById('btn-reward-pack-open');
-  if (!open) return;
-  open.onclick = async () => {
-    const profile = getProfile();
-    if (!profile || profile.starter_claimed) return _closeStarterRewardPack();
-    const car = rollStarterCar();
-    const cards = [
-      document.getElementById('reward-card-1'),
-      document.getElementById('reward-card-2'),
-      document.getElementById('reward-card-3'),
-    ];
-    const result = document.getElementById('reward-pack-result');
-    const names = CAR_DATA.map(item => item.name);
-    open.disabled = true;
-    let ticks = 0;
-    const interval = setInterval(() => {
-      ticks++;
-      cards.forEach((card, i) => {
-        if (card) card.textContent = names[(ticks + i * 3) % names.length];
-      });
-      if (ticks > 26) {
-        clearInterval(interval);
-        cards.forEach(card => { if (card) card.textContent = car.name; });
-        if (result) result.textContent = `Bonus car unlocked: ${car.name}`;
-        claimStarterCar(car.id).finally(() => {
-          setTimeout(_closeStarterRewardPack, 1200);
-          open.disabled = false;
-        });
-      }
-    }, 70);
-  };
-}
-
 function setLeaderboardTab(type) {
   const normalized = type === 'today' ? 'today' : type === 'season' ? 'season' : 'all-time';
   document.querySelectorAll('.leaderboard-tab').forEach(item => {
     item.classList.toggle('active', item.dataset.boardType === normalized);
   });
   _loadGlobalLeaderboard();
-}
-
-function _openStarterRewardPack() {
-  const overlay = document.getElementById('starter-reward-overlay');
-  if (overlay) {
-    returnScreenAfterPanel = currentScreen === 'lobbyPractice' ? 'main' : (currentScreen || 'main');
-    showScreen('bonusDraw');
-  }
-}
-
-function _closeStarterRewardPack() {
-  returnScreenAfterPanel === 'main' ? goToMain() : showScreen(returnScreenAfterPanel || 'main');
 }
 
 const recentToastKeys = new Map();
@@ -1093,26 +1044,50 @@ function normalizeStaticScreenCopy() {
 }
 
 console.time('initial-load');
-initAnalytics();
-clearRaceRecordsOnce();
-initMobileControls();
-initAds();
-normalizeStaticScreenCopy();
-_wireMainMenu();
-_wireMainLeaderboardPreview();
-_wireAuthScreen();
-_wireProfilePanel();
-_wireStarterRewardPack();
-_wireGlobalLeaderboard();
-_wireGlobalCompletionToast();
-await initAuth();
-initProfile();
 
-onAuthChange(() => {
-  _renderProfilePanel();
+// Each init step is isolated so one failure (e.g. Supabase/leaderboard/auth)
+// can never prevent the lobby and game loop from starting.
+function _safeInit(label, fn) {
+  try {
+    fn();
+  } catch (error) {
+    console.error(`Init step "${label}" failed:`, error);
+  }
+}
+
+_safeInit('analytics', initAnalytics);
+_safeInit('clearRecords', clearRaceRecordsOnce);
+_safeInit('mobileControls', initMobileControls);
+_safeInit('ads', initAds);
+_safeInit('staticCopy', normalizeStaticScreenCopy);
+_safeInit('mainMenu', _wireMainMenu);
+_safeInit('mainLeaderboardPreview', _wireMainLeaderboardPreview);
+_safeInit('authScreen', _wireAuthScreen);
+_safeInit('profilePanel', _wireProfilePanel);
+_safeInit('globalLeaderboard', _wireGlobalLeaderboard);
+_safeInit('globalCompletionToast', _wireGlobalCompletionToast);
+
+// Start the render loop FIRST so the lobby/race canvas always renders,
+// even if auth/profile init below throws or rejects.
+startGameLoopOnce();
+
+try {
+  await initAuth();
+} catch (error) {
+  console.error('initAuth failed:', error);
+}
+try {
+  initProfile();
+} catch (error) {
+  console.error('initProfile failed:', error);
+}
+
+_safeInit('authChange', () => {
+  onAuthChange(() => {
+    _renderProfilePanel();
+  });
 });
 
 // ── start ────────────────────────────────────────────────────
 goToMain();
-startGameLoopOnce();
 console.timeEnd('initial-load');
