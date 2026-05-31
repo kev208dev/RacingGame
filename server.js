@@ -488,7 +488,10 @@ function serveStatic(req, res) {
   }
 
   const type = MIME[extname(filePath)] || 'application/octet-stream';
-  res.writeHead(200, { 'Content-Type': type });
+  const cacheControl = ['.html', '.js', '.css'].includes(extname(filePath))
+    ? 'no-store'
+    : 'public, max-age=3600';
+  res.writeHead(200, { 'Content-Type': type, 'Cache-Control': cacheControl });
   createReadStream(filePath)
     .on('error', () => {
       if (!res.headersSent) res.writeHead(404);

@@ -83,6 +83,22 @@ export function isSkinOwned(skinId) {
   return !!profile?.owned_skin_ids?.includes(skinId);
 }
 
+export async function purchaseCar(car) {
+  if (!car) return profile;
+  ensureAllCarsOwned();
+  return profile;
+}
+
+export async function claimStarterCar(carId) {
+  if (!carId) return profile;
+  ensureAllCarsOwned();
+  return profile;
+}
+
+export function rollStarterCar() {
+  return CAR_DATA[0];
+}
+
 export async function updateProfileSettings({ nickname, themeColor }) {
   if (!profile) throw new Error('login-required');
   const cleanName = validateNickname(nickname, profile.nickname);
@@ -267,6 +283,14 @@ function saveProfile(next) {
   store[normalized.user_id] = normalized;
   writeStore(store);
   return normalized;
+}
+
+function ensureAllCarsOwned() {
+  if (!profile) return null;
+  if (ALL_CAR_IDS.every(id => profile.owned_car_ids?.includes(id))) return profile;
+  profile = saveProfile({ ...profile, owned_car_ids: ALL_CAR_IDS, starter_claimed: true });
+  notify();
+  return profile;
 }
 
 function normalizeProfile(row, user = getCurrentUser()) {

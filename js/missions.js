@@ -4,6 +4,7 @@ export const DAILY_MISSIONS_KEY = 'racingDailyMissions';
 export const WEEKLY_MISSIONS_KEY = 'racingWeeklyMissions';
 export const MISSION_PROGRESS_KEY = 'racingMissionProgress';
 export const REWARD_POINTS_KEY = 'racingRewardPoints';
+export const COINS_KEY = REWARD_POINTS_KEY;
 
 export const missionTemplates = [
   { id: 'daily_finish_3', type: 'daily', difficulty: 'easy', eventName: 'race_finish', title: 'Finish 3 races', description: 'Complete 3 races today.', target: 3, reward: { points: 100 } },
