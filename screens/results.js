@@ -67,14 +67,17 @@ export function initResults(data, car, track, raceOptions = {}, retryCb, menuCb)
   const shareBtn = document.getElementById('btn-share-score');
   const rewardedBtn = document.getElementById('btn-rewarded-continue');
 
-  if (retryBtn) retryBtn.textContent = mode === 'timeTrial' ? 'Retry' : mode === 'friendly' ? 'Rematch' : 'Match Again';
-  if (menuBtn) menuBtn.textContent = mode === 'friendly' ? 'Back to Room' : 'Main Menu';
-  if (retryBtn) retryBtn.onclick = () => { cleanupLeaderboard(); retryCb?.(); };
-  if (menuBtn) menuBtn.onclick = () => { cleanupLeaderboard(); menuCb?.(); };
+  if (retryBtn) {
+    retryBtn.textContent = mode === 'timeTrial' ? '다시 도전' : mode === 'friendly' ? '리매치' : '다시 도전';
+    retryBtn.onclick = () => { cleanupLeaderboard(); retryCb?.(); };
+  }
+  if (menuBtn) {
+    menuBtn.textContent = mode === 'friendly' ? '방으로 돌아가기' : '메인 메뉴';
+    menuBtn.onclick = () => { cleanupLeaderboard(); menuCb?.(); };
+  }
   if (leaderboardBtn) leaderboardBtn.onclick = () => document.getElementById('btn-open-leaderboard')?.click();
   if (submitBtn) {
-    submitBtn.disabled = !shouldSaveOfficialRecord(mode);
-    submitBtn.textContent = shouldSaveOfficialRecord(mode) ? '기록 저장' : '기록깨기 전용';
+    submitBtn.hidden = true; // 자동 저장되므로 숨김
     submitBtn.onclick = () => submitCurrentResult({ submitBtn, statusEl, listEl, mode });
   }
   if (shareBtn) {
@@ -85,8 +88,8 @@ export function initResults(data, car, track, raceOptions = {}, retryCb, menuCb)
     };
   }
   if (rewardedBtn) rewardedBtn.hidden = true;
-  showBannerAd('ad-game-over-banner');
-  submitCurrentResult({ submitBtn, statusEl, listEl, mode, auto: true });
+  // 광고 슬롯은 실제 광고가 로드될 때만 표시
+  submitCurrentResult({ submitBtn: null, statusEl, listEl, mode, auto: true });
 }
 
 export function buildFinishResult({ data, car, track, mode, score }) {

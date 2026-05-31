@@ -3,6 +3,7 @@ import { initModeSelect }  from './screens/modeSelect.js';
 import { initTrackSelect }  from './screens/trackSelect.js';
 import { TRACKS }           from './data/tracks.js';
 import { initGame, updateGame, stopGame } from './screens/game.js';
+import { hideMiniMap } from './js/minimap.js';
 import { initResults }      from './screens/results.js';
 import { initLobby, detachNet } from './screens/lobby.js';
 import { initMpGame, updateMpGame, stopMpGame } from './screens/mpGame.js';
@@ -169,6 +170,7 @@ function hideRaceCanvas() {
 // ── transitions ─────────────────────────────────────────────
 function goToMain() {
   stopLobbyPractice();
+  hideMiniMap();
   ensureDefaultLoadout();
   updateGameState({ currentScreen: 'lobby', isRaceRunning: false, selectedCar: selectedCar?.id });
   showScreen('main');

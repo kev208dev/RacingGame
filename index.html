@@ -10,7 +10,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Racing Sandbox 3D</title>
     <link rel="icon" type="image/svg+xml" href="favicon.svg" />
-    <link rel="stylesheet" href="style.css?v=20260601-carbon" />
+    <link rel="stylesheet" href="style.css?v=20260601-ux2" />
     <script type="importmap">
       {
         "imports": {
@@ -513,34 +513,18 @@
           </div>
         </div>
         <div class="result-actions-primary results-actions">
-          <button class="btn-primary" id="btn-retry">Retry</button>
-          <button class="btn-secondary" id="btn-to-menu">Main Menu</button>
+          <button class="btn-primary" id="btn-retry">다시 도전</button>
+          <button class="btn-secondary" id="btn-to-menu">메인 메뉴</button>
         </div>
         <div class="result-actions-secondary results-extra-actions">
-          <button class="btn-secondary" id="btn-submit-score" type="button">
-            Submit Score
-          </button>
-          <button
-            class="btn-secondary"
-            id="btn-results-leaderboard"
-            type="button"
-          >
-            Leaderboard
-          </button>
-          <button class="btn-secondary" id="btn-share-score" type="button">
-            Share
-          </button>
+          <button class="btn-secondary btn-small" id="btn-results-leaderboard" type="button">🏆 랭킹</button>
+          <button class="btn-secondary btn-small" id="btn-share-score" type="button">공유</button>
         </div>
-        <div id="ad-game-over-banner" class="ad-placeholder">
-          <span>Advertisement</span><small>Ad Space</small>
-        </div>
-        <button
-          class="btn-secondary rewarded-ad-button"
-          id="btn-rewarded-continue"
-          type="button"
-        >
-          Watch Ad to Continue
-        </button>
+        <!-- 숨김: 자동 저장되므로 수동 저장 버튼 불필요 -->
+        <button class="btn-secondary" id="btn-submit-score" type="button" hidden>기록 저장</button>
+        <!-- 광고: 실제 광고 로드 시에만 표시 -->
+        <div id="ad-game-over-banner" class="result-ad-slot" hidden></div>
+        <button class="btn-secondary rewarded-ad-button" id="btn-rewarded-continue" type="button" hidden>Watch Ad</button>
       </div>
     </div>
 

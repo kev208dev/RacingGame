@@ -3,7 +3,19 @@ let lastMiniMapRenderAt = 0;
 
 export function initMiniMap(track) {
   miniMapTrack = track;
-  return ensureCanvas();
+  const canvas = ensureCanvas();
+  showMiniMap();
+  return canvas;
+}
+
+export function hideMiniMap() {
+  const panel = document.getElementById('race-minimap');
+  if (panel) panel.style.display = 'none';
+}
+
+export function showMiniMap() {
+  const panel = document.getElementById('race-minimap');
+  if (panel) panel.style.display = '';
 }
 
 export function updateMiniMap(playerPosition, opponents = []) {

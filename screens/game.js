@@ -19,7 +19,7 @@ import {
 import { scatterProps, updateScenery } from '../js/scenery.js';
 import { awardMissions, recordTrackPlay } from '../utils/profile.js';
 import { CAR_DATA } from '../data/cars.js';
-import { initMiniMap, updateMiniMap } from '../js/minimap.js';
+import { initMiniMap, updateMiniMap, hideMiniMap } from '../js/minimap.js';
 import { startRecordLineCapture, captureRecordLineSample, loadBestRecordLine, renderRecordLine } from '../js/ghost.js';
 import { updateMissionProgress } from '../js/missions.js';
 import { getSharedRenderer } from '../js/renderer.js';
@@ -207,6 +207,7 @@ export function initGame(cd, tr, resultsCb, menuCb, options = {}) {
 
 export function stopGame() {
   running = false;
+  hideMiniMap();
   if (resultsTimeout) {
     clearTimeout(resultsTimeout);
     resultsTimeout = null;
