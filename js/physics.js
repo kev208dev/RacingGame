@@ -205,7 +205,7 @@ const _trackCollisionCaches = new WeakMap();
 function _moveWithCollisionSubsteps(car, dt, track) {
   const dx = car.vx * dt;
   const dy = car.vy * dt;
-  const steps = Math.max(1, Math.min(12, Math.ceil(Math.hypot(dx, dy) / 10)));
+  const steps = Math.max(1, Math.min(6, Math.ceil(Math.hypot(dx, dy) / 10)));
   for (let i = 0; i < steps; i++) {
     const prevX = car.x;
     const prevY = car.y;
