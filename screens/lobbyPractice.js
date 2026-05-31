@@ -60,7 +60,6 @@ export function initLobbyPractice(carData) {
   scene.add(mapGroup);
   if (currentPracticeMap === 0) buildPracticeArena(mapGroup);
   else buildJumpCourse(mapGroup);
-  smokeParticles = createSmokeParticles(scene);
   skidBuf = createSkidBuffer(scene, 280);
   spawnLobbyCar(carData);
   window.addEventListener('resize', onResize);
@@ -103,7 +102,6 @@ export function updateLobbyPractice(dt) {
   _prevDrsActive = !!car.drsActive;
   updateCar3D(carMesh, car, driveInput, PRACTICE_TRACK);
   applyAirTrickVisual();
-  updateSmokeParticles(dt);
   updateLobbyCamera(dt);
   renderer.render(scene, camera);
   drawLobbyHud(dt);

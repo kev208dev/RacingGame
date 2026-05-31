@@ -444,6 +444,19 @@ select:focus-visible {
 .hero-content.lobby-hub > #ad-main-menu-banner { display: none !important; }
 /* 랭킹 버튼 단독 배치 시 full-width */
 #btn-main-leaderboard { grid-column: 1 / -1; }
+/* compact board 내부 모든 요소 pointer-events 명시 */
+.lobby-compact-board,
+.lobby-compact-board .main-board-head,
+.lobby-compact-board .main-board-tabs,
+.lobby-compact-board .main-board-tab,
+.lobby-compact-board button {
+  pointer-events: auto;
+}
+.main-board-tab:hover:not(.active) {
+  background: rgba(56, 189, 248, 0.14);
+  border-color: rgba(56, 189, 248, 0.38);
+  color: #f0f6fc;
+}
 /* 로비 중앙 컬럼 리더보드 - width 재정의 */
 .lobby-compact-board.main-leaderboard-preview {
   width: 100%;

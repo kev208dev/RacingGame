@@ -560,6 +560,7 @@ function _wireMainLeaderboardPreview() {
   document.querySelectorAll('.main-board-tab').forEach(tab => {
     tab.addEventListener('click', () => {
       document.querySelectorAll('.main-board-tab').forEach(item => item.classList.toggle('active', item === tab));
+      mainLeaderboardPreviewPromise = null;
       _loadMainLeaderboardPreview();
     });
   });
