@@ -5,7 +5,7 @@ import { getTrackGroup }  from '../js/track3d.js';
 import { drawHUD }        from '../js/hud.js';
 import { createTiming, startTiming, updateTiming } from '../js/timing.js';
 import { getInput }       from '../utils/input.js';
-import { startEngine, stopEngine, updateEngineSound, resumeContext, playLapDing, playWallThud } from '../js/audio.js';
+import { startEngine, stopEngine, updateEngineSound, resumeContext, playLapDing, playWallThud, updateDriftSound, playBoostActivate, playStartBeep } from '../js/audio.js';
 import { formatTime } from '../utils/math.js';
 import { saveBestLap, addLapHistory, getBestSectors, saveBestSectors, getBestGhost, saveBestGhost } from '../utils/storage.js';
 import {
@@ -68,6 +68,11 @@ let resultsTimeout = null;
 let raceOptions = {};
 let lapStats = null;
 const START_DELAY_MS = 1000;
+
+// sound state tracking
+let _prevLitCount = 0;
+let _prevBoosting = false;
+let _prevDrsActive = false;
 
 // fixed-step physics
 const FIXED_DT  = 1 / 60;
@@ -232,6 +237,13 @@ export function updateGame(dt, now) {
   startCountdown = Math.max(0, (startReadyAt - now) / 1000);
   const wasReleased = raceReleased;
   raceReleased = startCountdown <= 0;
+
+  // ── start light beeps ──
+  if (!raceReleased) {
+    const litCount = startCountdown > 2.2 ? 1 : startCountdown > 1.2 ? 2 : startCountdown > 0.25 ? 3 : 4;
+    if (litCount !== _prevLitCount) { playStartBeep(litCount); _prevLitCount = litCount; }
+  }
+
   if (!wasReleased && raceReleased && timing && !timing.started) {
     unlockRaceInput();
     startRaceTimer(now);
@@ -265,6 +277,11 @@ export function updateGame(dt, now) {
 
   // ── audio ──
   updateEngineSound(car.rpm, car.maxRpm);
+  updateDriftSound(car.drifting, Math.abs(car.sideSpeed || 0));
+  if (car.boosting && !_prevBoosting) playBoostActivate(false);
+  if (car.drsActive && !_prevDrsActive) playBoostActivate(true);
+  _prevBoosting = !!car.boosting;
+  _prevDrsActive = !!car.drsActive;
 
   // ── timing ──
   const event = updateTiming(timing, car, track, now);
@@ -492,6 +509,9 @@ export function restartRaceWithCountdown() {
 export function showStartLights() {
   startReadyAt = performance.now() + 3200 + START_DELAY_MS;
   startCountdown = 3.2 + START_DELAY_MS / 1000;
+  _prevLitCount = 0;
+  _prevBoosting = false;
+  _prevDrsActive = false;
 }
 
 export function lockRaceInput() {

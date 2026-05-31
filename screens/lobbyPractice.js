@@ -4,6 +4,7 @@ import { KMH_PER_UNIT, TOP_SPEED_MULT, updatePhysics } from '../js/physics.js';
 import { getInput } from '../utils/input.js';
 import { getSharedRenderer } from '../js/renderer.js';
 import { createSkidBuffer } from '../js/effects.js';
+import { updateDriftSound, playBoostActivate } from '../js/audio.js';
 
 let renderer = null;
 let scene = null;
@@ -27,6 +28,8 @@ let camTarget = new THREE.Vector3();
 let smokeParticles = [];
 let toyCooldown = 0;
 const FIXED_DT = 1 / 60;
+let _prevBoosting = false;
+let _prevDrsActive = false;
 
 const START_POS = { x: 0, y: 0, angle: 0 };
 const PRACTICE_TRACK = makePracticeTrack();
@@ -84,7 +87,6 @@ export function updateLobbyPractice(dt) {
     if (car.boosting) boostFlash = Math.min(1, boostFlash + FIXED_DT * 8);
     if (car.drifting) {
       driftPulse = Math.min(1, driftPulse + FIXED_DT * 5);
-      spawnLobbyDriftSmoke();
       _emitLobbySkid();
     }
     updateToyInteractions(FIXED_DT);
@@ -94,6 +96,11 @@ export function updateLobbyPractice(dt) {
   }
   boostFlash = Math.max(0, boostFlash - dt * 2.8);
   driftPulse = Math.max(0, driftPulse - dt * 2.4);
+  updateDriftSound(car.drifting, Math.abs(car.sideSpeed || 0));
+  if (car.boosting && !_prevBoosting) playBoostActivate(false);
+  if (car.drsActive && !_prevDrsActive) playBoostActivate(true);
+  _prevBoosting = !!car.boosting;
+  _prevDrsActive = !!car.drsActive;
   updateCar3D(carMesh, car, driveInput, PRACTICE_TRACK);
   applyAirTrickVisual();
   updateSmokeParticles(dt);
