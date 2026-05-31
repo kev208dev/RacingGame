@@ -1,4 +1,3 @@
-import { initCarSelect }   from './screens/carSelect.js';
 import { initSkinSelect }  from './screens/skinSelect.js';
 import { initModeSelect }  from './screens/modeSelect.js';
 import { initTrackSelect }  from './screens/trackSelect.js';
@@ -73,12 +72,8 @@ let returnScreenAfterPanel = 'main';
 let animationFrameId = 0;
 let isGameLoopRunning = false;
 let mainLeaderboardPreviewPromise = null;
-let carSelectContext = 'garage';
-let carSelectAfterSkin = null;
-let carSelectBackHandler = () => goToMain();
 
 const initFlags = {
-  garage: false,
   gameScene: false,
   fullLeaderboard: false,
   miniMap: false,
@@ -108,8 +103,6 @@ function screenId(screenName) {
     main: 'screen-main',
     login: 'screen-auth',
     auth: 'screen-auth',
-    garage: 'screen-carselect',
-    carSelect: 'screen-carselect',
     modeSelect: 'screen-modeselect',
     trackSelect: 'screen-trackselect',
     skinSelect: 'screen-skinselect',
@@ -268,42 +261,11 @@ function goToAuth() {
   _openAuth();
 }
 
-function goToCarSelect(options = {}) {
-  stopLobbyPractice();
-  carSelectContext = options.context || 'garage';
-  carSelectAfterSkin = typeof options.afterSkin === 'function' ? options.afterSkin : null;
-  carSelectBackHandler = typeof options.onBack === 'function' ? options.onBack : () => goToMain();
-  initGarageOnce();
-  configureCarSelectScreen(carSelectContext);
-  showScreen('carSelect');
-}
-
 function ensureDefaultLoadout() {
   const storedCarId = localStorage.getItem('selectedCarId') || localStorage.getItem('racingSelectedCar');
   if (!selectedCar) selectedCar = CAR_DATA.find(car => car.id === storedCarId && isCarUnlocked(car)) || CAR_DATA.find(isCarUnlocked) || CAR_DATA[0];
   if (!selectedSkin) selectedSkin = { id: 'default', name: 'Default' };
   selectCarAndSkin(selectedCar?.id, selectedSkin?.id || 'default');
-}
-
-function goToSkinSelect() {
-  showScreen('skinSelect');
-  initSkinSelect(
-    (skin) => {
-      selectedSkin = skin;
-      selectCarAndSkin(selectedCar?.id, skin?.id || 'default');
-      const next = carSelectAfterSkin;
-      carSelectAfterSkin = null;
-      if (next) next();
-      else goToModeSelect(() => goToSkinSelect());
-    },
-    () => {
-      goToCarSelect({
-        context: carSelectContext,
-        afterSkin: carSelectAfterSkin,
-        onBack: carSelectBackHandler,
-      });
-    }
-  );
 }
 
 function goToModeSelect(backCb = () => goToMain()) {
@@ -320,7 +282,7 @@ function goToModeSelect(backCb = () => goToMain()) {
 }
 
 function goToLobby(existingNet = null, options = {}) {
-  if (!selectedCar) { goToCarSelect(); return; }
+  if (!selectedCar) ensureDefaultLoadout();
   updateGameState({ currentScreen: 'lobby', selectedMode, isRaceRunning: false });
   initLobbyOnce();
   showScreen('lobby');
@@ -353,7 +315,7 @@ function goToMpGame(car, track, room, net, startAt, myClientId) {
       myClientId,
       roomPlayers: room.players,
       onFinish: (payload) => goToMpResults({ ...payload, mode: selectedMode, track, car }, net),
-      onLeave: () => { net.disconnect(); goToCarSelect(); },
+      onLeave: () => { net.disconnect(); goToMain(); },
     });
   } catch (error) {
     showFatalError('Competition race failed to start (initMpGame)', error);
@@ -377,7 +339,7 @@ function goToMpResults(payload, net) {
     },
     () => {
       if (selectedMode === 'friendly') goToLobby(net);
-      else { net?.disconnect(); goToCarSelect(); }
+      else { net?.disconnect(); goToMain(); }
     },
     () => { net?.send({ t: 'leaveRoom' }); net?.disconnect(); goToMain(); },
     net
@@ -393,14 +355,8 @@ function goToTrackSelect() {
       selectedTrack = track;
       selectedRaceOptions = { ...options, mode: selectedMode };
       updateGameState({ selectedTrack: track?.id });
-      goToCarSelect({
-        context: 'raceSetup',
-        onBack: () => goToTrackSelect(),
-        afterSkin: () => {
-          if (selectedMode === 'ranked' || selectedMode === 'friendly') goToLobby();
-          else goToGame();
-        },
-      });
+      if (selectedMode === 'ranked' || selectedMode === 'friendly') goToLobby();
+      else goToGame();
     },
     ()      => { goToModeSelect(); },
     { mode: selectedMode }
@@ -460,46 +416,6 @@ function goToResults(lapData) {
 
 function _scoreFromLap(lapMs) {
   return Math.max(0, Math.round(1000000 - Number(lapMs || 0) * 3));
-}
-
-function initGarageOnce() {
-  if (initFlags.garage) return;
-  console.time('initGarage');
-  initFlags.garage = true;
-  initCarSelect((car) => {
-    selectedCar = car;
-    selectCarAndSkin(car?.id, selectedSkin?.id || 'default');
-    localStorage.setItem('selectedCarId', car?.id || '');
-    if (carSelectContext === 'raceSetup') {
-      const next = carSelectAfterSkin;
-      carSelectAfterSkin = null;
-      if (next) next();
-      return;
-    }
-    goToMain();
-  });
-  console.timeEnd('initGarage');
-}
-
-function configureCarSelectScreen(context = 'garage') {
-  const isRaceSetup = context === 'raceSetup';
-  const title = document.querySelector('#screen-carselect .screen-header h1');
-  const subtitle = document.querySelector('#screen-carselect .screen-header .subtitle');
-  const continueBtn = document.getElementById('btn-to-track');
-  const backBtn = document.getElementById('btn-garage-back');
-  const leaderboard = document.querySelector('#screen-carselect .home-leaderboard');
-  const layout = document.querySelector('#screen-carselect .home-layout');
-
-  if (title) title.textContent = 'Car Select';
-  if (subtitle) {
-    subtitle.textContent = isRaceSetup
-      ? 'Choose the car you want to race with.'
-      : 'Choose the car for the practice lobby.';
-  }
-  if (continueBtn) continueBtn.textContent = isRaceSetup ? 'Start With Car' : 'Use This Car';
-  if (backBtn) backBtn.onclick = () => carSelectBackHandler?.();
-  if (leaderboard) leaderboard.hidden = true;
-  if (layout) layout.classList.toggle('car-select-focused', true);
 }
 
 function initLobbyOnce() {
@@ -619,9 +535,6 @@ function _wireMainMenu() {
   document.getElementById('btn-main-login')?.addEventListener('click', () => {
     _openAuth();
   });
-  document.getElementById('btn-main-garage')?.addEventListener('click', () => {
-    goToCarSelect();
-  });
   const openHelp = (event) => {
     event?.preventDefault?.();
     currentScreen = 'help';
@@ -632,7 +545,6 @@ function _wireMainMenu() {
   document.getElementById('footer-about-link')?.addEventListener('click', openHelp);
   document.getElementById('btn-help-back')?.addEventListener('click', () => goToMain());
   document.getElementById('btn-auth-back')?.addEventListener('click', () => goToMain());
-  document.getElementById('btn-garage-back')?.addEventListener('click', () => goToMain());
   document.getElementById('btn-lobby-prev-car')?.addEventListener('click', () => selectAdjacentLobbyCar(-1));
   document.getElementById('btn-lobby-next-car')?.addEventListener('click', () => selectAdjacentLobbyCar(1));
   document.getElementById('btn-lobby-switch-map')?.addEventListener('click', () => switchPracticeMap());
@@ -998,7 +910,7 @@ function _wireAuthScreen() {
       } else {
         await signInLocal(id, pw);
       }
-      goToCarSelect();
+      goToMain();
     } catch (error) {
       if (errorEl) errorEl.textContent = _authErrorMessage(error);
     } finally {

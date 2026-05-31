@@ -125,7 +125,6 @@
                 <span>선택한 차량으로 매칭을 준비합니다.</span>
               </button>
               <button class="lobby-mode-card" id="btn-main-leaderboard" type="button">랭킹</button>
-              <button class="lobby-mode-card" id="btn-main-garage" type="button">차량 선택</button>
               <div id="ad-lobby-side" class="ad-placeholder ad-lobby-side">
                 <span>Advertisement</span><small>Ad Space</small>
               </div>
@@ -296,46 +295,7 @@
       </div>
     </div>
 
-    <div id="screen-carselect" class="screen" data-screen="carSelect" aria-hidden="true">
-      <div class="screen-header">
-        <h1>Car Select</h1>
-        <p class="subtitle">Choose the car you want to race with.</p>
-      </div>
-      <div class="category-tabs" id="cat-tabs"></div>
-      <div class="home-layout">
-        <div class="car-grid" id="car-grid"></div>
-        <aside class="home-leaderboard">
-          <div class="home-board-head">
-            <div>
-              <strong>LIVE RANKING</strong>
-              <span id="home-leaderboard-status">Loading leaderboard...</span>
-            </div>
-            <select
-              id="home-leaderboard-track"
-              aria-label="Main track filter"
-            ></select>
-          </div>
-          <ol
-            class="global-leaderboard-list compact"
-            id="home-leaderboard-list"
-          ></ol>
-          <button class="btn-secondary btn-small" id="btn-open-leaderboard">
-            View Full
-          </button>
-        </aside>
-      </div>
-      <div class="screen-footer">
-        <button class="btn-secondary" id="btn-garage-back" type="button">Back</button>
-        <div class="car-desc" id="car-desc"></div>
-        <button class="btn-primary" id="btn-to-track">Track Select</button>
-      </div>
-      <div class="menu-credits">
-        Created by Lee Chaeho - Test Play: Son Taeyoung, Jeong Uigyeom, Lee
-        Ruwon
-      </div>
-    </div>
-
-    <div id="screen-trackselect" class="screen" data-screen="trackSelect" aria-hidden="true">
+<div id="screen-trackselect" class="screen" data-screen="trackSelect" aria-hidden="true">
       <div class="screen-header">
         <h1>Track Select</h1>
         <p class="subtitle">
