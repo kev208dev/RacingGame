@@ -231,6 +231,11 @@ function renderLobbyHub() {
     stripEl.querySelectorAll('[data-lobby-car]').forEach(button => {
       button.addEventListener('click', () => selectLobbyCar(button.dataset.lobbyCar));
     });
+    // 선택된 차량이 보이도록 스크롤
+    const selectedBtn = stripEl.querySelector('.lobby-car-card.selected');
+    if (selectedBtn) {
+      requestAnimationFrame(() => selectedBtn.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
+    }
   }
 }
 

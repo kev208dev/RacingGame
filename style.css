@@ -276,7 +276,8 @@ select:focus-visible {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 10px 16px;
+  /* padding-right은 position:fixed인 profile-widget(~176px + 16px 오른쪽 여백)을 피하기 위해 210px */
+  padding: 10px 210px 10px 16px;
   border: 1px solid #2E2E33;
   border-radius: 16px;
   background: rgba(26,26,29,0.92);
@@ -318,7 +319,8 @@ select:focus-visible {
   align-self: start;
   pointer-events: auto;
   max-height: calc(100vh - 128px);
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 .lobby-mode-panel {
   grid-column: 3;
@@ -407,8 +409,8 @@ select:focus-visible {
 .lobby-car-strip {
   display: grid;
   gap: 8px;
-  max-height: 230px;
-  overflow: hidden;
+  max-height: none;   /* 패널 자체가 max-height + overflow-y:auto로 스크롤 처리 */
+  overflow: visible;
 }
 .lobby-car-card {
   display: grid;
