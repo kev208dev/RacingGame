@@ -2539,7 +2539,6 @@ select:focus-visible {
 
 /* ── help button + overlay ── */
 #btn-help {
-  display: none;
   position: fixed; top: 16px; left: 16px; z-index: 50;
   width: 38px; height: 38px; border-radius: 50%;
   border: 2px solid rgba(255,255,255,0.4);

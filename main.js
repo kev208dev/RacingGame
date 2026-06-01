@@ -124,8 +124,6 @@ function showScreen(id) {
   const resolved = screenId(id);
   setMobileControlsVisible(false);
   hideAllScreens();
-  const _helpBtn = document.getElementById('btn-help');
-  if (_helpBtn) _helpBtn.style.display = (id === 'game' || id === 'race' || id === 'mpGame') ? 'flex' : 'none';
   if (id !== 'race' && id !== 'game' && id !== 'mpGame') {
     hideRaceCanvas();
   }
@@ -555,7 +553,6 @@ function _wireMainMenu() {
     currentScreen = 'help';
     showScreen('help');
   };
-  document.getElementById('btn-main-help')?.addEventListener('click', openHelp);
   document.getElementById('footer-help-link')?.addEventListener('click', openHelp);
   document.getElementById('footer-about-link')?.addEventListener('click', openHelp);
   document.getElementById('btn-help-back')?.addEventListener('click', () => goToMain());
