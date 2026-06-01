@@ -152,7 +152,7 @@ export function updatePhysics(car, input, dt, track) {
   // ── drag + rolling ──
   car.speed = Math.hypot(car.vx, car.vy);
   if (car.speed > 0.05) {
-    const dragDec = car.speed * car.speed * 0.00265 * DRAG_MULT + 1.05;
+    const dragDec = car.speed * car.speed * 0.00265 * DRAG_MULT + 12.0;
     const k       = Math.min((dragDec * dt) / car.speed, 1);
     car.vx -= car.vx * k;
     car.vy -= car.vy * k;

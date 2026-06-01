@@ -83,7 +83,7 @@ export function updateLobbyPractice(dt) {
   accumulator += Math.min(dt, 0.05);
   let steps = 0;
   while (accumulator >= FIXED_DT && steps < 4) {
-    if (!car.boosting) car.boostMeter = Math.min(100, (car.boostMeter || 0) + FIXED_DT * 28);
+    if (!car.boosting) car.boostMeter = Math.min(100, (car.boostMeter || 0) + FIXED_DT * 14);
     updatePhysics(car, driveInput, FIXED_DT, PRACTICE_TRACK);
     if (car.boosting) boostFlash = Math.min(1, boostFlash + FIXED_DT * 8);
     if (car.drifting) {
