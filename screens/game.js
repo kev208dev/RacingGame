@@ -74,6 +74,8 @@ let _prevLitCount = 0;
 let _prevBoosting = false;
 let _prevDrsActive = false;
 
+let _boostPadCooldown = 0;
+
 // fixed-step physics
 const FIXED_DT  = 1 / 60;
 let accumulator = 0;
@@ -263,6 +265,7 @@ export function updateGame(dt, now) {
   let steps = 0;
   while (accumulator >= FIXED_DT && steps < 5) {
     updatePhysics(car, driveInput, FIXED_DT, track);
+    _tickBoostPads(FIXED_DT);
     if (raceReleased && car?.drifting) updateMissionProgress('drift_second', FIXED_DT);
     if (raceReleased && driveInput.boostJust) updateMissionProgress('boost_used');
     if (raceReleased && (raceOptions.mode || 'timeTrial') === 'timeTrial') captureRecordLineSample(FIXED_DT, car);
@@ -536,6 +539,24 @@ export function startRaceTimerAfterDelay(delayMs = START_DELAY_MS) {
   startReadyAt = performance.now() + Number(delayMs || 0);
   startCountdown = Math.max(0, Number(delayMs || 0) / 1000);
   lockRaceInput();
+}
+
+// ── boost pad collision ──────────────────────────────────────
+function _tickBoostPads(dt) {
+  _boostPadCooldown = Math.max(0, _boostPadCooldown - dt);
+  if (!track?.boostPads?.length || !car || _boostPadCooldown > 0) return;
+  for (const pad of track.boostPads) {
+    const dx = car.x - pad.x, dy = car.y - pad.y;
+    if (dx * dx + dy * dy < pad.radius * pad.radius) {
+      const push = 50;
+      car.vx += Math.cos(pad.angle) * push;
+      car.vy += Math.sin(pad.angle) * push;
+      car.boostMeter = Math.min(100, (car.boostMeter || 0) + 30);
+      _boostPadCooldown = 0.45;
+      playBoostActivate(false);
+      break;
+    }
+  }
 }
 
 // ── chase camera (framerate-independent smoothing) ──────────

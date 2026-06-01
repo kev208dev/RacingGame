@@ -30,6 +30,7 @@ function _buildTrackGroup(track) {
   _addFlatLine(grp, sl.x1, sl.y1, sl.x2, sl.y2, 0xffffff, 4.8, 0.24 + slHeight);
 
   _addStartGrid(grp, track.startPos, track);
+  _addBoostPads(grp, track);
   return grp;
 }
 
@@ -430,6 +431,57 @@ function _pointSegmentDistance(px, py, x1, y1, x2, y2) {
   const x = x1 + dx * t;
   const y = y1 + dy * t;
   return Math.hypot(px - x, py - y);
+}
+
+function _addBoostPads(grp, track) {
+  const pads = track.boostPads;
+  if (!pads?.length) return;
+  const tw = (track.width || 100) * 0.65;
+  const padLen = 32;
+  const padMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.68, depthWrite: false, blending: THREE.AdditiveBlending });
+  const arrowMat = new THREE.MeshBasicMaterial({ color: 0xfacc15, transparent: true, opacity: 0.90, depthWrite: false, blending: THREE.AdditiveBlending });
+
+  for (const pad of pads) {
+    const a = pad.angle;
+    const cs = Math.cos(a), sn = Math.sin(a);
+    const px = -sn, py = cs;
+    const hw = tw / 2, hl = padLen / 2;
+    const yOff = _trackHeight(track, 0, pad.x, pad.y) + 0.4;
+
+    const corners = [
+      [pad.x + px * hw - cs * hl, pad.y + py * hw - sn * hl],
+      [pad.x - px * hw - cs * hl, pad.y - py * hw - sn * hl],
+      [pad.x - px * hw + cs * hl, pad.y - py * hw + sn * hl],
+      [pad.x + px * hw + cs * hl, pad.y + py * hw + sn * hl],
+    ];
+    const verts = [];
+    for (const [cx, cy] of corners) verts.push(cx, yOff, -cy);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+    geo.setIndex([0, 1, 2, 0, 2, 3]);
+    const mesh = new THREE.Mesh(geo, padMat.clone());
+    mesh.frustumCulled = false;
+    grp.add(mesh);
+
+    for (const off of [-10, 0, 10]) {
+      const ax = pad.x + cs * off, ay = pad.y + sn * off;
+      const sv = [];
+      const sw = tw * 0.5, sl = 5;
+      const ac = [
+        [ax + px * sw - cs * sl, ay + py * sw - sn * sl],
+        [ax - px * sw - cs * sl, ay - py * sw - sn * sl],
+        [ax - px * sw + cs * sl, ay - py * sw + sn * sl],
+        [ax + px * sw + cs * sl, ay + py * sw + sn * sl],
+      ];
+      for (const [cx, cy] of ac) sv.push(cx, yOff + 0.05, -cy);
+      const ag = new THREE.BufferGeometry();
+      ag.setAttribute('position', new THREE.Float32BufferAttribute(sv, 3));
+      ag.setIndex([0, 1, 2, 0, 2, 3]);
+      const am = new THREE.Mesh(ag, arrowMat.clone());
+      am.frustumCulled = false;
+      grp.add(am);
+    }
+  }
 }
 
 function _visualStride(points, targetSegments) {

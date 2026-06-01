@@ -90,6 +90,38 @@ function polyArea(points) {
   return sum / 2;
 }
 
+function _computeBoostPads(center, count = 3) {
+  const N = center.length;
+  if (N < 10) return [];
+  const r = Math.min(6, Math.floor(N / 12));
+  const turns = Array.from({ length: N }, (_, i) => {
+    let t = 0;
+    for (let off = -r; off <= r; off++) {
+      const a = center[(i + off - 1 + N) % N];
+      const b = center[(i + off + N) % N];
+      const c = center[(i + off + 1 + N) % N];
+      const ax = b.x - a.x, ay = b.y - a.y;
+      const bx = c.x - b.x, by = c.y - b.y;
+      const al = Math.hypot(ax, ay) || 1, bl = Math.hypot(bx, by) || 1;
+      t += 1 - Math.max(-1, Math.min(1, (ax * bx + ay * by) / (al * bl)));
+    }
+    return t;
+  });
+  const minSep = Math.floor(N / (count + 1));
+  const pads = [], used = new Uint8Array(N);
+  for (let k = 0; k < count; k++) {
+    let best = -1, bestT = Infinity;
+    for (let i = 0; i < N; i++) {
+      if (!used[i] && turns[i] < bestT) { bestT = turns[i]; best = i; }
+    }
+    if (best < 0) break;
+    for (let j = -minSep; j <= minSep; j++) used[(best + j + N) % N] = 1;
+    const c = center[best], cN = center[(best + 1) % N];
+    pads.push({ x: c.x, y: c.y, angle: Math.atan2(cN.y - c.y, cN.x - c.x), radius: 48 });
+  }
+  return pads;
+}
+
 function makeOfficialCircuit({
   id,
   name,
@@ -163,6 +195,7 @@ function makeOfficialCircuit({
     outerBoundary: outer,
     innerBoundary: inner,
     centerLine: center.map(c => [c.x, c.y]),
+    boostPads: _computeBoostPads(center, 3),
     startLine,
     sectors,
     startPos,
