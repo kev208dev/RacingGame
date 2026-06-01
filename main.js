@@ -124,6 +124,8 @@ function showScreen(id) {
   const resolved = screenId(id);
   setMobileControlsVisible(false);
   hideAllScreens();
+  const _helpBtn = document.getElementById('btn-help');
+  if (_helpBtn) _helpBtn.style.display = (id === 'game' || id === 'race' || id === 'mpGame') ? 'flex' : 'none';
   if (id !== 'race' && id !== 'game' && id !== 'mpGame') {
     hideRaceCanvas();
   }
