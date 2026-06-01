@@ -221,10 +221,14 @@ function renderLobbyHub() {
   if (stripEl) {
     stripEl.innerHTML = CAR_DATA.map(item => {
       const selected = item.id === car.id;
+      const rarityClass = selected
+        ? 'rarity-selected'
+        : `rarity-${(item.rarity || 'common').toLowerCase()}`;
+      const rarityLabel = selected ? 'SELECTED' : (item.rarity || item.category || '');
       return `
         <button class="lobby-car-card${selected ? ' selected' : ''}" data-lobby-car="${item.id}" type="button">
           <b>${item.name}</b>
-          <small>${selected ? 'SELECTED' : item.rarity || item.category}</small>
+          <small class="${rarityClass}">${rarityLabel}</small>
         </button>
       `;
     }).join('');

@@ -1,3 +1,13 @@
+/* ── 커스텀 스크롤바 ────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(168,168,163,0.25);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(168,168,163,0.48); }
+* { scrollbar-width: thin; scrollbar-color: rgba(168,168,163,0.25) transparent; }
+
 :root {
   --bg: #0E0E10;
   --panel: #1A1A1D;
@@ -270,17 +280,23 @@ select:focus-visible {
 #screen-main .hero-overlay {
   background: transparent;
 }
+/* [3] 헤더: 우측 중복 요소 숨김. 프로필 위젯이 이미 로그인·이름을 제공 */
+#lobby-current-car,
+#btn-main-login { display: none; }
+
 .lobby-topbar {
   grid-column: 1 / -1;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  /* padding-right은 position:fixed인 profile-widget(~176px + 16px 오른쪽 여백)을 피하기 위해 210px */
-  padding: 10px 210px 10px 16px;
-  border: 1px solid #2E2E33;
+  /* padding-right: profile-widget(fixed, ~176px + right:16px) 공간 확보 */
+  padding: 10px 210px 10px 20px;
+  border: 1px solid rgba(255,212,0,0.15);
   border-radius: 16px;
-  background: rgba(26,26,29,0.92);
+  background: linear-gradient(90deg, rgba(26,26,29,0.96) 55%, rgba(20,20,22,0.82));
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   min-width: 0;
 }
 .lobby-topbar > div:first-child {
@@ -288,14 +304,27 @@ select:focus-visible {
   flex: 1 1 auto;
   overflow: hidden;
 }
+/* [4] 타이틀 디자인 */
+.main-kicker {
+  color: rgba(201,168,0,0.82);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
 .lobby-topbar h1 {
-  font-size: clamp(1.1rem, 2.4vw, 2rem);
-  letter-spacing: 0.06em;
+  font-size: clamp(1.15rem, 2.8vw, 2.2rem);
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: 0.02em;
   line-height: 1;
-  color: #F5F5F4;
+  background: linear-gradient(95deg, #FFD400 20%, #FF8C00 80%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
+  text-overflow: clip;
 }
 .lobby-top-meta {
   display: flex;
@@ -306,21 +335,15 @@ select:focus-visible {
   flex-shrink: 0;
   flex-wrap: nowrap;
 }
-#lobby-current-car {
-  font-size: 0.82rem;
-  color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 120px;
-}
 .lobby-car-panel {
   grid-column: 1;
   align-self: start;
   pointer-events: auto;
-  max-height: calc(100vh - 128px);
-  overflow-y: auto;
-  overflow-x: hidden;
+  /* topbar(~80px) + padding(22*2) + HUD(~90px) + gap(18) ≈ 232px */
+  max-height: calc(100vh - 232px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden; /* 패널 전체는 overflow 없음 */
 }
 .lobby-mode-panel {
   grid-column: 3;
@@ -409,8 +432,10 @@ select:focus-visible {
 .lobby-car-strip {
   display: grid;
   gap: 8px;
-  max-height: none;   /* 패널 자체가 max-height + overflow-y:auto로 스크롤 처리 */
-  overflow: visible;
+  flex: 1;        /* 남은 패널 공간을 전부 차지 */
+  min-height: 0;  /* flex overflow 필수 */
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 .lobby-car-card {
   display: grid;
@@ -418,20 +443,35 @@ select:focus-visible {
   width: 100%;
   border: 1px solid #2E2E33;
   border-radius: 12px;
-  background: #1A1A1D;
+  background: rgba(26,26,29,0.72);
   color: var(--text-main);
   padding: 10px;
   text-align: left;
   cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, transform 0.12s ease;
+}
+.lobby-car-card:hover {
+  background: rgba(36,36,39,0.9);
+  border-color: #6E6E69;
+  transform: translateX(2px);
 }
 .lobby-car-card.selected {
   border-color: #FFD400;
-  box-shadow: inset 3px 0 0 #FFD400;
+  background: rgba(255,212,0,0.07);
+  box-shadow: inset 3px 0 0 #FFD400, 0 0 12px rgba(255,212,0,0.12);
 }
 .lobby-car-card.locked {
   opacity: 0.42;
   cursor: not-allowed;
 }
+
+/* [5] 레어도 색상 */
+.lobby-car-card small { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em; }
+.lobby-car-card small.rarity-common    { color: #A8A8A3; }
+.lobby-car-card small.rarity-rare      { color: #4DA6FF; }
+.lobby-car-card small.rarity-epic      { color: #B87FFF; }
+.lobby-car-card small.rarity-transcend { color: #FFD400; }
+.lobby-car-card small.rarity-selected  { color: #FFD400; }
 .lobby-car-card small {
   color: var(--text-muted);
   font-weight: 800;
@@ -2801,7 +2841,7 @@ select:focus-visible {
   .lobby-topbar {
     align-items: center;
     flex-wrap: nowrap;
-    padding: 8px 12px;
+    padding: 8px 8px 8px 12px; /* 모바일: profile-widget은 scroll 뒤로 빠지므로 padding-right 줄임 */
   }
   .lobby-topbar h1 {
     font-size: clamp(1rem, 5vw, 1.5rem);
@@ -2812,6 +2852,7 @@ select:focus-visible {
   .lobby-car-panel {
     align-self: end;
     padding: 12px;
+    max-height: 45vh; /* 모바일: 화면의 절반 이하로 제한 */
   }
   .lobby-car-strip {
     grid-auto-flow: column;
@@ -2819,6 +2860,7 @@ select:focus-visible {
     overflow-x: auto;
     overflow-y: hidden;
     max-height: none;
+    flex: none; /* 모바일 가로 스크롤이므로 flex 해제 */
   }
   .lobby-mode-panel {
     grid-template-columns: repeat(2, minmax(0, 1fr));
