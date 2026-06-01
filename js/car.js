@@ -258,9 +258,9 @@ export function updateCar3D(mesh3d, car, input, track = null) {
       const on = !!car.boosting || !!car.drsActive;
       c.visible = on;
       const power = Math.max(car.boostPower || 0, car.drsPower || 0);
-      const base = 1.4 * (car.flameScale || 1) * (0.46 + power * 0.82);
+      const base = 1.0 * (car.flameScale || 1) * (0.46 + power * 0.82);
       const flicker = 0.92 + Math.random() * 0.14;
-      c.scale.set(base * 0.62 * flicker, base * 0.58, base * (1.08 + Math.random() * 0.16));
+      c.scale.set(base * 0.52 * flicker, base * 0.48, base * 0.72);
       c.children.forEach(part => {
         if (!part.material) return;
         const inner = part.name === 'flameinner';

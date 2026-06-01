@@ -50,9 +50,9 @@ export function createCarDesign(type = 'formula_red') {
   if (type !== 'gt_silver') addCurvedSportsShellTo(car, type);
   // Dual exhausts for cars with side-mounted pipes
   if (type === 'gt_silver' || type === 'muscle_orange' || type === 'rally_blue') {
-    addDualBoostFlameTo(car, 0.36, 0.58, -2.55);
+    addDualBoostFlameTo(car, 0.36, 0.30, -3.0);
   } else if (type === 'buggy_yellow') {
-    addDualBoostFlameTo(car, 0.54, 0.82, -2.2);
+    addDualBoostFlameTo(car, 0.54, 0.35, -2.8);
   } else {
     addBoostFlameTo(car);
   }
@@ -292,26 +292,26 @@ function _makeFlameGroup(x = 0, y = 0.62, z = -2.65) {
 
   const outer = new THREE.Mesh(new THREE.ConeGeometry(0.48, 2.2, 18), outerMat);
   outer.name = 'flameouter';
-  outer.rotation.x = Math.PI / 2;
+  outer.rotation.x = -Math.PI / 2;
   flame.add(outer);
 
   const inner = new THREE.Mesh(new THREE.ConeGeometry(0.28, 1.65, 18), innerMat);
   inner.name = 'flameinner';
-  inner.rotation.x = Math.PI / 2;
-  inner.position.z = 0.14;
+  inner.rotation.x = -Math.PI / 2;
+  inner.position.z = -0.14;
   flame.add(inner);
 
   const glow = new THREE.Mesh(new THREE.SphereGeometry(0.72, 18, 12), glowMat);
   glow.name = 'flameglow';
   glow.scale.set(1.2, 0.6, 2.2);
-  glow.position.z = 0.55;
+  glow.position.z = -0.55;
   flame.add(glow);
 
   return flame;
 }
 
 function addBoostFlameTo(group) {
-  group.add(_makeFlameGroup(0, 0.62, -2.65));
+  group.add(_makeFlameGroup(0, 0.30, -3.2));
 }
 
 function addDualBoostFlameTo(group, xGap = 0.34, y = 0.62, z = -2.55) {
