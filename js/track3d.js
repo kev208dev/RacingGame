@@ -438,7 +438,7 @@ function _addBoostPads(grp, track) {
   if (!pads?.length) return;
   const tw = (track.width || 100) * 0.65;
   const padLen = 32;
-  const padMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.68, depthWrite: false, blending: THREE.AdditiveBlending });
+  const padMat   = new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.68, depthWrite: false, blending: THREE.AdditiveBlending });
   const arrowMat = new THREE.MeshBasicMaterial({ color: 0xfacc15, transparent: true, opacity: 0.90, depthWrite: false, blending: THREE.AdditiveBlending });
 
   for (const pad of pads) {
@@ -446,7 +446,8 @@ function _addBoostPads(grp, track) {
     const cs = Math.cos(a), sn = Math.sin(a);
     const px = -sn, py = cs;
     const hw = tw / 2, hl = padLen / 2;
-    const yOff = _trackHeight(track, 0, pad.x, pad.y) + 0.4;
+    const segIdx = pad.segmentIndex ?? 0;
+    const yOff = _trackHeight(track, segIdx, pad.x, pad.y) + 0.4;
 
     const corners = [
       [pad.x + px * hw - cs * hl, pad.y + py * hw - sn * hl],
@@ -459,9 +460,7 @@ function _addBoostPads(grp, track) {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
     geo.setIndex([0, 1, 2, 0, 2, 3]);
-    const mesh = new THREE.Mesh(geo, padMat.clone());
-    mesh.frustumCulled = false;
-    grp.add(mesh);
+    grp.add(Object.assign(new THREE.Mesh(geo, padMat), { frustumCulled: false }));
 
     for (const off of [-10, 0, 10]) {
       const ax = pad.x + cs * off, ay = pad.y + sn * off;
@@ -477,9 +476,7 @@ function _addBoostPads(grp, track) {
       const ag = new THREE.BufferGeometry();
       ag.setAttribute('position', new THREE.Float32BufferAttribute(sv, 3));
       ag.setIndex([0, 1, 2, 0, 2, 3]);
-      const am = new THREE.Mesh(ag, arrowMat.clone());
-      am.frustumCulled = false;
-      grp.add(am);
+      grp.add(Object.assign(new THREE.Mesh(ag, arrowMat), { frustumCulled: false }));
     }
   }
 }

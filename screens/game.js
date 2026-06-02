@@ -96,6 +96,7 @@ export function initGame(cd, tr, resultsCb, menuCb, options = {}) {
   accumulator = 0;
   cameraMode  = 'chase';
   lastWallHitId = 0;
+  _boostPadCooldown = 0;
   startCountdown = 3.2 + START_DELAY_MS / 1000;
   startReadyAt = performance.now() + 3200 + START_DELAY_MS;
   raceReleased = false;

@@ -117,7 +117,7 @@ function _computeBoostPads(center, count = 3) {
     if (best < 0) break;
     for (let j = -minSep; j <= minSep; j++) used[(best + j + N) % N] = 1;
     const c = center[best], cN = center[(best + 1) % N];
-    pads.push({ x: c.x, y: c.y, angle: Math.atan2(cN.y - c.y, cN.x - c.x), radius: 48 });
+    pads.push({ x: c.x, y: c.y, angle: Math.atan2(cN.y - c.y, cN.x - c.x), radius: 48, segmentIndex: best });
   }
   return pads;
 }
