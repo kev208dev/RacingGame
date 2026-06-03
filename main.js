@@ -1,4 +1,3 @@
-import { initSkinSelect }  from './screens/skinSelect.js';
 import { initModeSelect }  from './screens/modeSelect.js';
 import { initTrackSelect }  from './screens/trackSelect.js';
 import { TRACKS }           from './data/tracks.js';
@@ -106,7 +105,6 @@ function screenId(screenName) {
     auth: 'screen-auth',
     modeSelect: 'screen-modeselect',
     trackSelect: 'screen-trackselect',
-    skinSelect: 'screen-skinselect',
     friendlyRoom: 'screen-lobby',
     rankedLobby: 'screen-lobby',
     lobby: 'screen-lobby',

@@ -27,7 +27,9 @@ let camLook = new THREE.Vector3();
 let camTarget = new THREE.Vector3();
 let smokeParticles = [];
 let toyCooldown = 0;
+let driftBurstCooldown = 0;
 const FIXED_DT = 1 / 60;
+const DRIFT_BURST_COOLDOWN = 0.55;
 let _prevBoosting = false;
 let _prevDrsActive = false;
 
@@ -78,6 +80,7 @@ export function updateLobbyPractice(dt) {
   const input = getInput();
   if (input.reset) respawnLobbyCar();
   if (input.escape) document.querySelector('.lobby-hub')?.classList.toggle('panels-collapsed');
+  driftBurstCooldown = Math.max(0, driftBurstCooldown - dt);
   const driveInput = makeLobbyDriveInput(input);
   toyCooldown = Math.max(0, toyCooldown - dt);
   accumulator += Math.min(dt, 0.05);
@@ -446,8 +449,17 @@ function onResize() {
 function makeLobbyDriveInput(input) {
   const cost = car?.boostCost || 38;
   const boostReady = (car?.boostMeter || 0) >= cost && (car?.boostTimer || 0) <= 0;
+  // Practice-only: a drift burst can't re-fire until its cooldown clears, so mashing
+  // the drift key no longer chains into one endless slide. Race tracks break drifts up
+  // with walls/corners; the open arena needs this guard to match that feel.
+  let driftBurst = input.driftBurst;
+  if (driftBurst) {
+    if (driftBurstCooldown > 0) driftBurst = false;
+    else driftBurstCooldown = DRIFT_BURST_COOLDOWN;
+  }
   return {
     ...input,
+    driftBurst,
     boostJust: input.boostJust || (input.boost && boostReady),
   };
 }
