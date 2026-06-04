@@ -32,7 +32,7 @@ export const CAR_DATA = [
     acceleration: '3.4s',
     handling: 'Balanced',
     // All-rounder: no glaring weakness, out-grips the speed cars, out-runs the grip cars.
-    stats: { speed: 80, acceleration: 80, grip: 84, handling: 86, boost: 76 },
+    stats: { speed: 80, acceleration: 80, braking: 82, grip: 84, handling: 86, drift: 78, boost: 76 },
   },
   {
     id: 'lmp',
@@ -64,7 +64,7 @@ export const CAR_DATA = [
     acceleration: '2.9s',
     handling: 'Razor',
     // Corner specialist: class-leading grip/handling, but almost no boost.
-    stats: { speed: 78, acceleration: 80, grip: 94, handling: 96, boost: 58 },
+    stats: { speed: 78, acceleration: 80, braking: 92, grip: 94, handling: 96, drift: 70, boost: 58 },
   },
   {
     id: 'zero_f1',
@@ -96,7 +96,7 @@ export const CAR_DATA = [
     acceleration: '2.4s',
     handling: 'Elite',
     // Elite all-high, but each specialist still beats it in their own domain.
-    stats: { speed: 96, acceleration: 96, grip: 82, handling: 84, boost: 78 },
+    stats: { speed: 96, acceleration: 96, braking: 88, grip: 82, handling: 84, drift: 82, boost: 78 },
   },
   {
     id: 'photon_gtr',
@@ -128,7 +128,7 @@ export const CAR_DATA = [
     acceleration: '2.6s',
     handling: 'Loose',
     // Straight-line king: top speed + max boost, but corners are a nightmare.
-    stats: { speed: 100, acceleration: 92, grip: 52, handling: 50, boost: 100 },
+    stats: { speed: 100, acceleration: 92, braking: 60, grip: 52, handling: 50, drift: 96, boost: 100 },
   },
   {
     id: 'prism_evo',
@@ -160,6 +160,6 @@ export const CAR_DATA = [
     acceleration: '3.0s',
     handling: 'Surgical',
     // Grip king: glued to the track, but slow on straights and weak boost.
-    stats: { speed: 56, acceleration: 78, grip: 100, handling: 100, boost: 56 },
+    stats: { speed: 56, acceleration: 78, braking: 96, grip: 100, handling: 100, drift: 58, boost: 56 },
   },
 ];

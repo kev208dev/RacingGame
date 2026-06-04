@@ -1,6 +1,6 @@
 import { clamp } from '../utils/math.js';
 
-export const TOP_SPEED_MULT = 2.60;
+export const TOP_SPEED_MULT = 2.95;
 export const KMH_PER_UNIT = 1;
 const ACCEL_MULT = 2.32;
 const BRAKE_MULT = 1.55;
@@ -59,9 +59,9 @@ export function updatePhysics(car, input, dt, track) {
   const baseAccel = (40 + car.maxTorque * 0.105) * massFactor * powerFactor * ACCEL_MULT * (car.accelerationForce || 1)
     * (1 + ((car.boostAccelMult || 1.55) - 1) * boostPower)
     * (1 + 0.22 * drsPower);
-  const brakeRate = baseAccel * BRAKE_MULT * handlingFactor * Math.pow(1250 / Math.max(700, car.mass || 1250), 0.1);
+  const brakeRate = baseAccel * BRAKE_MULT * handlingFactor * Math.pow(1250 / Math.max(700, car.mass || 1250), 0.1) * (car.brakePower || 1);
   const reverseTop = maxSpeed * 0.30;
-  const turnPower = input.handbrake ? DRIFT_TURN_MULT : 1.30;
+  const turnPower = input.handbrake ? DRIFT_TURN_MULT * (car.driftPower || 1) : 1.30;
 
   car.gear = clamp(car.gear || 1, 1, 8);
   const accelRate = baseAccel * GEAR_ACCEL[car.gear];

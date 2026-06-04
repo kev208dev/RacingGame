@@ -10,7 +10,7 @@ const BASE_PHYSICS = {
   boostRecharge: 1,
 };
 
-const STAT_KEYS = ['speed', 'acceleration', 'grip', 'handling', 'boost'];
+const STAT_KEYS = ['speed', 'acceleration', 'braking', 'grip', 'handling', 'drift', 'boost'];
 
 export function normalizeCarStats(stats = {}, tier = 'common') {
   const isTranscend = tier === 'transcend';
@@ -46,8 +46,10 @@ export function mapStatToPhysics(carStats = {}) {
   return {
     maxSpeed: BASE_PHYSICS.maxSpeed * (effectiveStat(stats.speed) / 100),
     accelerationForce: BASE_PHYSICS.accelerationForce * (effectiveStat(stats.acceleration) / 100),
+    brakePower: 0.40 + (effectiveStat(stats.braking) / 100) * 0.75,
     traction: BASE_PHYSICS.traction * (effectiveStat(stats.grip) / 100),
     turnStrength: BASE_PHYSICS.turnStrength * (effectiveStat(stats.handling) / 100),
+    driftPower: 0.55 + (effectiveStat(stats.drift) / 100) * 0.60,
     boostMultiplier: BASE_PHYSICS.boostMultiplier * (effectiveStat(stats.boost) / 100),
     boostDuration: BASE_PHYSICS.boostDuration * (0.72 + effectiveStat(stats.boost) / 220),
     boostRecharge: BASE_PHYSICS.boostRecharge * (0.7 + effectiveStat(stats.boost) / 180),

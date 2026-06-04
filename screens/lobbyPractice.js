@@ -88,6 +88,9 @@ export function updateLobbyPractice(dt) {
   while (accumulator >= FIXED_DT && steps < 4) {
     if (!car.boosting) car.boostMeter = Math.min(100, (car.boostMeter || 0) + FIXED_DT * 14);
     updatePhysics(car, driveInput, FIXED_DT, PRACTICE_TRACK);
+    // Practice-only: when the drift key isn't held, snap grip back hard so separate
+    // drift taps stay separate instead of chaining into one continuous slide.
+    if (!driveInput.handbrake) _settlePracticeGrip(car);
     if (car.boosting) boostFlash = Math.min(1, boostFlash + FIXED_DT * 8);
     if (car.drifting) {
       driftPulse = Math.min(1, driftPulse + FIXED_DT * 5);
@@ -462,6 +465,20 @@ function makeLobbyDriveInput(input) {
     driftBurst,
     boostJust: input.boostJust || (input.boost && boostReady),
   };
+}
+
+// Hard grip recovery between drift taps (practice only): keep only ~18% of the
+// lateral velocity each substep when the drift key is released, so a tapped drift
+// snaps straight in a couple of frames and the next tap starts fresh.
+function _settlePracticeGrip(car) {
+  if (!car || car.speed < 0.3) return;
+  const fx = Math.cos(car.angle), fy = Math.sin(car.angle);
+  const sx = -fy, sy = fx;
+  const fwd = car.vx * fx + car.vy * fy;
+  const side = (car.vx * sx + car.vy * sy) * 0.18;
+  car.vx = fx * fwd + sx * side;
+  car.vy = fy * fwd + sy * side;
+  car.sideSpeed = side;
 }
 
 function _emitLobbySkid() {
