@@ -1,8 +1,8 @@
 export async function shareScore(score) {
-  const text = `I scored ${Number(score || 0).toLocaleString()} in Racing Sandbox 3D. Can you beat me?`;
+  const text = `I scored ${Number(score || 0).toLocaleString()} in NEON APEX. Can you beat me?`;
   const url = window.location.href;
   if (navigator.share) {
-    await navigator.share({ title: 'Racing Sandbox 3D', text, url });
+    await navigator.share({ title: 'NEON APEX', text, url });
     return true;
   }
   await navigator.clipboard?.writeText(`${text} ${url}`);
@@ -19,7 +19,7 @@ export async function shareResult(result) {
   const url = 'https://racinggame.fly.dev';
   try {
     if (navigator.share) {
-      await navigator.share({ title: 'Racing Sandbox 3D', text, url });
+      await navigator.share({ title: 'NEON APEX', text, url });
       return { ok: true, message: 'Shared' };
     }
     if (navigator.clipboard?.writeText) {
@@ -37,7 +37,7 @@ export function buildShareText(result = {}) {
   const modeName = modeLabel(result.mode);
   const formattedTime = result.formattedTime || formatMs(result.finishTime || result.lapMs);
   const trackName = result.track?.name || result.trackName || 'Track';
-  return `Racing Sandbox 3D?�서 ${modeName} ${trackName} 기록 ${formattedTime} ?�성! ?�도 ?�전?�봐: https://racinggame.fly.dev`;
+  return `NEON APEX?�서 ${modeName} ${trackName} 기록 ${formattedTime} ?�성! ?�도 ?�전?�봐: https://racinggame.fly.dev`;
 }
 
 export function copyShareText(text) {
@@ -63,7 +63,7 @@ export function renderShareCard(result = {}) {
   }
   const formattedTime = result.formattedTime || formatMs(result.finishTime || result.lapMs);
   card.innerHTML = `
-    <span>Racing Sandbox 3D</span>
+    <span>NEON APEX</span>
     <h3>${escapeHtml(modeLabel(result.mode))}</h3>
     <p>Track: ${escapeHtml(result.track?.name || result.trackName || 'Track')}</p>
     <p>Car: ${escapeHtml(result.car?.name || result.carName || 'GT3')}</p>
@@ -81,7 +81,7 @@ export function createShareImageCanvas(result = {}) {
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = '#2ec4b6';
   ctx.font = '700 34px system-ui';
-  ctx.fillText('Racing Sandbox 3D', 48, 72);
+  ctx.fillText('NEON APEX', 48, 72);
   ctx.fillStyle = '#ffffff';
   ctx.font = '900 72px system-ui';
   ctx.fillText(result.formattedTime || formatMs(result.finishTime || result.lapMs), 48, 190);

@@ -608,33 +608,53 @@ function drawBoostHud(ctx, w, h, kmh) {
   const y = h - 82;
   const bw = 340;
   const bh = 12;
+  const maxKmh = Math.max(60, (car.maxSpeed || 300) * TOP_SPEED_MULT * KMH_PER_UNIT);
+  const speedRatio = Math.max(0, Math.min(1, kmh / maxKmh));
   const boost = Math.max(0, Math.min(100, car.boostMeter || 0));
   ctx.save();
-  ctx.fillStyle = 'rgba(26, 26, 29, 0.88)';
-  ctx.strokeStyle = car.boosting ? 'rgba(255, 212, 0, 0.92)' : 'rgba(46, 46, 51, 0.88)';
+  // panel
+  ctx.fillStyle = 'rgba(18, 18, 22, 0.9)';
+  ctx.strokeStyle = car.boosting ? 'rgba(255, 212, 0, 0.92)' : 'rgba(46, 230, 255, 0.5)';
   ctx.lineWidth = 1;
-  roundRect(ctx, x - 14, y - 34, bw + 28, 62, 16);
+  roundRect(ctx, x - 14, y - 34, bw + 28, 66, 16);
   ctx.fill();
   ctx.stroke();
+  // labels
   ctx.fillStyle = '#F5F5F4';
   ctx.font = '900 18px system-ui';
   ctx.textAlign = 'left';
   ctx.fillText(`${kmh} km/h`, x, y - 10);
   ctx.textAlign = 'right';
-  ctx.fillStyle = car.boosting ? '#FFD400' : '#A8A8A3';
-  ctx.fillText(car.boosting ? 'BOOST' : 'LOBBY PRACTICE', x + bw, y - 10);
-  ctx.fillStyle = 'rgba(46, 46, 51, 0.88)';
+  ctx.fillStyle = car.boosting ? '#FFD400' : '#2ee6ff';
+  ctx.fillText(car.boosting ? 'BOOST' : 'SPEED', x + bw, y - 10);
+  // main bar: rises with live speed (neon)
+  ctx.fillStyle = 'rgba(20, 21, 25, 0.95)';
   roundRect(ctx, x, y, bw, bh, 999);
   ctx.fill();
-  ctx.fillStyle = '#FFD400';
-  roundRect(ctx, x, y, bw * boost / 100, bh, 999);
+  const grad = ctx.createLinearGradient(x, 0, x + bw, 0);
+  grad.addColorStop(0, '#19f0d6');
+  grad.addColorStop(0.5, '#2ee6ff');
+  grad.addColorStop(1, '#b14bff');
+  ctx.fillStyle = grad;
+  ctx.shadowColor = 'rgba(46, 230, 255, 0.85)';
+  ctx.shadowBlur = 12;
+  roundRect(ctx, x, y, Math.max(2, bw * speedRatio), bh, 999);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  // thin boost sub-bar
+  const by = y + 17;
+  ctx.fillStyle = 'rgba(20, 21, 25, 0.95)';
+  roundRect(ctx, x, by, bw, 5, 999);
+  ctx.fill();
+  ctx.fillStyle = car.boosting ? '#FFD400' : '#C9A800';
+  roundRect(ctx, x, by, Math.max(2, bw * boost / 100), 5, 999);
   ctx.fill();
   if (driftPulse > 0.05) {
     ctx.globalAlpha = driftPulse;
     ctx.fillStyle = '#FFD400';
     ctx.font = '800 12px system-ui';
     ctx.textAlign = 'center';
-    ctx.fillText('DRIFT CHARGING BOOST', x + bw / 2, y + 30);
+    ctx.fillText('DRIFT CHARGING BOOST', x + bw / 2, y - 10);
   }
   ctx.restore();
 }

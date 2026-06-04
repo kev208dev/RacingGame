@@ -412,16 +412,19 @@ select:focus-visible {
   font-weight: 900;
 }
 .lobby-stat-row i {
-  height: 8px;
+  height: 10px;
   border-radius: 999px;
-  background: #2E2E33;
-  overflow: hidden;
+  background: #141519;
+  border: 1px solid #2E2E33;
+  overflow: visible;
 }
 .lobby-stat-row em {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: #A8A8A3;
+  background: linear-gradient(90deg, #19f0d6, #2ee6ff 50%, #b14bff);
+  box-shadow: 0 0 8px rgba(46,230,255,0.8), 0 0 16px rgba(177,75,255,0.5);
+  transition: width 0.28s ease;
 }
 .lobby-car-actions {
   display: grid;
@@ -852,17 +855,20 @@ select:focus-visible {
 }
 
 .car-stat-row > i {
-  height: 8px;
-  overflow: hidden;
+  height: 10px;
+  overflow: visible;
   border-radius: 999px;
-  background: #2E2E33;
+  background: #141519;
+  border: 1px solid #2E2E33;
 }
 
 .car-stat-row > i > em {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: #A8A8A3;
+  background: linear-gradient(90deg, #19f0d6, #2ee6ff 50%, #b14bff);
+  box-shadow: 0 0 8px rgba(46,230,255,0.8), 0 0 16px rgba(177,75,255,0.5);
+  transition: width 0.28s ease;
 }
 
 .car-stat-row.transcend-stat > b,
@@ -871,8 +877,16 @@ select:focus-visible {
 }
 
 .car-stat-row.transcend-stat > i > em {
-  background: #A8A8A3;
+  background: linear-gradient(90deg, #ffd400, #ff8a00);
+  box-shadow: 0 0 8px rgba(255,212,0,0.85), 0 0 16px rgba(255,138,0,0.5);
 }
+/* NEON APEX — title + accent glow */
+.lobby-topbar h1 {
+  text-shadow: 0 0 12px rgba(46,230,255,0.55), 0 0 26px rgba(177,75,255,0.4);
+  letter-spacing: 0.04em;
+}
+.main-kicker { text-shadow: 0 0 10px rgba(46,230,255,0.4); }
+
 .car-name  { font-size: 0.95rem; font-weight: 700; margin-bottom: 4px; }
 .car-badge {
   display: inline-block; padding: 2px 10px; border-radius: 10px;
@@ -1975,21 +1989,25 @@ select:focus-visible {
   background: rgba(255, 212, 0, 0.06);
 }
 .leaderboard-rank {
-  color: #A8A8A3;
+  color: #2ee6ff;
   font-weight: 900;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
+  text-shadow: 0 0 8px rgba(46,230,255,0.55);
 }
 .leaderboard-row:first-child .leaderboard-rank,
 .global-leaderboard-row:first-child .leaderboard-rank {
   color: #FFD400;
+  text-shadow: 0 0 10px rgba(255,212,0,0.75);
 }
 .leaderboard-row:first-child {
   border-left-color: #FFD400;
+  box-shadow: 0 0 14px rgba(255,212,0,0.22);
 }
 .leaderboard-driver {
   min-width: 0;
-  color: #A8A8A3;
-  font-size: 0.88rem;
+  color: #ECECEA;
+  font-size: 0.9rem;
+  font-weight: 600;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .leaderboard-time {

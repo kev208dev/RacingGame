@@ -5,16 +5,10 @@ import { getSkinById } from '../data/skins.js';
 
 const CAR_DESIGN_BY_ID = {
   apex_gt3: 'gt_silver',
-  feather_sprint: 'classic_green',
-  nitro_street: 'muscle_orange',
   lmp: 'cyber_black',
-  titan_v12: 'buggy_yellow',
-  shadow_rs: 'rally_blue',
-  neon_wraith: 'hyper_purple',
   zero_f1: 'formula_red',
-  singularity_vmax: 'cyber_black',
-  grip_oracle: 'classic_green',
-  boost_phoenix: 'muscle_orange',
+  photon_gtr: 'neon_aqua',
+  prism_evo: 'neon_magenta',
 };
 
 // ── physics state ────────────────────────────────────────────

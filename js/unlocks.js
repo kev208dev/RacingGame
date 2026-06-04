@@ -6,13 +6,11 @@ export const UNLOCKS_KEY = 'racingUnlocks';
 
 export const unlockables = {
   cars: [
-    { id: 'apex_gt3', name: 'Apex GT3', unlocked: true, unlockCondition: 'Default car' },
-    { id: 'nitro_street', name: 'Nitro Street', unlocked: false, unlockCondition: 'Finish 10 races' },
-    { id: 'shadow_rs', name: 'Shadow RS', unlocked: false, unlockCondition: 'Drift for 300 total seconds' },
-    { id: 'zero_f1', name: 'Zero F1-X', unlocked: false, unlockCondition: 'Reach Gold rank' },
-    { id: 'singularity_vmax', name: 'Singularity VMAX', unlocked: false, unlockCondition: 'Clear every map under target time' },
-    { id: 'grip_oracle', name: 'Grip Oracle', unlocked: false, unlockCondition: 'Clear every map under target time and drift 600 seconds' },
-    { id: 'boost_phoenix', name: 'Boost Phoenix', unlocked: false, unlockCondition: 'Clear every map under target time and use boost 500 times' },
+    { id: 'apex_gt3', name: 'Lumen GT', unlocked: true, unlockCondition: 'Default car' },
+    { id: 'photon_gtr', name: 'Photon GT-R', unlocked: false, unlockCondition: 'Finish 10 races' },
+    { id: 'prism_evo', name: 'Prism EVO', unlocked: false, unlockCondition: 'Drift for 300 total seconds' },
+    { id: 'lmp', name: 'Vortex LMP', unlocked: false, unlockCondition: 'Clear every map under target time' },
+    { id: 'zero_f1', name: 'Nova F1-X', unlocked: false, unlockCondition: 'Reach Gold rank' },
   ],
   skins: [
     { id: 'default', name: 'Default', unlocked: true, unlockCondition: 'Default skin' },
@@ -22,9 +20,9 @@ export const unlockables = {
 };
 
 export function getUnlockState() {
-  const saved = safeLoadJSON(UNLOCKS_KEY, { cars: ['apex_gt3', 'feather_sprint'], skins: ['default'] });
+  const saved = safeLoadJSON(UNLOCKS_KEY, { cars: ['apex_gt3'], skins: ['default'] });
   return {
-    cars: Array.isArray(saved.cars) ? [...new Set(['apex_gt3', 'feather_sprint', ...saved.cars.filter(id => id !== 'gt3_basic')])] : ['apex_gt3', 'feather_sprint'],
+    cars: Array.isArray(saved.cars) ? [...new Set(['apex_gt3', ...saved.cars.filter(id => id !== 'gt3_basic')])] : ['apex_gt3'],
     skins: Array.isArray(saved.skins) ? saved.skins : ['default'],
   };
 }
@@ -38,12 +36,10 @@ export function saveUnlockState(state) {
 export function checkUnlockConditions(stats = {}) {
   const state = getUnlockState();
   const tier = getRankTier(getRating()).name;
-  if ((stats.finishedRaces || 0) >= 10) unlockItem('cars', 'nitro_street', state);
-  if ((stats.driftSeconds || 0) >= 300) unlockItem('cars', 'shadow_rs', state);
+  if ((stats.finishedRaces || 0) >= 10) unlockItem('cars', 'photon_gtr', state);
+  if ((stats.driftSeconds || 0) >= 300) unlockItem('cars', 'prism_evo', state);
   if (['Gold', 'Platinum', 'Diamond', 'Master'].includes(tier)) unlockItem('cars', 'zero_f1', state);
-  if (hasClearedAllTracksUnderTarget()) unlockItem('cars', 'singularity_vmax', state);
-  if (hasClearedAllTracksUnderTarget() && (stats.driftSeconds || 0) >= 600) unlockItem('cars', 'grip_oracle', state);
-  if (hasClearedAllTracksUnderTarget() && (stats.boostUses || 0) >= 500) unlockItem('cars', 'boost_phoenix', state);
+  if (hasClearedAllTracksUnderTarget()) unlockItem('cars', 'lmp', state);
   if ((stats.claimedDailyMissions || 0) >= 3) unlockItem('skins', 'neon_red', state);
   if ((stats.rankedWins || 0) >= 3) unlockItem('skins', 'carbon_black', state);
   return saveUnlockState(state);

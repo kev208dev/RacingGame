@@ -43,6 +43,8 @@ export function createCarDesign(type = 'formula_red') {
     hyper_purple: createHyperPurpleCarModel,
     buggy_yellow: createBuggyYellowCarModel,
     classic_green: createClassicGreenCarModel,
+    neon_aqua: createNeonAquaCarModel,
+    neon_magenta: createNeonMagentaCarModel,
   };
 
   const factory = factories[type] || factories.formula_red;
@@ -223,6 +225,8 @@ function addCurvedSportsShellTo(group, type) {
     hyper_purple: 0x7b1fa2,
     buggy_yellow: 0xffc400,
     classic_green: 0x1b7f3a,
+    neon_aqua: 0x0f3a42,
+    neon_magenta: 0x3c0f33,
   };
   const paint = new THREE.MeshStandardMaterial({
     color: colorByType[type] || 0xdce4e8,
@@ -467,6 +471,61 @@ function createCyberBlackCarModel() {
   addWheelTo(car, 'front right black wheel', 1.25, 1.35, 0.42, 0.34, m.tire, m.cyanGlow);
   addWheelTo(car, 'rear left black wheel', -1.25, -1.35, 0.46, 0.36, m.tire, m.cyanGlow);
   addWheelTo(car, 'rear right black wheel', 1.25, -1.35, 0.46, 0.36, m.tire, m.cyanGlow);
+
+  return car;
+}
+
+// NEON APEX — Photon GT-R: long, low aqua speed wedge with neon underglow.
+function createNeonAquaCarModel() {
+  const m = createCarMaterials();
+  const aqua = new THREE.MeshStandardMaterial({ color: 0x0c2f37, roughness: 0.28, metalness: 0.5 });
+  const aquaGlow = new THREE.MeshStandardMaterial({ color: 0x1ff5d8, emissive: 0x0fc9b0, emissiveIntensity: 0.95, roughness: 0.2, metalness: 0.3 });
+  const car = new THREE.Group();
+  car.name = 'neon_aqua_speedster_model';
+
+  addTaperedBlockTo(car, 'long aqua speed wedge body', [2.18, 0.36, 4.9], [0, 0.66, 0.1], aqua, 0.30, 0.96);
+  addTaperedBlockTo(car, 'low aqua needle nose', [1.45, 0.22, 1.95], [0, 0.60, 2.15], aqua, 0.14, 0.8);
+  addBoxTo(car, 'aqua center neon spine', [0.14, 0.05, 4.6], [0, 0.92, 0.2], aquaGlow);
+  addBoxTo(car, 'left aqua neon underline', [0.05, 0.05, 3.3], [-1.10, 0.50, 0.0], aquaGlow);
+  addBoxTo(car, 'right aqua neon underline', [0.05, 0.05, 3.3], [1.10, 0.50, 0.0], aquaGlow);
+  addSphereTo(car, 'aqua teardrop glass canopy', 0.6, [0, 1.04, -0.5], [0.7, 0.3, 1.25], m.glass);
+  addBoxTo(car, 'low rear speed spoiler', [2.5, 0.1, 0.5], [0, 1.06, -2.45], aqua, [-0.05, 0, 0]);
+  addBoxTo(car, 'rear neon tail bar', [2.3, 0.06, 0.1], [0, 0.94, -2.62], aquaGlow);
+  addBoxTo(car, 'front aqua splitter', [2.3, 0.09, 0.34], [0, 0.36, 2.55], m.black);
+
+  addWheelTo(car, 'front left aqua wheel', -1.2, 1.42, 0.42, 0.32, m.tire, aquaGlow);
+  addWheelTo(car, 'front right aqua wheel', 1.2, 1.42, 0.42, 0.32, m.tire, aquaGlow);
+  addWheelTo(car, 'rear left aqua wheel', -1.28, -1.5, 0.48, 0.4, m.tire, aquaGlow);
+  addWheelTo(car, 'rear right aqua wheel', 1.28, -1.5, 0.48, 0.4, m.tire, aquaGlow);
+
+  return car;
+}
+
+// NEON APEX — Prism EVO: wide, planted magenta grip machine with a tall wing.
+function createNeonMagentaCarModel() {
+  const m = createCarMaterials();
+  const mag = new THREE.MeshStandardMaterial({ color: 0x33102b, roughness: 0.3, metalness: 0.42 });
+  const magGlow = new THREE.MeshStandardMaterial({ color: 0xff35bf, emissive: 0xcc1493, emissiveIntensity: 1.0, roughness: 0.2, metalness: 0.3 });
+  const car = new THREE.Group();
+  car.name = 'neon_magenta_gripper_model';
+
+  addTaperedBlockTo(car, 'wide magenta grip body', [2.7, 0.44, 4.1], [0, 0.7, 0], mag, 0.7, 1.05);
+  addTaperedBlockTo(car, 'magenta wide rear haunches', [3.0, 0.4, 1.5], [0, 0.82, -1.25], mag, 0.9, 1.12);
+  addTaperedBlockTo(car, 'magenta flat hood', [2.1, 0.2, 1.6], [0, 0.95, 1.25], mag, 0.6, 0.96);
+  addBoxTo(car, 'magenta center neon stripe', [0.18, 0.05, 4.0], [0, 1.0, 0.2], magGlow);
+  addBoxTo(car, 'left magenta neon skirt', [0.06, 0.06, 3.4], [-1.4, 0.5, -0.05], magGlow);
+  addBoxTo(car, 'right magenta neon skirt', [0.06, 0.06, 3.4], [1.4, 0.5, -0.05], magGlow);
+  addSphereTo(car, 'magenta glass canopy', 0.62, [0, 1.12, -0.35], [0.74, 0.3, 1.1], m.glass);
+  addBoxTo(car, 'magenta tall rear wing blade', [3.2, 0.12, 0.5], [0, 1.72, -2.25], m.black, [-0.06, 0, 0]);
+  addBoxTo(car, 'magenta wing neon edge', [3.0, 0.06, 0.16], [0, 1.88, -2.18], magGlow, [-0.08, 0, 0]);
+  addBoxTo(car, 'magenta wing left support', [0.1, 0.66, 0.14], [-0.66, 1.36, -2.18], m.black);
+  addBoxTo(car, 'magenta wing right support', [0.1, 0.66, 0.14], [0.66, 1.36, -2.18], m.black);
+  addBoxTo(car, 'magenta front splitter', [3.0, 0.09, 0.4], [0, 0.36, 2.4], m.black);
+
+  addWheelTo(car, 'front left magenta wheel', -1.45, 1.34, 0.46, 0.36, m.tire, magGlow);
+  addWheelTo(car, 'front right magenta wheel', 1.45, 1.34, 0.46, 0.36, m.tire, magGlow);
+  addWheelTo(car, 'rear left magenta wheel', -1.5, -1.4, 0.5, 0.42, m.tire, magGlow);
+  addWheelTo(car, 'rear right magenta wheel', 1.5, -1.4, 0.5, 0.42, m.tire, magGlow);
 
   return car;
 }
