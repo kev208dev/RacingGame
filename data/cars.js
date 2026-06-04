@@ -28,10 +28,11 @@ export const CAR_DATA = [
     designType: 'gt_silver',
     color: '#2ee6ff',
     description: 'The all-rounder. No weakness, no extreme — the perfect car to learn every neon circuit.',
-    topSpeed: '288 km/h',
-    acceleration: '3.6s',
+    topSpeed: '300 km/h',
+    acceleration: '3.4s',
     handling: 'Balanced',
-    stats: { speed: 70, acceleration: 72, grip: 76, handling: 74, boost: 70 },
+    // All-rounder: no glaring weakness, out-grips the speed cars, out-runs the grip cars.
+    stats: { speed: 80, acceleration: 80, grip: 84, handling: 86, boost: 76 },
   },
   {
     id: 'lmp',
@@ -62,7 +63,8 @@ export const CAR_DATA = [
     topSpeed: '322 km/h',
     acceleration: '2.9s',
     handling: 'Razor',
-    stats: { speed: 84, acceleration: 82, grip: 90, handling: 92, boost: 64 },
+    // Corner specialist: class-leading grip/handling, but almost no boost.
+    stats: { speed: 78, acceleration: 80, grip: 94, handling: 96, boost: 58 },
   },
   {
     id: 'zero_f1',
@@ -90,10 +92,11 @@ export const CAR_DATA = [
     designType: 'formula_red',
     color: '#ff2d95',
     description: 'The crown jewel. Elite everywhere, forgiving nowhere — only precise drivers unlock its full potential.',
-    topSpeed: '344 km/h',
+    topSpeed: '350 km/h',
     acceleration: '2.4s',
     handling: 'Elite',
-    stats: { speed: 92, acceleration: 94, grip: 88, handling: 90, boost: 82 },
+    // Elite all-high, but each specialist still beats it in their own domain.
+    stats: { speed: 96, acceleration: 96, grip: 82, handling: 84, boost: 78 },
   },
   {
     id: 'photon_gtr',
@@ -124,7 +127,8 @@ export const CAR_DATA = [
     topSpeed: '352 km/h',
     acceleration: '2.6s',
     handling: 'Loose',
-    stats: { speed: 100, acceleration: 92, grip: 58, handling: 56, boost: 96 },
+    // Straight-line king: top speed + max boost, but corners are a nightmare.
+    stats: { speed: 100, acceleration: 92, grip: 52, handling: 50, boost: 100 },
   },
   {
     id: 'prism_evo',
@@ -152,9 +156,10 @@ export const CAR_DATA = [
     designType: 'neon_magenta',
     color: '#ff4df0',
     description: 'Cornering perfection. It refuses to slide and carves any line you ask — just do not expect to win the straights.',
-    topSpeed: '276 km/h',
+    topSpeed: '270 km/h',
     acceleration: '3.0s',
     handling: 'Surgical',
-    stats: { speed: 64, acceleration: 80, grip: 100, handling: 98, boost: 64 },
+    // Grip king: glued to the track, but slow on straights and weak boost.
+    stats: { speed: 56, acceleration: 78, grip: 100, handling: 100, boost: 56 },
   },
 ];
