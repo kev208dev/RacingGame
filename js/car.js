@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { createCarDesign } from './carDesigns.js';
+import { getWhiteMeshClone } from './whiteMesh.js';
 import { mapStatToPhysics, normalizeCarStats } from './carStats.js';
 import { getSkinById } from '../data/skins.js';
 import { KART_CAMERA as KC } from '../kart-boost/config.js';
@@ -80,24 +81,30 @@ export function createCar(carData, startPos) {
 export function createCar3D(carData = {}) {
   const root = new THREE.Group();
   const designType = carData.designType || CAR_DESIGN_BY_ID[carData.id] || 'formula_red';
-  const model = createCarDesign(designType);
-  _applySkin(model, carData.skin);
+
+  // 시도: GLB 흰 메시 모델 사용. 로드 안 됐으면 절차적 모델로 fallback.
+  const glb = getWhiteMeshClone();
+  const model = glb || createCarDesign(designType);
+  if (!glb) _applySkin(model, carData.skin);
   model.rotation.y = Math.PI / 2;
+  // GLB는 normalize 단계에서 단위 박스로 맞춰져 있어 같은 scale 5.2 적용.
   model.scale.set(5.2, 5.2, 5.2);
   root.add(model);
 
   const wheelGroups = [];
-  model.traverse(child => {
-    const childName = child.name.toLowerCase();
-    const isWheelGroup = child.isGroup && childName.includes('wheel') && !childName.includes('_pivot');
-    if (isWheelGroup) {
-      child.spinPivot = child.userData.spinPivot || child.children.find(c => c.isGroup && c.name.toLowerCase().includes('_pivot'));
-      child.baseY = child.userData.baseY ?? child.position.y;
-      child.sideSign = child.position.x < 0 ? 1 : -1;
-      child.axleSign = child.position.z > 0 ? 1 : -1;
-      wheelGroups.push(child);
-    }
-  });
+  if (!glb) {
+    model.traverse(child => {
+      const childName = child.name.toLowerCase();
+      const isWheelGroup = child.isGroup && childName.includes('wheel') && !childName.includes('_pivot');
+      if (isWheelGroup) {
+        child.spinPivot = child.userData.spinPivot || child.children.find(c => c.isGroup && c.name.toLowerCase().includes('_pivot'));
+        child.baseY = child.userData.baseY ?? child.position.y;
+        child.sideSign = child.position.x < 0 ? 1 : -1;
+        child.axleSign = child.position.z > 0 ? 1 : -1;
+        wheelGroups.push(child);
+      }
+    });
+  }
 
   root.wheelGroups = wheelGroups;
   root.body        = model;
