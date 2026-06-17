@@ -79,7 +79,7 @@ export function initLobbyPractice(carData) {
   if (currentPracticeMap === 0) buildPracticeArena(mapGroup);
   else buildJumpCourse(mapGroup);
   skidBuf = createSkidBuffer(scene, 280);
-  driftSmokePool = createDriftSmokePool(scene, 110);
+  driftSmokePool = createDriftSmokePool(scene, 56);
   spawnLobbyCar(carData);
   window.addEventListener('resize', onResize);
   running = true;

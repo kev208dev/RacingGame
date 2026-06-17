@@ -24,8 +24,8 @@ export const DRIFT_FX_CONFIG = {
   SMOKE_REAR_OFFSET:    -7.6,   // 차 로컬 X (뒤)
   SMOKE_SIDE_OFFSET:    7.2,    // 차 로컬 Z (양옆)
   SMOKE_Y:              1.0,
-  SMOKE_RATE_BASE:      40,     // /s — 진입 시
-  SMOKE_RATE_PEAK:      150,    // /s — 깊은 β + 고속
+  SMOKE_RATE_BASE:      22,     // /s — 진입 시
+  SMOKE_RATE_PEAK:      65,     // /s — 깊은 β + 고속 (렉 줄이려 cap 낮춤)
   SMOKE_BETA_REF:       Math.PI * 0.35, // 이 β에서 peak 도달
   SMOKE_PER_BURST:      1,      // burst당 입자 수 (양쪽 각각)
 

@@ -169,8 +169,8 @@ export function initMpGame({
   scene.add(carMesh);
   updateCar3D(carMesh, car, { brake: 0 });
 
-  smokePool = createSmokePool(scene, 48);
-  driftSmokePool = createDriftSmokePool(scene, 110);
+  smokePool = createSmokePool(scene, 32);
+  driftSmokePool = createDriftSmokePool(scene, 56);
   skidBuf = createSkidBuffer(scene, 360);
   sparkPool = createSparkPool(scene, 64);
   driftFxState = makeDriftFxState();
