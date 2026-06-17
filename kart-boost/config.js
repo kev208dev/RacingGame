@@ -142,9 +142,10 @@ export const KART_CAMERA = {
   // ── 드리프트 카메라 (yaw 오프셋 — 기존 유지) ──
   CAM_DIST_PULL:   0.17,
   CAM_HEIGHT_DROP: 5,
-  DRIFT_YAW_GAIN:  0.80,   // 0.55→0.80 — 차체 슬립 더 따라가 측면 보이게
-  DRIFT_YAW_MAX:   0.45,   // 0.26→0.45 rad (~26°) — 카메라 yaw 지연 폭 확대
-  DRIFT_YAW_SMOOTH: 6.0,   // 8→6 — 살짝 느슨하게 추적
+  DRIFT_YAW_GAIN:  0.80,
+  DRIFT_YAW_MAX:   0.45,                 // ~26° — 카메라 yaw 지연 폭
+  DRIFT_YAW_SMOOTH: 6.0,
+  CAM_YAW_FOLLOW:  0.75,                 // PC: 카메라가 차체 yaw를 75%만 추적 (드리프트 시 측면 노출)
   BODY_ROLL_DRIFT: 0.080,    // (legacy, 사용 안 함 — KART_ROLL_MAX로 교체)
   SPEEDLINE_KMH:   200,
   SPEEDLINE_RANGE: 160,
@@ -155,7 +156,7 @@ export const KART_CAMERA = {
   // 회전 피벗 (root)을 차체 뒤쪽으로 옮기기 — drift/yaw 회전 中심이 뒷축에 가까워짐.
   KART_LENGTH:           18.7,             // GLB normalize TARGET_MAX와 동일
   KART_REAR_PIVOT_BIAS:  0.30,             // 0=중심, 1=뒤끝 (살짝)
-  KART_ROLL_MAX:   22 * Math.PI / 180,  // 22° — 카트라이더식 안쪽 누움
+  KART_ROLL_MAX:   17 * Math.PI / 180,  // 17° — PC 원작 누움 폭 (15-18° 범위)
   CAM_TILT_MAX:    7  * Math.PI / 180,  // 7° — 수평선 확실히 기울게
   ROLL_LERP:       7.0,                 // /s — 정상 응답
   ROLL_SNAP:       22.0,                // /s — cut/spin 시 빠른 0 복귀
@@ -166,11 +167,11 @@ export const KART_CAMERA = {
   // ── 부스트 발동 펀치 (FOV kick / speedline / flame) ──
   // 발동 순간 FOV가 +KICK으로 즉시 가산, 매 프레임 SUSTAIN(boost中)/0(끝)으로
   // 감쇠. 체이닝 시 첫 kick만 큼, 지속 베이스 SUSTAIN 유지.
-  BOOST_FOV_KICK:        18,     // deg — 발동 순간 즉시 가산 (14→18, 더 확실한 펀치)
-  BOOST_FOV_SUSTAIN:     5,      // deg — 지속 중 베이스
-  BOOST_FOV_DECAY:       6.0,    // /s — kick → sustain/0 lerp 응답
-  BOOST_SHAKE_AMP:       8,      // 발동 순간 카메라 셰이크 (7→8)
-  SPEEDLINE_MAX_OPACITY: 0.85,   // 부스트 中 속도선 알파 max
-  SPEEDLINE_BOOST_RATE:  320,    // /s — boost 中 추가 spawn rate (260→320)
+  BOOST_FOV_KICK:        14,     // deg — PC 원작 발동 펀치 +14°
+  BOOST_FOV_SUSTAIN:     5,      // deg — 지속 中 베이스
+  BOOST_FOV_DECAY:       6.0,    // /s
+  BOOST_SHAKE_AMP:       8,
+  SPEEDLINE_MAX_OPACITY: 0.55,   // PC: 가장자리만 진하게 (0.5-0.6 범위)
+  SPEEDLINE_BOOST_RATE:  320,    // /s — boost 中 추가 spawn rate
   FLAME_BOOST_SCALE:     2.4,    // 부스트 中 화염 길이 배율 (1.85→2.4)
 };

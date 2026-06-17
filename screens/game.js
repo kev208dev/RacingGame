@@ -613,7 +613,17 @@ function _updateCamera(dt) {
   const LOOK_AHEAD = isHigh ? 20 : isHood ? 155 : KART_CAMERA.CAM_LOOK_AHEAD;
   const LOOK_Y_BASE = isHigh ? 0 : isHood ? 10.5 : KART_CAMERA.CAM_LOOK_Y;
 
-  let dA = car.angle - _camAngle;
+  // CAM_YAW_FOLLOW < 1: 드리프트 시 차체 yaw 일부만 추적 (velocity 방향과 블렌드) → 측면 노출.
+  const fwdF = KART_CAMERA.CAM_YAW_FOLLOW ?? 1.0;
+  let targetCam = car.angle;
+  if (car.drifting && Math.hypot(car.vx, car.vy) > 5) {
+    const velAngle = Math.atan2(car.vy, car.vx);
+    let velToCar = velAngle - car.angle;
+    while (velToCar >  Math.PI) velToCar -= Math.PI * 2;
+    while (velToCar < -Math.PI) velToCar += Math.PI * 2;
+    targetCam = car.angle + velToCar * (1 - fwdF);
+  }
+  let dA = targetCam - _camAngle;
   while (dA >  Math.PI) dA -= Math.PI * 2;
   while (dA < -Math.PI) dA += Math.PI * 2;
   const angK = 1 - Math.exp(-9.0 * dt);

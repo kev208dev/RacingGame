@@ -467,7 +467,17 @@ function updateLobbyCamera(dt) {
     : 0;
   car._camDriftYaw = (car._camDriftYaw || 0)
     + (driftYawTarget - (car._camDriftYaw || 0)) * (1 - Math.exp(-KART_CAMERA.DRIFT_YAW_SMOOTH * dt));
-  const aimAngle = car.angle + car._camDriftYaw;
+  // CAM_YAW_FOLLOW: 드리프트 中 차체 yaw를 일부만 추적해 측면 노출.
+  const fwdF = KART_CAMERA.CAM_YAW_FOLLOW ?? 1.0;
+  let camBase = car.angle;
+  if (car.drifting && Math.hypot(car.vx, car.vy) > 5) {
+    const velAngle = Math.atan2(car.vy, car.vx);
+    let velToCar = velAngle - car.angle;
+    while (velToCar >  Math.PI) velToCar -= Math.PI * 2;
+    while (velToCar < -Math.PI) velToCar += Math.PI * 2;
+    camBase = car.angle + velToCar * (1 - fwdF);
+  }
+  const aimAngle = camBase + car._camDriftYaw;
   const cs = Math.cos(aimAngle), sn = Math.sin(aimAngle);
 
   const targetX = car.x - cs * DIST;
