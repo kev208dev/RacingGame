@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { createCar, createCar3D, updateCar3D } from '../js/car.js';
 import { updatePhysics, KMH_PER_UNIT, TOP_SPEED_MULT, respawnAtCenter }  from '../js/physics.js';
+import { initStartBoostState, tickStartBoost } from '../kart-boost/index.js';
+import { KART_CAMERA } from '../kart-boost/config.js';
 import { getTrackGroup }  from '../js/track3d.js';
 import { drawHUD }        from '../js/hud.js';
 import { createTiming, startTiming, updateTiming } from '../js/timing.js';
@@ -12,12 +14,13 @@ import {
   createSmokePool, spawnSmoke, updateSmoke,
   createSkidBuffer,
   createSparkPool, spawnSparks, updateSparks,
+  createDriftSmokePool, updateDriftSmoke,
   makeShake, triggerShake, tickShake,
   makeSpeedLines, drawSpeedLines,
   updateFovPump,
 } from '../js/effects.js';
 import { scatterProps, updateScenery } from '../js/scenery.js';
-import { makeDriftFxState, applyDriftBodyFx, emitDriftSparks } from '../js/driftFx.js';
+import { makeDriftFxState, applyDriftBodyFx, emitDriftSparks, emitDriftSmoke } from '../js/driftFx.js';
 import { awardMissions, recordTrackPlay } from '../utils/profile.js';
 import { CAR_DATA } from '../data/cars.js';
 import { initMiniMap, updateMiniMap, hideMiniMap } from '../js/minimap.js';
@@ -48,6 +51,7 @@ let rearViewActive = false; // '/' 누르고 있는 동안 true
 
 // fx
 let smokePool = null;
+let driftSmokePool = null;
 let skidBuf   = null;
 let sparkPool = null;
 let driftFxState = null;
@@ -181,6 +185,7 @@ export function initGame(cd, tr, resultsCb, menuCb, options = {}) {
 
   // ── car ──
   car     = createCar(cd, tr.startPos);
+  initStartBoostState(car);
   carMesh = createCar3D(cd);
   scene.add(carMesh);
   updateCar3D(carMesh, car, { brake: 0 });
@@ -188,6 +193,7 @@ export function initGame(cd, tr, resultsCb, menuCb, options = {}) {
 
   // ── effects ──
   smokePool  = createSmokePool(scene, 48);
+  driftSmokePool = createDriftSmokePool(scene, 110);
   skidBuf    = createSkidBuffer(scene, 360);
   sparkPool  = createSparkPool(scene, 64);
   driftFxState = makeDriftFxState();
@@ -246,6 +252,9 @@ export function updateGame(dt, now) {
   startCountdown = Math.max(0, (startReadyAt - now) / 1000);
   const wasReleased = raceReleased;
   raceReleased = startCountdown <= 0;
+
+  // 출발부스터: raw input 사용 (gating 전). GO 전환 시 1회 fire.
+  tickStartBoost(car, input, startCountdown, raceReleased);
 
   // ── start light beeps ──
   if (!raceReleased) {
@@ -337,19 +346,37 @@ export function updateGame(dt, now) {
     }
   }
   emitDriftSparks(driftFxState, car, sparkPool, dt);
+  emitDriftSmoke(driftFxState, car, driftSmokePool, dt,
+    (car.maxSpeed || 180) * TOP_SPEED_MULT);
   updateSmoke(smokePool, dt);
+  updateDriftSmoke(driftSmokePool, dt);
   updateSparks(sparkPool, dt);
 
   // ── 3D update ──
-  updateCar3D(carMesh, car, driveInput, track);
+  updateCar3D(carMesh, car, driveInput, track, dt);
   applyDriftBodyFx(driftFxState, carMesh, car, dt);
   _updateGhostMesh(now);
   updateScenery(propsGroup, now);
   _updateCamera(dt);
 
-  // ── FOV pump (visual speed sensation) ──
+  // ── FOV pump + boost 발동 펀치 ──
   const kmh = car.speed * KMH_PER_UNIT;
-  updateFovPump(camera3d, kmh, car.maxSpeed * TOP_SPEED_MULT, !!car.boosting || !!car.drsActive, dt);
+  const boostActive = !!car.boosting || !!car.drsActive;
+
+  // boost 발동 전환 감지: 직전 !boosting → 현재 boosting = kick 가산.
+  // (체이닝: 첫 발동에만 kick, 지속 中엔 sustain 베이스만 유지)
+  const justFiredBoost = !_prevBoosting && car.boosting;
+  car._boostFovKick = car._boostFovKick ?? 0;
+  if (justFiredBoost) {
+    car._boostFovKick = KART_CAMERA.BOOST_FOV_KICK;
+    triggerShake(shake, KART_CAMERA.BOOST_SHAKE_AMP);
+  }
+  // sustain 목표: boost 中엔 베이스 유지, 끝나면 0.
+  const sustain = car.boosting ? KART_CAMERA.BOOST_FOV_SUSTAIN : 0;
+  car._boostFovKick += (sustain - car._boostFovKick)
+    * (1 - Math.exp(-KART_CAMERA.BOOST_FOV_DECAY * dt));
+
+  updateFovPump(camera3d, kmh, car.maxSpeed * TOP_SPEED_MULT, boostActive, dt, car._boostFovKick);
 
   // ── render ──
   renderer.render(scene, camera3d);
@@ -448,7 +475,7 @@ function _emitDriftFx(dt, driveInput) {
     && car.speed > 18
     && (Math.abs(car.steerAngle || 0) > 0.025 || Math.abs(car.sideSpeed || 0) > 2.5)
   );
-  if (!visualDrift) {
+  if (!visualDrift || car.suppressSkid) {
     delete car._lastSkidL;
     delete car._lastSkidR;
     return;
@@ -482,13 +509,8 @@ function _emitDriftFx(dt, driveInput) {
 }
 
 function _driftTrailColor() {
-  const palettes = [
-    [0x35f5ff, 0x00c7ff, 0x9ffcff],
-    [0xff3b18, 0xff8a00, 0xffd166],
-    [0xb85cff, 0x7c3cff, 0xff4dff],
-  ];
-  const palette = palettes[Math.abs((carData?.id || '').split('').reduce((a, ch) => a + ch.charCodeAt(0), 0)) % palettes.length];
-  return palette[Math.floor(Math.random() * palette.length)];
+  // KartRider식: 연회색 단일 스키드 (저투명은 appendTrail 두께/alpha 조절 영역).
+  return 0x9aa0a6;
 }
 
 function _scheduleResults(ev) {
@@ -572,16 +594,21 @@ function _updateCamera(dt) {
   const isHigh = cameraMode === 'high';
   const isHood = cameraMode === 'hood';
 
-  // KartRider 연출: boost 中 카메라 거리/높이 당김
+  // KartRider 연출: boost 中 카메라 거리/높이 당김 + 속도 비례 거리 추가
   const boostPow = Math.min(1, car.boostPower || 0);
-  const BOOST_DIST_PULL   = 0.17;
-  const BOOST_HEIGHT_DROP = 5;
-  const distMul = (isHigh || isHood) ? 1 : (1 - BOOST_DIST_PULL * boostPow);
-  const heightDrop = (isHigh || isHood) ? 0 : BOOST_HEIGHT_DROP * boostPow;
+  const distMul = (isHigh || isHood) ? 1 : (1 - KART_CAMERA.CAM_DIST_PULL * boostPow);
+  const heightDrop = (isHigh || isHood) ? 0 : KART_CAMERA.CAM_HEIGHT_DROP * boostPow;
 
-  const DIST       = (isHigh ? 0 : isHood ? -8 : 76) * distMul;
-  const HEIGHT     = (isHigh ? 380 : isHood ? 13.5 : 36) - heightDrop;
-  const LOOK_AHEAD = isHigh ? 20 : isHood ? 155 : 58;
+  // chase: 낮고 가깝게, 고속에선 살짝 뒤로.
+  const topSpeed = Math.max(80, (car.maxSpeed || 180) * TOP_SPEED_MULT);
+  const kmh = (car.speed || 0) * KMH_PER_UNIT;
+  const speedT = Math.max(0, Math.min(1, kmh / topSpeed));
+  const chaseDist = KART_CAMERA.CAM_DIST + KART_CAMERA.CAM_DIST_SPEED_ADD * speedT;
+
+  const DIST       = (isHigh ? 0 : isHood ? -8 : chaseDist) * distMul;
+  const HEIGHT     = (isHigh ? 380 : isHood ? 13.5 : KART_CAMERA.CAM_HEIGHT) - heightDrop;
+  const LOOK_AHEAD = isHigh ? 20 : isHood ? 155 : KART_CAMERA.CAM_LOOK_AHEAD;
+  const LOOK_Y_BASE = isHigh ? 0 : isHood ? 10.5 : KART_CAMERA.CAM_LOOK_Y;
 
   let dA = car.angle - _camAngle;
   while (dA >  Math.PI) dA -= Math.PI * 2;
@@ -606,7 +633,7 @@ function _updateCamera(dt) {
   const tz = -(car.y - sn * DIST);
 
   const lx = car.x + cs * LOOK_AHEAD;
-  const ly = (isHigh ? 0 : isHood ? 10.5 : 14) + roadY;
+  const ly = LOOK_Y_BASE + roadY;
   const lz = -(car.y + sn * LOOK_AHEAD);
 
   const posK  = 1 - Math.exp(-12.0 * dt);
@@ -620,10 +647,31 @@ function _updateCamera(dt) {
   _camLook.y += (ly - _camLook.y) * lookK;
   _camLook.z += (lz - _camLook.z) * lookK;
 
+  // ── 카메라 뱅크 계산 (lookAt 후 rotateZ — view axis 기준 roll) ──
+  // up 벡터 방식은 view dir이 월드 X축에 가까우면 cross 결과가 t와 무관해져 무효.
+  // 정공법: lookAt으로 자세 잡고 → camera.rotateZ(t)로 local Z(view축) 기준 roll.
+  const refSlip = KART_CAMERA.REF_SLIP || (25 * Math.PI / 180);
+  const intensity = car.drifting
+    ? Math.min(1, Math.abs(car.slipBeta || car.driftAngle || 0) / Math.max(1e-3, refSlip))
+    : 0;
+  const dir = car._driftDir || Math.sign(car.sideSpeed || car.steerAngle || 1);
+  const tiltTarget = car.drifting ? (-dir * KART_CAMERA.CAM_TILT_MAX * intensity) : 0;
+  const snapEnd = !car.drifting
+    && (car._lastDriftEndReason === 'align'
+     || car._lastDriftEndReason === 'spin'
+     || car._lastDriftEndReason === 'cut')
+    && (car.driftStateTime || 0) < 0.25;
+  const tiltRate = snapEnd ? KART_CAMERA.ROLL_SNAP : KART_CAMERA.CAM_TILT_LERP;
+  car._camTilt = car._camTilt ?? 0;
+  car._camTilt += (tiltTarget - car._camTilt) * (1 - Math.exp(-tiltRate * Math.max(0, dt)));
+
   // Apply screen-shake offset on top of the smoothed position.
   const shk = tickShake(shake, dt);
   camera3d.position.set(_camPos.x + shk.x, _camPos.y + shk.y, _camPos.z);
+  // 1) up 리셋  2) lookAt  3) rotateZ — 순서 중요 (lookAt이 회전 매트릭스 새로 잡음).
+  camera3d.up.set(0, 1, 0);
   camera3d.lookAt(_camLook);
+  if (car._camTilt) camera3d.rotateZ(car._camTilt);
 
   if (scene && scene.sunLight) {
     const carZ = -car.y;
@@ -640,7 +688,8 @@ function _renderHUD(dt, kmh) {
   if (hudCanvas.height !== window.innerHeight) hudCanvas.height = window.innerHeight;
   hudCtx.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
   // speed-line streaks below normal HUD
-  drawSpeedLines(hudCtx, speedLines, kmh, hudCanvas.width, hudCanvas.height, dt, cameraMode);
+  const boostT = Math.min(1, (car?.boostPower || 0));
+  drawSpeedLines(hudCtx, speedLines, kmh, hudCanvas.width, hudCanvas.height, dt, cameraMode, boostT);
   drawHUD(hudCtx, car, timing, hudCanvas.width, hudCanvas.height, track, bestGhost);
   if (lapBannerTimer > 0) _drawLapBanner(hudCtx, hudCanvas.width, hudCanvas.height);
   if (!raceReleased) _drawStartSignal(hudCtx, hudCanvas.width, hudCanvas.height);
@@ -770,6 +819,7 @@ function _resetCar() {
   car.steerAngle = 0;
   car.offTrack = false;
   car.boostMeter = 0;
+  car.boostStock = 0;
   car.boostTimer = 0;
   car.boostPower = 0;
   car.boosting = false;
@@ -782,6 +832,7 @@ function _resetCar() {
   car.wallRiding = false;
   car.wallRideSide = 0;
   car.lastWallHit = null;
+  initStartBoostState(car);
   if (skidBuf) skidBuf.reset();
   // Re-create timing so the countdown releases into a clean lap.
   timing = createTiming(getBestSectors(track.id));

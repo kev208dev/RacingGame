@@ -6,6 +6,8 @@
 
 import * as THREE from 'three';
 import { createCar, createCar3D, updateCar3D } from '../js/car.js';
+import { initStartBoostState, tickStartBoost } from '../kart-boost/index.js';
+import { KART_CAMERA } from '../kart-boost/config.js';
 import { updatePhysics, KMH_PER_UNIT, TOP_SPEED_MULT } from '../js/physics.js';
 import { getTrackGroup } from '../js/track3d.js';
 import { drawHUD } from '../js/hud.js';
@@ -17,12 +19,13 @@ import {
   createSmokePool, spawnSmoke, updateSmoke,
   createSkidBuffer,
   createSparkPool, spawnSparks, updateSparks,
+  createDriftSmokePool, updateDriftSmoke,
   makeShake, triggerShake, tickShake,
   makeSpeedLines, drawSpeedLines,
   updateFovPump,
 } from '../js/effects.js';
 import { scatterProps, updateScenery } from '../js/scenery.js';
-import { makeDriftFxState, applyDriftBodyFx, emitDriftSparks } from '../js/driftFx.js';
+import { makeDriftFxState, applyDriftBodyFx, emitDriftSparks, emitDriftSmoke } from '../js/driftFx.js';
 import { RemoteCarInterp } from '../js/net/interp.js';
 import { getSharedRenderer } from '../js/renderer.js';
 import { checkVehicleCollisions } from '../js/competitionCollision.js';
@@ -51,6 +54,7 @@ let rearViewActive = false;
 
 let driftFxState = null;
 let smokePool = null;
+let driftSmokePool = null;
 let skidBuf = null;
 let sparkPool = null;
 let shake = null;
@@ -160,11 +164,13 @@ export function initMpGame({
 
   // Spawn local car (own physics)
   car = createCar(carData, track.startPos);
+  initStartBoostState(car);
   carMesh = createCar3D(carData);
   scene.add(carMesh);
   updateCar3D(carMesh, car, { brake: 0 });
 
   smokePool = createSmokePool(scene, 48);
+  driftSmokePool = createDriftSmokePool(scene, 110);
   skidBuf = createSkidBuffer(scene, 360);
   sparkPool = createSparkPool(scene, 64);
   driftFxState = makeDriftFxState();
@@ -256,6 +262,9 @@ export function updateMpGame(dt, now) {
     startTiming(timing, now);
   }
 
+  // 출발부스터: raw input, countdown in seconds.
+  tickStartBoost(car, input, Math.max(0, msUntilStart / 1000), raceReleased);
+
   const driveInput = raceReleased ? input : {
     ...input,
     throttle: 0, brake: 0, steer: 0, handbrake: false,
@@ -301,11 +310,14 @@ export function updateMpGame(dt, now) {
     }
   }
   emitDriftSparks(driftFxState, car, sparkPool, dt);
+  emitDriftSmoke(driftFxState, car, driftSmokePool, dt,
+    (car.maxSpeed || 180) * TOP_SPEED_MULT);
   updateSmoke(smokePool, dt);
+  updateDriftSmoke(driftSmokePool, dt);
   updateSparks(sparkPool, dt);
 
   // Local mesh
-  updateCar3D(carMesh, car, driveInput, track);
+  updateCar3D(carMesh, car, driveInput, track, dt);
   applyDriftBodyFx(driftFxState, carMesh, car, dt);
   updateScenery(propsGroup, now);
 
@@ -317,7 +329,18 @@ export function updateMpGame(dt, now) {
   _updateCamera(dt);
 
   const kmh = car.speed * KMH_PER_UNIT;
-  updateFovPump(camera3d, kmh, car.maxSpeed * TOP_SPEED_MULT, !!car.boosting || !!car.drsActive, dt);
+  const boostActive = !!car.boosting || !!car.drsActive;
+  const justFiredBoost = !car._prevBoosting && car.boosting;
+  car._prevBoosting = car.boosting;
+  car._boostFovKick = car._boostFovKick ?? 0;
+  if (justFiredBoost) {
+    car._boostFovKick = KART_CAMERA.BOOST_FOV_KICK;
+    triggerShake(shake, KART_CAMERA.BOOST_SHAKE_AMP);
+  }
+  const sustain = car.boosting ? KART_CAMERA.BOOST_FOV_SUSTAIN : 0;
+  car._boostFovKick += (sustain - car._boostFovKick)
+    * (1 - Math.exp(-KART_CAMERA.BOOST_FOV_DECAY * dt));
+  updateFovPump(camera3d, kmh, car.maxSpeed * TOP_SPEED_MULT, boostActive, dt, car._boostFovKick);
 
   renderer.render(scene, camera3d);
   _renderHUD(dt, kmh, msUntilStart);
@@ -548,7 +571,7 @@ function _emitDriftFx(dt, driveInput) {
     && car.speed > 18
     && (Math.abs(car.steerAngle || 0) > 0.025 || Math.abs(car.sideSpeed || 0) > 2.5)
   );
-  if (!visualDrift) {
+  if (!visualDrift || car.suppressSkid) {
     delete car._lastSkidL;
     delete car._lastSkidR;
     return;
@@ -566,7 +589,7 @@ function _emitDriftFx(dt, driveInput) {
     if (prev) {
       const dx = wx - prev.x, dz = w3z - prev.z;
       if (dx * dx + dz * dz > 4.0) {
-        skidBuf.appendTrail(prev.x, prev.z, wx, w3z, 1.15, 0x35f5ff);
+        skidBuf.appendTrail(prev.x, prev.z, wx, w3z, 1.15, 0x9aa0a6);
         car[key] = { x: wx, z: w3z };
       }
     } else {
@@ -579,16 +602,20 @@ function _updateCamera(dt) {
   const isHigh = cameraMode === 'high';
   const isHood = cameraMode === 'hood';
 
-  // KartRider 연출
+  // KartRider 연출 + 속도 비례 거리
   const boostPow = Math.min(1, car.boostPower || 0);
-  const BOOST_DIST_PULL   = 0.17;
-  const BOOST_HEIGHT_DROP = 6;
-  const distMul = (isHigh || isHood) ? 1 : (1 - BOOST_DIST_PULL * boostPow);
-  const heightDrop = (isHigh || isHood) ? 0 : BOOST_HEIGHT_DROP * boostPow;
+  const distMul = (isHigh || isHood) ? 1 : (1 - KART_CAMERA.CAM_DIST_PULL * boostPow);
+  const heightDrop = (isHigh || isHood) ? 0 : KART_CAMERA.CAM_HEIGHT_DROP * boostPow;
 
-  const DIST = (isHigh ? 0 : isHood ? -8 : 104) * distMul;
-  const HEIGHT = (isHigh ? 380 : isHood ? 13.5 : 46) - heightDrop;
-  const LOOK_AHEAD = isHigh ? 20 : isHood ? 155 : 64;
+  const topSpeed = Math.max(80, (car.maxSpeed || 180) * TOP_SPEED_MULT);
+  const kmhNow   = (car.speed || 0) * KMH_PER_UNIT;
+  const speedT   = Math.max(0, Math.min(1, kmhNow / topSpeed));
+  const chaseDist = KART_CAMERA.CAM_DIST + KART_CAMERA.CAM_DIST_SPEED_ADD * speedT;
+
+  const DIST = (isHigh ? 0 : isHood ? -8 : chaseDist) * distMul;
+  const HEIGHT = (isHigh ? 380 : isHood ? 13.5 : KART_CAMERA.CAM_HEIGHT) - heightDrop;
+  const LOOK_AHEAD = isHigh ? 20 : isHood ? 155 : KART_CAMERA.CAM_LOOK_AHEAD;
+  const LOOK_Y_BASE = isHigh ? 0 : isHood ? 10.5 : KART_CAMERA.CAM_LOOK_Y;
 
   let dA = car.angle - _camAngle;
   while (dA > Math.PI) dA -= Math.PI * 2;
@@ -612,7 +639,7 @@ function _updateCamera(dt) {
   const tz = -(car.y - sn * DIST);
 
   const lx = car.x + cs * LOOK_AHEAD;
-  const ly = (isHigh ? 0 : isHood ? 10.5 : 14) + roadY;
+  const ly = LOOK_Y_BASE + roadY;
   const lz = -(car.y + sn * LOOK_AHEAD);
 
   const posK = 1 - Math.exp(-12.0 * dt);
@@ -626,9 +653,27 @@ function _updateCamera(dt) {
   _camLook.y += (ly - _camLook.y) * lookK;
   _camLook.z += (lz - _camLook.z) * lookK;
 
+  // 카메라 뱅크 — lookAt 후 rotateZ(view축 기준 roll). up 벡터 방식은 view dir이 월드 X축에 가까우면 무효.
+  const refSlip = KART_CAMERA.REF_SLIP || (25 * Math.PI / 180);
+  const intensity = car.drifting
+    ? Math.min(1, Math.abs(car.slipBeta || car.driftAngle || 0) / Math.max(1e-3, refSlip))
+    : 0;
+  const dir = car._driftDir || Math.sign(car.sideSpeed || car.steerAngle || 1);
+  const tiltTarget = car.drifting ? (-dir * KART_CAMERA.CAM_TILT_MAX * intensity) : 0;
+  const snapEnd = !car.drifting
+    && (car._lastDriftEndReason === 'align'
+     || car._lastDriftEndReason === 'spin'
+     || car._lastDriftEndReason === 'cut')
+    && (car.driftStateTime || 0) < 0.25;
+  const tiltRate = snapEnd ? KART_CAMERA.ROLL_SNAP : KART_CAMERA.CAM_TILT_LERP;
+  car._camTilt = car._camTilt ?? 0;
+  car._camTilt += (tiltTarget - car._camTilt) * (1 - Math.exp(-tiltRate * Math.max(0, dt)));
+
   const shk = tickShake(shake, dt);
   camera3d.position.set(_camPos.x + shk.x, _camPos.y + shk.y, _camPos.z);
+  camera3d.up.set(0, 1, 0);
   camera3d.lookAt(_camLook);
+  if (car._camTilt) camera3d.rotateZ(car._camTilt);
 
   if (scene && scene.sunLight) {
     const carZ = -car.y;
@@ -643,7 +688,8 @@ function _renderHUD(dt, kmh, msUntilStart) {
   if (hudCanvas.width !== window.innerWidth) hudCanvas.width = window.innerWidth;
   if (hudCanvas.height !== window.innerHeight) hudCanvas.height = window.innerHeight;
   hudCtx.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
-  drawSpeedLines(hudCtx, speedLines, kmh, hudCanvas.width, hudCanvas.height, dt, cameraMode);
+  const boostT = Math.min(1, (car?.boostPower || 0));
+  drawSpeedLines(hudCtx, speedLines, kmh, hudCanvas.width, hudCanvas.height, dt, cameraMode, boostT);
   drawHUD(hudCtx, car, timing, hudCanvas.width, hudCanvas.height, track, null);
   if (banner) _drawLapBanner(hudCtx, hudCanvas.width, hudCanvas.height);
   if (!raceReleased) _drawCountdownOverlay(hudCtx, hudCanvas.width, hudCanvas.height, msUntilStart);

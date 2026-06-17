@@ -3,8 +3,16 @@ import { createCar, createCar3D, updateCar3D } from '../js/car.js';
 import { KMH_PER_UNIT, TOP_SPEED_MULT, updatePhysics } from '../js/physics.js';
 import { getInput } from '../utils/input.js';
 import { getSharedRenderer } from '../js/renderer.js';
-import { createSkidBuffer } from '../js/effects.js';
+import {
+  createSkidBuffer,
+  createDriftSmokePool, updateDriftSmoke,
+  updateFovPump,
+} from '../js/effects.js';
 import { updateDriftSound, playBoostActivate } from '../js/audio.js';
+import { drawHUD } from '../js/hud.js';
+import { emitDriftSmoke } from '../js/driftFx.js';
+import { KART_CAMERA } from '../kart-boost/config.js';
+import { initStartBoostState } from '../kart-boost/index.js';
 
 let renderer = null;
 let scene = null;
@@ -18,7 +26,15 @@ let selectedCarData = null;
 let currentPracticeMap = 0;
 let mapGroup = null;
 let skidBuf = null;
+let driftSmokePool = null;
+let driftFxState = { smokeTimer: 0, sparkTimer: 0 };
 let toastTimer = 0;
+const _practiceTiming = {
+  started: false, lapStart: null,
+  currentLap: 0, bestLap: 0,
+  sectorTimes: [null, null, null],
+  sectorBest:  [null, null, null],
+};
 let practiceName = '';
 let accumulator = 0;
 let boostFlash = 0;
@@ -63,6 +79,7 @@ export function initLobbyPractice(carData) {
   if (currentPracticeMap === 0) buildPracticeArena(mapGroup);
   else buildJumpCourse(mapGroup);
   skidBuf = createSkidBuffer(scene, 280);
+  driftSmokePool = createDriftSmokePool(scene, 110);
   spawnLobbyCar(carData);
   window.addEventListener('resize', onResize);
   running = true;
@@ -86,11 +103,7 @@ export function updateLobbyPractice(dt) {
   accumulator += Math.min(dt, 0.05);
   let steps = 0;
   while (accumulator >= FIXED_DT && steps < 4) {
-    if (!car.boosting) car.boostMeter = Math.min(100, (car.boostMeter || 0) + FIXED_DT * 14);
     updatePhysics(car, driveInput, FIXED_DT, PRACTICE_TRACK);
-    // Practice-only: when the drift key isn't held, snap grip back hard so separate
-    // drift taps stay separate instead of chaining into one continuous slide.
-    if (!driveInput.handbrake) _settlePracticeGrip(car);
     if (car.boosting) boostFlash = Math.min(1, boostFlash + FIXED_DT * 8);
     if (car.drifting) {
       driftPulse = Math.min(1, driftPulse + FIXED_DT * 5);
@@ -108,9 +121,26 @@ export function updateLobbyPractice(dt) {
   if (car.drsActive && !_prevDrsActive) playBoostActivate(true);
   _prevBoosting = !!car.boosting;
   _prevDrsActive = !!car.drsActive;
-  updateCar3D(carMesh, car, driveInput, PRACTICE_TRACK);
+
+  // 드리프트 흰 연기 + 풀 업데이트
+  const topSpeed = (car.maxSpeed || 280) * TOP_SPEED_MULT;
+  emitDriftSmoke(driftFxState, car, driftSmokePool, dt, topSpeed);
+  updateDriftSmoke(driftSmokePool, dt);
+
+  updateCar3D(carMesh, car, driveInput, PRACTICE_TRACK, dt);
   applyAirTrickVisual();
   updateLobbyCamera(dt);
+
+  // 부스트 발동 펀치 (FOV kick)
+  const kmh = (car.speed || 0) * KMH_PER_UNIT;
+  const justFiredBoost = !car._prevBoosting && car.boosting;
+  car._prevBoosting = car.boosting;
+  car._boostFovKick = car._boostFovKick ?? 0;
+  if (justFiredBoost) car._boostFovKick = KART_CAMERA.BOOST_FOV_KICK;
+  const sustain = car.boosting ? KART_CAMERA.BOOST_FOV_SUSTAIN : 0;
+  car._boostFovKick += (sustain - car._boostFovKick) * (1 - Math.exp(-KART_CAMERA.BOOST_FOV_DECAY * dt));
+  updateFovPump(camera, kmh, topSpeed, !!car.boosting, dt, car._boostFovKick);
+
   renderer.render(scene, camera);
   drawLobbyHud(dt);
 }
@@ -170,8 +200,10 @@ export function switchPracticeMap() {
 
 function spawnLobbyCar(carData) {
   car = createCar(carData, START_POS);
-  car.boostMeter = 100;
-  car.superBoostMeter = 100;
+  initStartBoostState(car);
+  // 연습장도 본게임과 동일: 드리프트로 게이지·스택을 직접 채워야 부스트 가능.
+  car.boostMeter = 0;
+  car.boostStock = 0;
   carMesh = createCar3D(carData);
   scene.add(carMesh);
   updateCar3D(carMesh, car, { throttle: 0, brake: 0, steer: 0 }, PRACTICE_TRACK);
@@ -416,23 +448,62 @@ function addLoopRing(target, x, z, angle) {
 }
 
 function updateLobbyCamera(dt) {
-  const speedN = Math.min(1, (car.speed || 0) / Math.max(1, (car.maxSpeed || 280) * TOP_SPEED_MULT));
-  const back = 72 + speedN * 22 + boostFlash * 16;
-  const height = 32 + speedN * 10;
-  const lookAhead = 62 + speedN * 36;
-  const targetX = car.x - Math.cos(car.angle) * back;
-  const targetZ = -car.y + Math.sin(car.angle) * back;
-  const lerp = Math.min(1, dt * (3.0 + speedN * 2.2));
-  camTarget.set(targetX, height, targetZ);
-  camera.position.lerp(camTarget, lerp);
-  camLook.lerp(new THREE.Vector3(
-    car.x + Math.cos(car.angle) * lookAhead,
-    7 + speedN * 5,
-    -(car.y + Math.sin(car.angle) * lookAhead)
-  ), Math.min(1, dt * 5.5));
-  camera.fov += ((62 + speedN * 6 + boostFlash * 8) - camera.fov) * Math.min(1, dt * 5.5);
-  camera.updateProjectionMatrix();
+  // 카트라이더식 chase: 낮은 시점 + 가깝게 + 속도 비례 거리.
+  const topSpeed = Math.max(80, (car.maxSpeed || 280) * TOP_SPEED_MULT);
+  const kmh = (car.speed || 0) * KMH_PER_UNIT;
+  const speedT = Math.max(0, Math.min(1, kmh / topSpeed));
+  const boostPow = Math.min(1, car.boostPower || 0);
+  const distMul = 1 - KART_CAMERA.CAM_DIST_PULL * boostPow;
+  const heightDrop = KART_CAMERA.CAM_HEIGHT_DROP * boostPow;
+  const DIST = (KART_CAMERA.CAM_DIST + KART_CAMERA.CAM_DIST_SPEED_ADD * speedT) * distMul;
+  const HEIGHT = KART_CAMERA.CAM_HEIGHT - heightDrop;
+  const LOOK_AHEAD = KART_CAMERA.CAM_LOOK_AHEAD;
+  const LOOK_Y = KART_CAMERA.CAM_LOOK_Y;
+
+  // 드리프트 yaw 오프셋
+  const driftYawTarget = car.drifting
+    ? Math.max(-KART_CAMERA.DRIFT_YAW_MAX, Math.min(KART_CAMERA.DRIFT_YAW_MAX,
+        -(car.driftAngle || 0) * KART_CAMERA.DRIFT_YAW_GAIN))
+    : 0;
+  car._camDriftYaw = (car._camDriftYaw || 0)
+    + (driftYawTarget - (car._camDriftYaw || 0)) * (1 - Math.exp(-KART_CAMERA.DRIFT_YAW_SMOOTH * dt));
+  const aimAngle = car.angle + car._camDriftYaw;
+  const cs = Math.cos(aimAngle), sn = Math.sin(aimAngle);
+
+  const targetX = car.x - cs * DIST;
+  const targetZ = -(car.y - sn * DIST);
+  const targetY = HEIGHT;
+
+  const posK = 1 - Math.exp(-12.0 * dt);
+  camera.position.x += (targetX - camera.position.x) * posK;
+  camera.position.y += (targetY - camera.position.y) * posK;
+  camera.position.z += (targetZ - camera.position.z) * posK;
+
+  const lookK = 1 - Math.exp(-15.0 * dt);
+  camLook.x += ((car.x + cs * LOOK_AHEAD) - camLook.x) * lookK;
+  camLook.y += (LOOK_Y - camLook.y) * lookK;
+  camLook.z += (-(car.y + sn * LOOK_AHEAD) - camLook.z) * lookK;
+
+  // 카메라 뱅크 — lookAt 후 rotateZ(view축 기준 roll). up 벡터 방식은 view dir이 월드 X축에 가까우면 무효.
+  const refSlip = KART_CAMERA.REF_SLIP || (25 * Math.PI / 180);
+  const intensity = car.drifting
+    ? Math.min(1, Math.abs(car.slipBeta || car.driftAngle || 0) / Math.max(1e-3, refSlip))
+    : 0;
+  const dir = car._driftDir || Math.sign(car.sideSpeed || car.steerAngle || 1);
+  const tiltTarget = car.drifting ? (-dir * KART_CAMERA.CAM_TILT_MAX * intensity) : 0;
+  const snapEnd = !car.drifting
+    && (car._lastDriftEndReason === 'align'
+     || car._lastDriftEndReason === 'spin'
+     || car._lastDriftEndReason === 'cut')
+    && (car.driftStateTime || 0) < 0.25;
+  const tiltRate = snapEnd ? KART_CAMERA.ROLL_SNAP : KART_CAMERA.CAM_TILT_LERP;
+  car._camTilt = car._camTilt ?? 0;
+  car._camTilt += (tiltTarget - car._camTilt) * (1 - Math.exp(-tiltRate * Math.max(0, dt)));
+
+  camera.up.set(0, 1, 0);
   camera.lookAt(camLook);
+  if (car._camTilt) camera.rotateZ(car._camTilt);
+
   if (toastTimer > 0) toastTimer = Math.max(0, toastTimer - dt);
   const toast = document.getElementById('lobby-car-toast');
   if (toast) {
@@ -450,44 +521,22 @@ function onResize() {
 }
 
 function makeLobbyDriveInput(input) {
-  const cost = car?.boostCost || 38;
-  const boostReady = (car?.boostMeter || 0) >= cost && (car?.boostTimer || 0) <= 0;
-  // Practice-only: a drift burst can't re-fire until its cooldown clears, so mashing
-  // the drift key no longer chains into one endless slide. Race tracks break drifts up
-  // with walls/corners; the open arena needs this guard to match that feel.
+  // 본게임과 동일: boostJust = Space만 (이미 input 레이어에서 처리).
+  // driftBurst cooldown 유지 (연습장 채터링 방지).
   let driftBurst = input.driftBurst;
   if (driftBurst) {
     if (driftBurstCooldown > 0) driftBurst = false;
     else driftBurstCooldown = DRIFT_BURST_COOLDOWN;
   }
-  return {
-    ...input,
-    driftBurst,
-    boostJust: input.boostJust || (input.boost && boostReady),
-  };
-}
-
-// Hard grip recovery between drift taps (practice only): keep only ~18% of the
-// lateral velocity each substep when the drift key is released, so a tapped drift
-// snaps straight in a couple of frames and the next tap starts fresh.
-function _settlePracticeGrip(car) {
-  if (!car || car.speed < 0.3) return;
-  const fx = Math.cos(car.angle), fy = Math.sin(car.angle);
-  const sx = -fy, sy = fx;
-  const fwd = car.vx * fx + car.vy * fy;
-  const side = (car.vx * sx + car.vy * sy) * 0.18;
-  car.vx = fx * fwd + sx * side;
-  car.vy = fy * fwd + sy * side;
-  car.sideSpeed = side;
+  return { ...input, driftBurst };
 }
 
 function _emitLobbySkid() {
-  if (!skidBuf || !car) return;
+  if (!skidBuf || !car || car.suppressSkid) return;
   const a = car.angle;
   const cs = Math.cos(a), sn = Math.sin(a);
   const rearOffset = -7.6, sideOffset = 7.2;
-  const colors = [0x35f5ff, 0xff3b18, 0xb85cff];
-  const col = colors[Math.abs((car.id || '').split('').reduce((s, c) => s + c.charCodeAt(0), 0)) % colors.length];
+  const col = 0x9aa0a6; // 연회색 — 본게임과 통일
   for (const side of [-1, 1]) {
     const wx = car.x + rearOffset * cs - side * sideOffset * sn;
     const wy = car.y + rearOffset * sn + side * sideOffset * cs;
@@ -595,96 +644,8 @@ function drawLobbyHud(dt) {
   const w = window.innerWidth;
   const h = window.innerHeight;
   hudCtx.clearRect(0, 0, w, h);
-  const kmh = Math.round((car.speed || 0) * KMH_PER_UNIT);
-  drawSpeedStreaks(hudCtx, w, h, kmh, dt);
-  drawBoostHud(hudCtx, w, h, kmh);
-}
-
-function drawSpeedStreaks(ctx, w, h, kmh, dt) {
-  const intensity = Math.min(1, Math.max(0, (kmh - 120) / 220) + boostFlash * 0.7);
-  if (intensity <= 0.02) return;
-  ctx.save();
-  ctx.globalAlpha = 0.18 * intensity;
-  ctx.strokeStyle = car.boosting ? '#FFD400' : '#A8A8A3';
-  ctx.lineWidth = 2 + intensity * 3;
-  const count = Math.floor(12 + intensity * 18);
-  for (let i = 0; i < count; i++) {
-    const y = ((i * 73 + performance.now() * (0.08 + intensity * 0.12)) % h);
-    const side = i % 2 ? 1 : -1;
-    const x = side > 0 ? w - 20 - (i % 5) * 16 : 20 + (i % 5) * 16;
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(x - side * (80 + intensity * 120), y + 28);
-    ctx.stroke();
-  }
-  ctx.restore();
-}
-
-function drawBoostHud(ctx, w, h, kmh) {
-  const x = Math.max(18, w * 0.5 - 170);
-  const y = h - 82;
-  const bw = 340;
-  const bh = 12;
-  const maxKmh = Math.max(60, (car.maxSpeed || 300) * TOP_SPEED_MULT * KMH_PER_UNIT);
-  const speedRatio = Math.max(0, Math.min(1, kmh / maxKmh));
-  const boost = Math.max(0, Math.min(100, car.boostMeter || 0));
-  ctx.save();
-  // panel
-  ctx.fillStyle = 'rgba(18, 18, 22, 0.9)';
-  ctx.strokeStyle = car.boosting ? 'rgba(255, 212, 0, 0.92)' : 'rgba(46, 230, 255, 0.5)';
-  ctx.lineWidth = 1;
-  roundRect(ctx, x - 14, y - 34, bw + 28, 66, 16);
-  ctx.fill();
-  ctx.stroke();
-  // labels
-  ctx.fillStyle = '#F5F5F4';
-  ctx.font = '900 18px system-ui';
-  ctx.textAlign = 'left';
-  ctx.fillText(`${kmh} km/h`, x, y - 10);
-  ctx.textAlign = 'right';
-  ctx.fillStyle = car.boosting ? '#FFD400' : '#2ee6ff';
-  ctx.fillText(car.boosting ? 'BOOST' : 'SPEED', x + bw, y - 10);
-  // main bar: rises with live speed (neon)
-  ctx.fillStyle = 'rgba(20, 21, 25, 0.95)';
-  roundRect(ctx, x, y, bw, bh, 999);
-  ctx.fill();
-  const grad = ctx.createLinearGradient(x, 0, x + bw, 0);
-  grad.addColorStop(0, '#19f0d6');
-  grad.addColorStop(0.5, '#2ee6ff');
-  grad.addColorStop(1, '#b14bff');
-  ctx.fillStyle = grad;
-  ctx.shadowColor = 'rgba(46, 230, 255, 0.85)';
-  ctx.shadowBlur = 12;
-  roundRect(ctx, x, y, Math.max(2, bw * speedRatio), bh, 999);
-  ctx.fill();
-  ctx.shadowBlur = 0;
-  // thin boost sub-bar
-  const by = y + 17;
-  ctx.fillStyle = 'rgba(20, 21, 25, 0.95)';
-  roundRect(ctx, x, by, bw, 5, 999);
-  ctx.fill();
-  ctx.fillStyle = car.boosting ? '#FFD400' : '#C9A800';
-  roundRect(ctx, x, by, Math.max(2, bw * boost / 100), 5, 999);
-  ctx.fill();
-  if (driftPulse > 0.05) {
-    ctx.globalAlpha = driftPulse;
-    ctx.fillStyle = '#FFD400';
-    ctx.font = '800 12px system-ui';
-    ctx.textAlign = 'center';
-    ctx.fillText('DRIFT CHARGING BOOST', x + bw / 2, y - 10);
-  }
-  ctx.restore();
-}
-
-function roundRect(ctx, x, y, w, h, r) {
-  const radius = Math.min(r, w / 2, h / 2);
-  ctx.beginPath();
-  ctx.moveTo(x + radius, y);
-  ctx.arcTo(x + w, y, x + w, y + h, radius);
-  ctx.arcTo(x + w, y + h, x, y + h, radius);
-  ctx.arcTo(x, y + h, x, y, radius);
-  ctx.arcTo(x, y, x + w, y, radius);
-  ctx.closePath();
+  // 공유 미니멀 HUD — 트랙/타이밍 stub. 미니맵 ❌ (track=null).
+  drawHUD(hudCtx, car, _practiceTiming, w, h, null, null);
 }
 
 function makePracticeTrack() {

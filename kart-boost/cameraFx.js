@@ -54,7 +54,7 @@ export function speedLineIntensity(kmh) {
 export function driftBodyRoll(car) {
   if (!car.drifting) return 0;
   const sign = Math.sign(car.sideSpeed || car.steerAngle || 1);
-  return -sign * C.BODY_ROLL_DRIFT;
+  return sign * C.BODY_ROLL_DRIFT;
 }
 
 function clampSym(v, m) { return v < -m ? -m : v > m ? m : v; }

@@ -1,107 +1,55 @@
 import { formatTime } from '../utils/math.js';
-import { KMH_PER_UNIT, TOP_SPEED_MULT } from './physics.js';
+import { KMH_PER_UNIT } from './physics.js';
+
+// ─── Kart debug overlay (F3 토글) ──────────────────────────
+// 상태(GRIP/DRIFT/순부 윈도우), vF, slip°, gauge, driftTime 실시간 표시.
+let _kartDebugOn = false;
+if (typeof window !== 'undefined') {
+  window.addEventListener('keydown', e => {
+    if (e.code === 'F3') {
+      _kartDebugOn = !_kartDebugOn;
+      e.preventDefault();
+    }
+  });
+}
+export function isKartDebugOn() { return _kartDebugOn; }
+export function setKartDebug(on) { _kartDebugOn = !!on; }
 
 export function drawHUD(ctx, car, timing, canvasW, canvasH, track, ghost = null) {
   const kmh = car.speed * KMH_PER_UNIT;
-  const rpmRatio = car.rpm / car.maxRpm;
 
   ctx.save();
   ctx.resetTransform();
 
-  // --- bottom cockpit cluster ---
-  const barH = 118;
-  const barY = canvasH - barH;
-  const panel = ctx.createLinearGradient(0, barY, 0, canvasH);
-  panel.addColorStop(0, 'rgba(12,16,22,0.78)');
-  panel.addColorStop(1, 'rgba(3,5,8,0.94)');
-  ctx.fillStyle = panel;
-  ctx.fillRect(0, barY, canvasW, barH);
-  ctx.strokeStyle = 'rgba(255,255,255,0.14)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(0, barY + 0.5);
-  ctx.lineTo(canvasW, barY + 0.5);
-  ctx.stroke();
+  // ─── 부스터 통합 (하단 중앙: 스톡 2칸 + 진행 게이지) ──
+  _boostUnified(ctx, car, canvasW, canvasH);
 
-  // Speedometer
-  _speedometer(ctx, kmh, car.maxSpeed * TOP_SPEED_MULT, 86, barY + 60);
+  // ─── 속도 (작게, 부스터 위) ──
+  _miniSpeed(ctx, kmh, canvasW, canvasH);
 
-  // RPM bar
-  _rpmBar(ctx, rpmRatio, 180, barY + 22, canvasW * 0.36, 24);
+  // ─── 드리프트 / off-track / 출부 상태 ──
+  _statusLabel(ctx, car, canvasW, canvasH);
 
-  // gear (large, with redline flash + auto/manual badge)
-  const gearX = 300, gearY = barY + 75;
-  ctx.font = 'bold 13px monospace';
-  ctx.textAlign = 'center';
-  ctx.fillStyle = (car.transmission === 'manual') ? '#FFD400' : '#A8A8A3';
-  ctx.fillText(car.transmission === 'manual' ? 'MANUAL' : 'AUTO', gearX, barY + 18);
-
-  const redline = rpmRatio > 0.92;
-  ctx.font = 'bold 56px monospace';
-  ctx.fillStyle = redline ? (Math.floor(performance.now() / 100) % 2 === 0 ? '#ff3b3b' : '#fff') : '#fff';
-  ctx.fillText(car.gear === 0 ? 'N' : car.gear, gearX, gearY + 8);
-
-  // off-track + drift status (left of the gear digit)
-  ctx.font = '13px monospace';
-  ctx.textAlign = 'left';
-  if (car.offTrack) {
-    ctx.fillStyle = '#FF453A';
-    ctx.fillText('OFF TRACK', 180, barY + 55);
-  } else if (car.drifting) {
-    ctx.fillStyle = '#FFD400';
-    ctx.fillText('DRIFT!', 180, barY + 55);
-  }
-
-  // boost meters
-  _boostMeter(ctx, car, 180, barY + 82, canvasW * 0.24, 10);
-  _superBoostMeter(ctx, car, 180, barY + 106, canvasW * 0.24, 8);
-
-  // live lap timer (top-center)
-  if (timing.started && timing.lapStart !== null) {
+  // ─── 랩 타이머 (상단 중앙) ──
+  if (timing?.started && timing?.lapStart != null) {
     const elapsed = performance.now() - timing.lapStart;
-    ctx.font = 'bold 24px monospace';
+    ctx.font = 'bold 28px monospace';
     ctx.fillStyle = 'rgba(255,255,255,0.92)';
     ctx.textAlign = 'center';
-    ctx.fillText(formatTime(elapsed), canvasW / 2, 36);
+    ctx.fillText(formatTime(elapsed), canvasW / 2, 38);
   }
-
   if (track?.name) {
-    ctx.font = 'bold 15px system-ui';
-    ctx.fillStyle = 'rgba(255,255,255,0.82)';
+    ctx.font = 'bold 14px system-ui';
+    ctx.fillStyle = 'rgba(255,255,255,0.65)';
     ctx.textAlign = 'center';
-    ctx.fillText(track.name, canvasW / 2, 64);
+    ctx.fillText(track.name, canvasW / 2, 60);
   }
 
-  // lap times
-  const lapX = canvasW - 315;
-  ctx.textAlign = 'left';
-  ctx.font = '14px monospace';
-  ctx.fillStyle = '#aaa';
-  ctx.fillText('LAST', lapX, barY + 28);
-  ctx.font = 'bold 20px monospace';
-  ctx.fillStyle = '#fff';
-  ctx.fillText(timing.currentLap ? formatTime(timing.currentLap) : '--:--.---', lapX, barY + 52);
-
-  ctx.font = '12px monospace';
-  ctx.fillStyle = '#aaa';
-  ctx.fillText('BEST', lapX + 150, barY + 28);
-  ctx.font = 'bold 16px monospace';
-  ctx.fillStyle = '#A8A8A3';
-  ctx.fillText(timing.bestLap ? formatTime(timing.bestLap) : '--:--.---', lapX + 150, barY + 52);
-
-  // sectors
-  _sectors(ctx, timing, lapX, barY + 74, canvasW);
-
-  // off-track warning (top-center)
-  if (car.offTrack) {
-    ctx.font = 'bold 22px monospace';
-    ctx.fillStyle = '#FF453A';
-    ctx.textAlign = 'center';
-    ctx.fillText('OFF TRACK', canvasW / 2, 50);
-  }
+  // ─── 랩 타임 LAST / BEST + 섹터 (우측 하단) ──
+  _lapsRightBottom(ctx, timing, canvasW, canvasH);
 
   // top-left hint (before first lap start)
-  if (!timing.started) {
+  if (!timing?.started) {
     ctx.font = '13px monospace';
     ctx.fillStyle = 'rgba(255,255,255,0.6)';
     ctx.textAlign = 'left';
@@ -111,6 +59,58 @@ export function drawHUD(ctx, car, timing, canvasW, canvasH, track, ghost = null)
   // minimap (top-right)
   if (track) _drawMinimap(ctx, car, track, canvasW - 250, 20, 230, 165, ghost);
 
+  if (_kartDebugOn) _drawKartDebug(ctx, car);
+
+  ctx.restore();
+}
+
+function _drawKartDebug(ctx, car) {
+  const x = 12, y = 92;
+  const w = 240, h = 188;
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.66)';
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+  ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+
+  const stateLabel = car.drifting
+    ? (car._counterSteer ? 'DRIFT (counter)' : 'DRIFT')
+    : (Math.abs(car.driftAngle || 0) > 0.12 ? 'SLIDE' : 'GRIP');
+  const reason = car._lastDriftEndReason ? ` (${car._lastDriftEndReason})` : '';
+  const slipDeg = (car.driftAngle || 0) * 180 / Math.PI;
+  const betaDeg = (car.slipBeta || 0) * 180 / Math.PI;
+  const vF = car.forwardSpeed || 0;
+  const vL = car.sideSpeed || 0;
+  const gauge = car.boostMeter || 0;
+  const stock = car.boostStock || 0;
+  const driftTime = car.driftTime || 0;
+  const surface = car.surface || 'asphalt';
+
+  ctx.font = 'bold 11px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#FFD400';
+  ctx.fillText(`STATE: ${stateLabel}${reason}`, x + 8, y + 18);
+
+  ctx.fillStyle = '#fff';
+  ctx.font = '11px monospace';
+  const lines = [
+    `surface  : ${surface}`,
+    `vF       : ${vF.toFixed(1)}`,
+    `vL       : ${vL.toFixed(1)}`,
+    `β (slip) : ${betaDeg.toFixed(1)}°`,
+    `slip vis : ${slipDeg.toFixed(1)}°`,
+    `gauge    : ${gauge.toFixed(1)} / 100`,
+    `stock    : ${stock} / 2`,
+    `driftTime: ${driftTime.toFixed(2)} s`,
+    `boost    : ${(car.boosting ? 'ON' : 'off')} sus=${(car.boostSustainTimer || 0).toFixed(2)}`,
+  ];
+  for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i], x + 8, y + 36 + i * 14);
+
+  // gauge bar
+  ctx.fillStyle = 'rgba(255,255,255,0.18)';
+  ctx.fillRect(x + 8, y + h - 14, w - 16, 6);
+  ctx.fillStyle = gauge >= 30 ? '#67e480' : '#FFD400';
+  ctx.fillRect(x + 8, y + h - 14, (w - 16) * Math.min(1, gauge / 100), 6);
   ctx.restore();
 }
 
@@ -249,121 +249,138 @@ function _buildMinimap(track, w, h) {
   return { canvas: cv, minX, minY, scale, padX, padY };
 }
 
-function _speedometer(ctx, kmh, maxKmh, cx, cy) {
-  const r = 45;
-  // background circle
-  ctx.beginPath();
-  ctx.arc(cx, cy, r, 0, Math.PI * 2);
-  const face = ctx.createRadialGradient(cx, cy, 8, cx, cy, r);
-  face.addColorStop(0, 'rgba(35,43,54,0.95)');
-  face.addColorStop(1, 'rgba(5,8,12,0.95)');
-  ctx.fillStyle = face;
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(255,255,255,0.22)';
-  ctx.lineWidth = 3;
-  ctx.stroke();
+// ─── 통합 부스터 표시: 하단 중앙. 2칸 스톡 + 다음 빈칸이 진행 게이지로 채워짐. ───
+function _boostUnified(ctx, car, canvasW, canvasH) {
+  const STOCK_MAX = 2;
+  const stock = Math.max(0, Math.min(STOCK_MAX, car.boostStock || 0));
+  const progress = Math.max(0, Math.min(100, car.boostMeter || 0)) / 100;
+  const atMax = stock >= STOCK_MAX;
 
-  // speed arc
-  const ratio  = Math.min(kmh / maxKmh, 1);
-  const start  = -Math.PI * 0.8;
-  const end    = start + ratio * Math.PI * 1.6;
-  ctx.beginPath();
-  ctx.arc(cx, cy, r - 4, start, end);
-  ctx.strokeStyle = ratio > 0.85 ? '#FF453A' : '#FFD400';
-  ctx.lineWidth = 6;
-  ctx.stroke();
-  const needle = start + ratio * Math.PI * 1.6;
-  ctx.strokeStyle = '#ffffff';
-  ctx.lineWidth = 2.5;
-  ctx.beginPath();
-  ctx.moveTo(cx, cy);
-  ctx.lineTo(cx + Math.cos(needle) * (r - 11), cy + Math.sin(needle) * (r - 11));
-  ctx.stroke();
-  ctx.fillStyle = '#FFD400';
-  ctx.beginPath();
-  ctx.arc(cx, cy, 4, 0, Math.PI * 2);
-  ctx.fill();
+  const cellW = 134, cellH = 30, gap = 14;
+  const totalW = cellW * STOCK_MAX + gap * (STOCK_MAX - 1);
+  const x = (canvasW - totalW) / 2;
+  const y = canvasH - 56;
 
-  // speed text
-  ctx.font = 'bold 18px monospace';
-  ctx.fillStyle = '#fff';
+  // 라벨 + SPACE 힌트
+  ctx.font = 'bold 11px system-ui';
   ctx.textAlign = 'center';
-  ctx.fillText(Math.round(kmh), cx, cy + 6);
-  ctx.font = '10px monospace';
-  ctx.fillStyle = '#aaa';
-  ctx.fillText('km/h', cx, cy + 20);
-}
-
-function _rpmBar(ctx, ratio, x, y, w, h) {
-  ctx.fillStyle = '#222';
-  ctx.fillRect(x, y, w, h);
-  const color = ratio > 0.85 ? '#FF453A' : ratio > 0.65 ? '#FFD400' : '#A8A8A3';
-  ctx.fillStyle = color;
-  ctx.fillRect(x, y, w * ratio, h);
-  ctx.strokeStyle = '#555';
-  ctx.lineWidth = 1;
-  ctx.strokeRect(x, y, w, h);
-  ctx.font = '10px monospace';
-  ctx.fillStyle = '#aaa';
-  ctx.textAlign = 'left';
-  ctx.fillText('RPM', x, y - 3);
-}
-
-function _boostMeter(ctx, car, x, y, w, h) {
-  const rawMeter = car.boostMeter || 0;
-  const meter = Math.max(0, Math.min(100, rawMeter)) / 100;
-  // background
-  ctx.fillStyle = '#222';
-  ctx.fillRect(x, y, w, h);
-  // fill (muted at low, yellow at high, bright yellow when actively boosting)
-  let col = '#A8A8A3';
-  if (meter > 0.66) col = '#FFD400';
-  if (car.boosting) col = '#FFD400';
-  ctx.fillStyle = col;
-  ctx.fillRect(x, y, w * meter, h);
-  // outline
-  ctx.strokeStyle = '#555';
-  ctx.lineWidth = 1;
-  ctx.strokeRect(x, y, w, h);
-  // label
-  ctx.font = '10px monospace';
-  ctx.fillStyle = '#aaa';
-  ctx.textAlign = 'left';
-  ctx.fillText('BOOST', x, y - 2);
-  // ready hint
-  if ((car.boostMeter || 0) >= (car.boostCost || 38) && !car.boosting) {
+  ctx.fillStyle = atMax ? '#67e480' : 'rgba(255,255,255,0.62)';
+  ctx.fillText(atMax ? 'BOOSTER  FULL' : 'BOOSTER', canvasW / 2, y - 8);
+  if (stock > 0 && !car.boosting) {
+    ctx.font = 'bold 11px monospace';
     ctx.fillStyle = '#FFD400';
     ctx.textAlign = 'right';
-    ctx.fillText('SHIFT', x + w, y - 2);
+    ctx.fillText('SPACE', x + totalW, y - 8);
+  }
+
+  for (let i = 0; i < STOCK_MAX; i++) {
+    const cx = x + i * (cellW + gap);
+    const filled = i < stock;
+    const isProgress = !filled && i === stock; // 다음 빈 칸이 게이지
+
+    // 배경
+    ctx.fillStyle = 'rgba(14,18,26,0.78)';
+    ctx.fillRect(cx, y, cellW, cellH);
+
+    // 채움
+    if (filled) {
+      ctx.save();
+      ctx.shadowColor = '#FFD400';
+      ctx.shadowBlur = car.boosting ? 16 : 8;
+      ctx.fillStyle = '#FFD400';
+      ctx.fillRect(cx + 2, y + 2, cellW - 4, cellH - 4);
+      ctx.restore();
+      // 화살표
+      ctx.fillStyle = '#1a1300';
+      ctx.font = 'bold 18px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('▶', cx + cellW / 2, y + cellH / 2 + 1);
+      ctx.textBaseline = 'alphabetic';
+    } else if (isProgress) {
+      const fillCol = car.drifting ? '#FFD400' : '#FFB000';
+      ctx.fillStyle = fillCol;
+      ctx.fillRect(cx + 2, y + 2, (cellW - 4) * progress, cellH - 4);
+      if (car.drifting && progress > 0.05) {
+        ctx.save();
+        ctx.shadowColor = '#FFD400';
+        ctx.shadowBlur = 10;
+        ctx.fillStyle = fillCol;
+        ctx.fillRect(cx + 2, y + 2, (cellW - 4) * progress, cellH - 4);
+        ctx.restore();
+      }
+    }
+
+    // 외곽
+    ctx.strokeStyle = filled ? '#FFD400' : 'rgba(255,255,255,0.28)';
+    ctx.lineWidth = filled ? 2 : 1;
+    ctx.strokeRect(cx + 0.5, y + 0.5, cellW - 1, cellH - 1);
   }
 }
 
-function _superBoostMeter(ctx, car, x, y, w, h) {
-  const rawMeter = car.superBoostMeter ?? 100;
-  const meter = Math.max(0, Math.min(100, rawMeter)) / 100;
-  ctx.fillStyle = '#1A1A1D';
-  ctx.fillRect(x, y, w, h);
-  ctx.fillStyle = car.drsActive ? '#FFD400' : car.drsAvailable ? '#C9A800' : '#2E2E33';
-  ctx.fillRect(x, y, w * meter, h);
-  ctx.strokeStyle = car.drsAvailable ? '#6E6E69' : '#2E2E33';
-  ctx.lineWidth = 1;
-  ctx.strokeRect(x, y, w, h);
-  ctx.font = '10px monospace';
-  ctx.fillStyle = car.drsAvailable ? '#A8A8A3' : '#6E6E69';
-  ctx.textAlign = 'left';
-  ctx.fillText('DRX', x, y - 2);
-  if (car.drsAvailable && !car.drsActive && rawMeter > 8) {
-    ctx.textAlign = 'right';
-    ctx.fillText('SHIFT x2', x + w, y - 2);
+// ─── 작은 속도 표시 (부스터 위) ───
+function _miniSpeed(ctx, kmh, canvasW, canvasH) {
+  const y = canvasH - 84;
+  ctx.font = 'bold 28px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(255,255,255,0.92)';
+  ctx.fillText(`${Math.round(kmh)}`, canvasW / 2, y);
+  ctx.font = 'bold 10px system-ui';
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.fillText('km/h', canvasW / 2, y + 12);
+}
+
+// ─── 상태 라벨 ───
+function _statusLabel(ctx, car, canvasW, canvasH) {
+  const y = canvasH - 108;
+  ctx.font = 'bold 13px monospace';
+  ctx.textAlign = 'center';
+  if (car.offTrack) {
+    ctx.fillStyle = '#FF453A';
+    ctx.fillText('OFF TRACK', canvasW / 2, y);
+  } else if (car.drifting) {
+    ctx.fillStyle = '#FFD400';
+    ctx.fillText('DRIFT!', canvasW / 2, y);
+  } else if (car.startBoostFired && (car.boostSustainTimer || 0) > 0) {
+    ctx.fillStyle = '#67e480';
+    ctx.fillText('START BOOSTER!', canvasW / 2, y);
+  } else if (car.boosting) {
+    ctx.fillStyle = '#FFD400';
+    ctx.fillText('BOOST!', canvasW / 2, y);
   }
+}
+
+// ─── 우측 하단 LAP 정보 ───
+function _lapsRightBottom(ctx, timing, canvasW, canvasH) {
+  const x = canvasW - 240;
+  const y = canvasH - 72;
+  ctx.textAlign = 'left';
+
+  ctx.font = '11px monospace';
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.fillText('LAST', x, y);
+  ctx.font = 'bold 18px monospace';
+  ctx.fillStyle = '#fff';
+  ctx.fillText(timing?.currentLap ? formatTime(timing.currentLap) : '--:--.---', x, y + 20);
+
+  ctx.font = '11px monospace';
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.fillText('BEST', x + 120, y);
+  ctx.font = 'bold 16px monospace';
+  ctx.fillStyle = '#A8A8A3';
+  ctx.fillText(timing?.bestLap ? formatTime(timing.bestLap) : '--:--.---', x + 120, y + 20);
+
+  _sectors(ctx, timing, x, y + 36, canvasW);
 }
 
 function _sectors(ctx, timing, x, y, canvasW) {
   const labels = ['S1', 'S2', 'S3'];
+  const times = timing?.sectorTimes || [null, null, null];
+  const bests = timing?.sectorBest  || [null, null, null];
   let dx = 0;
   for (let i = 0; i < 3; i++) {
-    const t = timing.sectorTimes[i];
-    const best = timing.sectorBest[i];
+    const t = times[i];
+    const best = bests[i];
     let color = '#aaa';
     if (t !== null) {
       color = (best && t <= best) ? '#FFD400' : '#A8A8A3';

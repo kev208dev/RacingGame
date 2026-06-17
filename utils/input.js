@@ -79,14 +79,9 @@ export function getInput() {
   const handbrake     = !!keys['ShiftLeft'] || !!keys['ShiftRight'] || mobile.drift;
   const handbrakeJust = wasJustPressed('ShiftLeft') || wasJustPressed('ShiftRight');
 
-  // ── 아이템 / 부스터: Ctrl / Alt / Space ──
-  const boost = !!keys['ControlLeft'] || !!keys['ControlRight']
-             || !!keys['AltLeft']     || !!keys['AltRight']
-             || !!keys['Space'];
-  const boostJust =
-       wasJustPressed('ControlLeft') || wasJustPressed('ControlRight')
-    || wasJustPressed('AltLeft')     || wasJustPressed('AltRight')
-    || wasJustPressed('Space')       || mobile.boostJust;
+  // ── 부스터: Spacebar 전용 ──
+  const boost     = !!keys['Space'];
+  const boostJust = wasJustPressed('Space') || mobile.boostJust;
 
   return {
     throttle, brake, steer,

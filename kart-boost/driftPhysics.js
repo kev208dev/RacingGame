@@ -1,22 +1,25 @@
-// KartRider 원작형 드리프트+부스트 코어.
+// KartRider 원작형 드리프트 — 물리 기반 모델.
 //
-// 핵심 루프:
-//   • 속도를 forward(vF)/lateral(vL)로 쪼개 마찰을 독립 적용.
-//   • 전진 마찰 ≈ 0(0.995/프레임) — 드리프트해도 속도가 안 죽음.
-//   • 횡 마찰: 평소 0.80/프레임, 드리프트 0.97/프레임.
-//   • 드리프트 상태머신: idle → charge → release. 해제 순간 1스택 이상이면
-//     즉발 임펄스 +72 km/h(≈+20 m/s) + 지속 부스트(1.2s, 캡 270 km/h).
-//   • 톡톡이: 드리프트 中 방향키 톡 또는 driftBurst 키 → yaw 임펄스 재주입.
+// 핵심 흐름:
+//   1. F-vector (heading) / V-vector (velocity) 분리. vF/vL = velocity 분해.
+//   2. 슬립각 β = atan2(|vL|, |vF|).
+//   3. Shift+Arrow 입력 시 μ(횡속 retention)가 GRIP_NORMAL → GRIP_DRIFT로 즉시 점프.
+//   4. drift 中 감속 = K_base + K_angle(β) + K_input. K_angle은 exp 성장.
+//      K_input은 안쪽 키 hold 시 가산 (톡톡이 = 키 떼기로 K_input=0).
+//   5. 게이지 ΔG = speed × sin(β) × W_track × dt. 매 tick 누적.
+//   6. 카운터 키 = alignment torque로 heading→velocity 정렬. β < RELEASE_BETA(3°)
+//      이면 자동 release + μ 원복.
+//   7. β ≥ SPIN_BETA(88°) 시 스핀오프 (vF/vL 대폭 손실).
 //
-// car 인터페이스 (입출력 필드):
-//   x, y, angle, vx, vy, speed, steerAngle, turnStrength, accelerationForce,
-//   maxSpeed, transmission,
-//   drifting, driftState, driftStateTime, driftAngle, forwardSpeed, sideSpeed,
-//   boostMeter, boosting, boostPower, boostSustainTimer, boostCapDecayTimer,
-//   boostTimer, boostFireFx, maxCapNow, _prevSteer, _tapFx
+// car 입출력:
+//   x, y, angle, vx, vy, speed, steerAngle, drifting, driftState, driftStateTime,
+//   driftTime, driftAngle, forwardSpeed, sideSpeed, slipBeta,
+//   boostMeter, boostStock, boosting, boostSustainTimer, boostCapDecayTimer,
+//   boostTimer, boostFireFx, boostPower, maxCapNow,
+//   surface, iceSurface, suppressSkid,
+//   _driftDir, _lastDriftEndReason
 //
-// input 인터페이스:
-//   throttle, brake, steer, handbrake, driftBurst, boostJust, autoToggle
+// input: throttle, brake, steer, handbrake, boostJust, autoToggle
 
 import { KART_TUNING as K } from './config.js';
 
@@ -24,16 +27,55 @@ export const MIN_DRIFT_SPEED = K.MIN_DRIFT_SPEED;
 export const DOUBLE_DRIFT_MIN_SPEED = K.MIN_DRIFT_SPEED;
 
 function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+function wrapAngle(a) {
+  while (a >  Math.PI) a -= 2 * Math.PI;
+  while (a < -Math.PI) a += 2 * Math.PI;
+  return a;
+}
 
-// ─── 메인: 매 물리 스텝 (dt초) 호출 ───────────────────────────
-// move() / collision()은 호출자가 별도로 처리. 이 함수는 vx/vy/angle만 갱신.
-export function stepKartDrift(car, input, dt) {
+// ─── 노면 hook ────────────────────────────────────────────
+export function getSurfaceAt(x, y, track) {
+  if (typeof track?.getSurface === 'function') return track.getSurface(x, y);
+  if (Array.isArray(track?.iceZones)) {
+    for (const z of track.iceZones) if (_pointInPoly(x, y, z)) return 'ice';
+  }
+  return 'asphalt';
+}
+
+function _pointInPoly(x, y, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i][0], yi = poly[i][1];
+    const xj = poly[j][0], yj = poly[j][1];
+    const intersect = ((yi > y) !== (yj > y)) &&
+      (x < (xj - xi) * (y - yi) / ((yj - yi) || 1e-9) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+// ─── 드리프트 종료 루틴 (manual / align / spin) ───────────────
+// - 상태 → release, drifting=false (μ는 다음 tick에 즉시 NORMAL로 복귀)
+function endDriftRoutine(car, reason) {
+  car.driftState = 'release';
+  car.driftStateTime = 0;
+  car.drifting = false;
+  car._lastDriftEndReason = reason;
+}
+
+// ─── 메인 스텝 ────────────────────────────────────────────
+export function stepKartDrift(car, input, dt, track) {
   if (dt <= 0) return;
   if (dt > 0.05) dt = 0.05;
 
   if (input.autoToggle) {
     car.transmission = (car.transmission === 'manual') ? 'auto' : 'manual';
   }
+
+  const surface = getSurfaceAt(car.x, car.y, track);
+  const isIce   = surface === 'ice';
+  car.surface   = surface;
+  car.iceSurface = isIce;
 
   updateDriftStateMachine(car, input, dt);
   updateBoostState(car, input, dt);
@@ -43,47 +85,42 @@ export function stepKartDrift(car, input, dt) {
   const topCap    = currentTopCap(car, maxCruise, maxBoost);
   car.maxCapNow   = topCap;
 
+  // ─── F-vector / V-vector 분해 ───
   const fwdX = Math.cos(car.angle);
   const fwdY = Math.sin(car.angle);
   const rgtX = -fwdY;
   const rgtY =  fwdX;
 
-  // forward / lateral 분해
   let vF = car.vx * fwdX + car.vy * fwdY;
   let vL = car.vx * rgtX + car.vy * rgtY;
 
-  // ─── 조향 ───
+  // ─── 슬립각 β (unsigned) ───
+  const beta = Math.atan2(Math.abs(vL), Math.max(1e-3, Math.abs(vF)));
+
+  // ─── 조향 입력 → steerAngle ───
   const speedRatio  = clamp(Math.abs(vF) / maxCruise, 0, 1);
   const maxWheel    = (car.drifting ? 0.95 : (0.72 - speedRatio * 0.28)) * (car.turnStrength || 1);
   const targetWheel = -input.steer * maxWheel;
-
   if (car.drifting) {
-    // 드리프트 조향: 기존 응답 유지
-    const steerResp = K.STEER_RESPONSE_DRIFT;
-    car.steerAngle += (targetWheel - car.steerAngle) * Math.min(dt * steerResp, 1);
+    car.steerAngle += (targetWheel - car.steerAngle) * Math.min(dt * K.STEER_RESPONSE_DRIFT, 1);
   } else {
-    // 일반 주행: 비대칭 스무딩 (engage 느리게, return 빠르게)
     const moving = Math.abs(targetWheel) > Math.abs(car.steerAngle);
-    const steerResp = moving ? K.STEER_ENGAGE : K.STEER_RETURN;
-    const k = 1 - Math.exp(-steerResp * dt); // framerate-independent
-    car.steerAngle += (targetWheel - car.steerAngle) * k;
+    const resp = moving ? K.STEER_ENGAGE : K.STEER_RETURN;
+    car.steerAngle += (targetWheel - car.steerAngle) * (1 - Math.exp(-resp * dt));
   }
 
-  // 드리프트 yaw 적용 전 angle 백업 (속도 벡터를 일부 따라 회전시킬 때 사용)
   const angleBeforeYaw = car.angle;
 
+  // ─── yaw 적용 ───
   if (Math.abs(vF) > 0.6) {
     const dirSign = vF >= 0 ? 1 : -1;
     if (car.drifting) {
-      // 목표 yaw rate → 보간된 적용 yaw rate (휙 안 들어가게)
       const targetYawRate = -input.steer * K.DRIFT_YAW * Math.max(0.35, speedRatio) * dirSign;
       car._driftYawRate = car._driftYawRate || 0;
-      const yawK = 1 - Math.exp(-(K.DRIFT_YAW_SMOOTH || 8.0) * dt);
-      car._driftYawRate += (targetYawRate - car._driftYawRate) * yawK;
+      car._driftYawRate += (targetYawRate - car._driftYawRate) * (1 - Math.exp(-K.DRIFT_YAW_SMOOTH * dt));
       car.angle += car._driftYawRate * dt;
     } else {
       car._driftYawRate = 0;
-      // 일반 주행: 고속에서 회전력 감소 + MAX_YAW로 cap
       const baseGain = 0.95 * (car.turnStrength || 1);
       const speedFactor = 1 - (1 - K.HIGHSPEED_TURN_FACTOR) * speedRatio;
       let yawRate = car.steerAngle * baseGain * speedFactor * dirSign;
@@ -93,10 +130,20 @@ export function stepKartDrift(car, input, dt) {
     }
   }
 
-  // ─── 톡톡이 ───
-  applyTapDrift(car, input, dt);
+  // ─── 카운터 스티어 alignment torque (drift 中만) ───
+  // 반대 방향키 입력 시 heading을 velocity 방향으로 능동 정렬 → β 감소.
+  let counterSteer = false;
+  if (car.drifting && car._driftDir !== 0) {
+    const s = input.steer || 0;
+    counterSteer = Math.sign(s) === -car._driftDir && Math.abs(s) > K.COUNTER_STEER_THRESHOLD;
+    if (counterSteer) {
+      const velAngle = Math.atan2(car.vy, car.vx);
+      const delta = wrapAngle(velAngle - car.angle);
+      car.angle += delta * K.ALIGNMENT_GAIN * dt;
+    }
+  }
 
-  // ─── 가속/제동 (전진축만) ───
+  // ─── 가속/제동 (전진축) ───
   if (input.throttle > 0) {
     vF += K.ACCEL_BASE * (car.accelerationForce || 1) * input.throttle * dt;
     if (car.boostSustainTimer > 0) vF += K.BOOST_SUSTAIN_ACCEL * dt;
@@ -107,26 +154,44 @@ export function stepKartDrift(car, input, dt) {
       vF -= K.ACCEL_BASE * 0.34 * input.brake * dt;
     }
   }
+
+  // ─── ★ 드리프트 감속 (K_base + K_angle(β) + K_input) ───
+  if (car.drifting) {
+    const Kbase  = K.DRIFT_KBASE;
+    const Kangle = K.DRIFT_KANGLE_SCALE * (Math.exp(beta / Math.max(1e-3, K.DRIFT_KANGLE_TAU)) - 1);
+    // K_input: 안쪽 키 hold 시 가산 (톡톡이로 떼면 0)
+    const s = input.steer || 0;
+    const insideHold = car._driftDir !== 0
+      && Math.sign(s) === car._driftDir
+      && Math.abs(s) > K.INSIDE_HOLD_THRESHOLD;
+    const Kinput = insideHold ? K.DRIFT_KINPUT : 0;
+    vF -= (Kbase + Kangle + Kinput) * dt;
+    if (vF < 0) vF = 0;
+
+    // 스핀오프: β가 SPIN_BETA 이상이면 vF/vL 대폭 손실
+    if (beta >= K.DRIFT_SPIN_BETA) {
+      vF *= K.SPIN_SPEED_KEEP;
+      vL *= K.SPIN_SPEED_KEEP;
+      endDriftRoutine(car, 'spin');
+    }
+  }
+
   vF = Math.min(vF, topCap);
 
-  // ─── 마찰: 전진 거의 없음 / 횡 그립값 (0.25s 보간) ───
+  // ─── 마찰 (전진 거의 없음, 횡속 = drift 中이면 즉시 GRIP_DRIFT) ───
   const frames = dt * 60;
   vF *= Math.pow(K.ROLL_FWD, frames);
 
-  // grip blend 0..1 (드리프트=1, 평소=0). 전환 시 0.25s lerp.
-  car._driftGripBlend = car._driftGripBlend || 0;
-  const gripTau = Math.max(0.05, K.GRIP_TRANSITION_TIME || 0.25);
-  const gripK = 1 - Math.exp(-(3.0 / gripTau) * dt);
-  car._driftGripBlend += ((car.drifting ? 1 : 0) - car._driftGripBlend) * gripK;
-  const grip = K.GRIP_NORMAL + (K.GRIP_DRIFT - K.GRIP_NORMAL) * car._driftGripBlend;
-  vL *= Math.pow(grip, frames);
+  // μ 단절: drift 진입/해제 즉시 (discontinuous).
+  const baseGrip = car.drifting ? K.GRIP_DRIFT : K.GRIP_NORMAL;
+  const sideRetention = isIce ? K.ICE_SIDE_RETENTION : baseGrip;
+  vL *= Math.pow(sideRetention, frames);
 
-  // 재합성 (OLD frame)
+  // ─── 재합성 ───
   car.vx = fwdX * vF + rgtX * vL;
   car.vy = fwdY * vF + rgtY * vL;
 
-  // ★ 드리프트 中 속도 벡터를 heading 회전 일부 따라가게 → 곡선 감싸돌기
-  //   100% 따라오면 일반 코너링이 되니까 FOLLOW 비율로 블렌드.
+  // heading 회전의 일부를 velocity가 따라옴 (곡선 감싸돌기)
   if (car.drifting && (K.DRIFT_HEADING_FOLLOW || 0) > 0) {
     const yawDelta = car.angle - angleBeforeYaw;
     if (yawDelta !== 0) {
@@ -142,25 +207,49 @@ export function stepKartDrift(car, input, dt) {
   car.forwardSpeed = vF;
   car.sideSpeed    = vL;
 
-  // 슬립각 + 게이지 충전
-  const slip = Math.atan2(vL, Math.max(1e-3, Math.abs(vF)));
-  car.driftAngle = clamp(slip, -K.MAX_SLIP_ANGLE, K.MAX_SLIP_ANGLE);
-  if (car.drifting && Math.abs(vF) > K.MIN_DRIFT_SPEED * 0.8) {
-    const slipNorm  = clamp(Math.abs(slip) / K.MAX_SLIP_ANGLE, 0, 1);
-    const speedNorm = clamp(Math.abs(vF) / maxCruise, 0, 1.2);
-    car.boostMeter  = Math.min(K.GAUGE_MAX,
-      (car.boostMeter || 0) + K.GAUGE_RATE * (0.25 + slipNorm * 0.95) * speedNorm * dt);
+  // ─── β 재계산 + 자동 release 판정 ───
+  const betaPost = Math.atan2(Math.abs(vL), Math.max(1e-3, Math.abs(vF)));
+  car.slipBeta   = betaPost;
+
+  // 비주얼 클램프 (HUD/카메라용)
+  const slipSigned = Math.atan2(vL, Math.max(1e-3, Math.abs(vF)));
+  car.driftAngle = clamp(slipSigned, -K.MAX_SLIP_ANGLE, K.MAX_SLIP_ANGLE);
+
+  // 자동 release: drift 中 β가 RELEASE 임계 밑으로 떨어지면 μ 원복.
+  // 기본적으로는 안쪽 키 hold + 카운터 키 없으면 β 안 줄어듬.
+  // 카운터 키 alignment로만 β가 깎여서 RELEASE 도달.
+  if (car.drifting && car.driftStateTime > K.DRIFT_MIN_HOLD
+      && betaPost < K.DRIFT_RELEASE_BETA) {
+    endDriftRoutine(car, 'align');
   }
 
-  // 드탈 — 슬립각 한계 초과 시 드리프트 강제 종료
-  if (car.drifting && Math.abs(slip) >= K.MAX_SLIP_ANGLE * 0.98) {
-    car.driftState = 'release';
-    car.driftStateTime = 0;
-    car.drifting = false;
+  // ─── 게이지 충전 ───
+  // 드리프트 中: ΔG = speed × sin(β) × W_track × dt
+  // 일반 주행: 작은 상수 충전
+  const atMaxStock = (car.boostStock || 0) >= K.BOOST_STOCK_MAX;
+  if (!atMaxStock) {
+    let charge = 0;
+    if (car.drifting && !(isIce && K.ICE_DISABLE_GAUGE)) {
+      const wTrack = (track?.gaugeWeight) ?? K.GAUGE_W_TRACK;
+      charge = car.speed * Math.sin(betaPost) * wTrack * dt;
+    } else if (!car.drifting && Math.abs(vF) > K.IDLE_CHARGE_MIN_VF) {
+      charge = K.IDLE_CHARGE_RATE * dt;
+    }
+    if (charge > 0) car.boostMeter = Math.min(K.GAUGE_MAX, (car.boostMeter || 0) + charge);
+    // 100 도달 → 스택+1, 게이지 0
+    if (car.boostMeter >= K.GAUGE_MAX && (car.boostStock || 0) < K.BOOST_STOCK_MAX) {
+      car.boostStock = (car.boostStock || 0) + 1;
+      car.boostMeter = 0;
+    }
+  } else {
+    car.boostMeter = 0;
   }
+
+  car.driftTime    = car.drifting ? (car.driftStateTime || 0) : 0;
+  car.suppressSkid = isIce && K.ICE_DISABLE_SKID;
+  car._counterSteer = counterSteer;
 }
 
-// ─── 현재 속도 캡: boost 中 boostTop, 끝나면 0.6초 디케이 ──────
 function currentTopCap(car, maxCruise, maxBoost) {
   if (car.boostSustainTimer > 0) return maxBoost;
   if (car.boostCapDecayTimer > 0) {
@@ -171,6 +260,8 @@ function currentTopCap(car, maxCruise, maxBoost) {
 }
 
 // ─── 상태머신: idle → charge → release → idle ───────────────
+// 진입: handbrake + 방향키 (둘 다 필요). 종료: handbrake 해제(manual) /
+// β 자동 release(align) / 스핀(spin).
 export function updateDriftStateMachine(car, input, dt) {
   car.driftState     = car.driftState || 'idle';
   car.driftStateTime = (car.driftStateTime || 0) + dt;
@@ -179,13 +270,15 @@ export function updateDriftStateMachine(car, input, dt) {
   const speed     = Math.hypot(car.vx, car.vy);
 
   if (car.driftState === 'idle' || car.driftState === 'release') {
-    if (handbrake && speed > K.MIN_DRIFT_SPEED) {
+    const steerSign = Math.sign(input.steer || 0);
+    const hasSteer  = Math.abs(input.steer || 0) > 0.1;
+    if (handbrake && hasSteer && speed > K.MIN_DRIFT_SPEED) {
       car.driftState     = 'charge';
       car.driftStateTime = 0;
       car.drifting       = true;
-      // 진입 임펄스 — heading을 살짝 비스듬히
-      const dir = Math.sign(input.steer) || Math.sign(car.steerAngle) || 0;
-      if (dir !== 0) car.angle += dir * -K.DRIFT_ENTRY_YAW;
+      car._driftDir      = steerSign;
+      // 진입 임펄스 — 마찰 정점 돌파 표현 (β 즉시 키움)
+      car.angle += steerSign * -K.DRIFT_ENTRY_YAW;
     } else {
       car.drifting = false;
       if (car.driftState === 'release' && car.driftStateTime > 0.08) {
@@ -196,46 +289,17 @@ export function updateDriftStateMachine(car, input, dt) {
   } else if (car.driftState === 'charge') {
     car.drifting = true;
     if (!handbrake) {
-      car.driftState     = 'release';
-      car.driftStateTime = 0;
-      // 해제 순간 1스택 이상이면 즉발 부스터 폭발
-      if ((car.boostMeter || 0) >= K.BOOST_COST) {
-        fireBoost(car);
-      }
+      endDriftRoutine(car, 'manual');
     }
   }
 }
 
-// ─── 톡톡이 ────────────────────────────────────────────────
-export function applyTapDrift(car, input, dt) {
-  car._prevSteer = car._prevSteer ?? 0;
-  const cur  = input.steer || 0;
-  const prev = car._prevSteer;
-  car._prevSteer = cur;
-
-  if (!car.drifting) {
-    car._tapFx = Math.max(0, (car._tapFx || 0) - dt);
-    return;
-  }
-
-  // 키 톡: 방향키가 거의 0 → 임계 이상으로 전환
-  const keyTap = Math.abs(prev) < K.TAP_STEER_LO && Math.abs(cur) > K.TAP_STEER_HI;
-  const burst  = !!input.driftBurst;
-  if (!keyTap && !burst) {
-    car._tapFx = Math.max(0, (car._tapFx || 0) - dt);
-    return;
-  }
-
-  const yawDir = keyTap ? -Math.sign(cur)
-                        : -Math.sign(input.steer || car.steerAngle || 1);
-  car.angle      += yawDir * K.TAP_YAW_IMPULSE;
-  car.boostMeter  = Math.min(K.GAUGE_MAX, (car.boostMeter || 0) + K.TAP_GAUGE_BUMP);
-  car._tapFx      = 0.18;
-}
-
-// ─── 부스트 폭발: 즉발 임펄스 + 지속 1.2s ──────────────────
+// ─── 부스트 폭발 ─────────────────────────────────────────
+// 조건: 스택>0 && !boosting (sequential). 스택 -1 + 즉발 임펄스 + sustain.
 export function fireBoost(car) {
-  car.boostMeter = Math.max(0, (car.boostMeter || 0) - K.BOOST_COST);
+  if ((car.boostStock || 0) <= 0) return;
+  if (car.boosting) return;
+  car.boostStock = Math.max(0, (car.boostStock || 0) - 1);
   const fwdX = Math.cos(car.angle);
   const fwdY = Math.sin(car.angle);
   const rgtX = -fwdY;
@@ -245,8 +309,7 @@ export function fireBoost(car) {
   vF += K.BOOST_INSTANT_DV;
   car.vx = fwdX * vF + rgtX * vL;
   car.vy = fwdY * vF + rgtY * vL;
-
-  car.boostSustainTimer  = K.BOOST_SUSTAIN_TIME; // 더블부스터는 이 줄이 곧 연장
+  car.boostSustainTimer  = K.BOOST_SUSTAIN_TIME;
   car.boostCapDecayTimer = 0;
   car.boosting           = true;
   car.boostFireFx        = 1.0;
@@ -254,11 +317,9 @@ export function fireBoost(car) {
 
 export function updateBoostState(car, input, dt) {
   car.boostMeter = clamp(car.boostMeter || 0, 0, K.GAUGE_MAX);
+  car.boostStock = clamp(car.boostStock || 0, 0, K.BOOST_STOCK_MAX);
 
-  // 더블부스터: Shift 추가 발동 시 지속시간 갱신
-  if (input.boostJust && (car.boostMeter || 0) >= K.BOOST_COST) {
-    fireBoost(car);
-  }
+  if (input.boostJust) fireBoost(car);
 
   if (car.boostSustainTimer > 0) {
     car.boostSustainTimer -= dt;
@@ -276,19 +337,20 @@ export function updateBoostState(car, input, dt) {
   car.boostPower = (car.boostPower || 0)
     + (target - (car.boostPower || 0)) * (1 - Math.exp(-response * dt));
   car.boostFireFx = Math.max(0, (car.boostFireFx || 0) - dt * 3.0);
-
-  car.boostTimer = car.boostSustainTimer; // 호환
+  car.boostTimer = car.boostSustainTimer;
 }
 
-// ─── 초기 state 헬퍼 ──────────────────────────────────────
+// ─── 초기 state ──────────────────────────────────────────
 export function initKartState(car) {
   car.drifting           = false;
   car.driftState         = 'idle';
   car.driftStateTime     = 0;
   car.driftAngle         = 0;
+  car.slipBeta           = 0;
   car.forwardSpeed       = 0;
   car.sideSpeed          = 0;
   car.boostMeter         = 0;
+  car.boostStock         = 0;
   car.boostSustainTimer  = 0;
   car.boostCapDecayTimer = 0;
   car.boostTimer         = 0;
@@ -296,6 +358,11 @@ export function initKartState(car) {
   car.boosting           = false;
   car.boostFireFx        = 0;
   car.maxCapNow          = 0;
-  car._prevSteer         = 0;
-  car._tapFx             = 0;
+  car._driftDir          = 0;
+  car._counterSteer      = false;
+  car._lastDriftEndReason = null;
+  car.driftTime          = 0;
+  car.surface            = 'asphalt';
+  car.iceSurface         = false;
+  car.suppressSkid       = false;
 }

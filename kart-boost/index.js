@@ -25,9 +25,9 @@ export {
   stepKartDrift,
   initKartState,
   updateDriftStateMachine,
-  applyTapDrift,
   fireBoost,
   updateBoostState,
+  getSurfaceAt,
   MIN_DRIFT_SPEED,
   DOUBLE_DRIFT_MIN_SPEED,
 } from './driftPhysics.js';
@@ -38,5 +38,11 @@ export {
   speedLineIntensity,
   driftBodyRoll,
 } from './cameraFx.js';
+
+export {
+  initStartBoostState,
+  tickStartBoost,
+  fireStartBoost,
+} from './startBoost.js';
 
 export { KART_TUNING, KART_CAMERA } from './config.js';

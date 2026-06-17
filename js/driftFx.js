@@ -7,18 +7,27 @@
 //   applyDriftBodyFx(driftFxState, carMesh, car, dt);
 //   emitDriftSparks(driftFxState, car, sparkPool, dt);
 
-import { spawnSparks } from './effects.js';
+import { spawnSparks, spawnDriftSmoke3D, DRIFT_SMOKE_TUNING } from './effects.js';
 
 // ─── 튜닝 한 곳 ────────────────────────────────────────────────
 export const DRIFT_FX_CONFIG = {
   // 켜고끄기 (각 효과 개별)
   ENABLE_BODY_SQUASH: true,
-  ENABLE_SPARKS:      true,
-  ENABLE_SMOKE:       true,   // (#3 - 후속)
-  ENABLE_SKID:        true,   // (#4 - 기존 _emitDriftFx에서 처리)
-  ENABLE_FLAME:       true,   // (#5 - 이미 car.js boostflame 메시가 처리)
-  ENABLE_TRAIL:       false,  // (#6 - 후속)
-  ENABLE_BLOOM:       false,  // (#7 - 후속)
+  ENABLE_SPARKS:      false,  // KartRider식: 스파크 ❌ — 흰 연기로 교체
+  ENABLE_SMOKE:       true,   // 카트라이더식 흰 연기
+  ENABLE_SKID:        true,
+  ENABLE_FLAME:       true,
+  ENABLE_TRAIL:       false,
+  ENABLE_BLOOM:       false,
+
+  // ── 연기 방출 (rate는 β/속도 비례) ──
+  SMOKE_REAR_OFFSET:    -7.6,   // 차 로컬 X (뒤)
+  SMOKE_SIDE_OFFSET:    7.2,    // 차 로컬 Z (양옆)
+  SMOKE_Y:              1.0,
+  SMOKE_RATE_BASE:      40,     // /s — 진입 시
+  SMOKE_RATE_PEAK:      150,    // /s — 깊은 β + 고속
+  SMOKE_BETA_REF:       Math.PI * 0.35, // 이 β에서 peak 도달
+  SMOKE_PER_BURST:      1,      // burst당 입자 수 (양쪽 각각)
 
   // ── 차체 squash ──
   BOOST_STRETCH_Z:   0.18,   // 부스트 펄스 정점에서 +18% 길어짐 (앞뒤)
@@ -49,8 +58,9 @@ export const DRIFT_FX_CONFIG = {
 export function makeDriftFxState() {
   return {
     sparkTimer:  0,
-    bodyStretch: 0,  // 0..1 페이드된 스트레치 강도
-    bodyLean:    0,  // 페이드된 추가 롤
+    smokeTimer:  0,
+    bodyStretch: 0,
+    bodyLean:    0,
     _origScale:  null,
   };
 }
@@ -125,6 +135,67 @@ function _emitOneBurst(car, sparkPool, tierColor) {
     spawnSparks(sparkPool, wx, DRIFT_FX_CONFIG.SPARK_Y, -wy, DRIFT_FX_CONFIG.SPARK_PER_BURST);
     // 색상 재칠 (spawnSparks가 HSL 랜덤하므로 직접 덮어씀)
     _recolorLatest(sparkPool, DRIFT_FX_CONFIG.SPARK_PER_BURST, tierColor);
+  }
+}
+
+// ─── 카트라이더식 흰 연기 ──────────────────────────────────
+// 양 뒷바퀴에서 부드러운 흰 알파 입자를 β/속도 비례 rate로 방출.
+// 빙판(iceSurface)에서는 발사 ❌.
+export function emitDriftSmoke(state, car, smokePool, dt, maxCruise = 240) {
+  if (!DRIFT_FX_CONFIG.ENABLE_SMOKE) return;
+  if (!smokePool) return;
+  if (!car.drifting || car.iceSurface) {
+    state.smokeTimer = Math.max(0, state.smokeTimer - dt);
+    return;
+  }
+  // β 비례 (0..1), 속도 비례 가산
+  const beta = Math.abs(car.slipBeta || car.driftAngle || 0);
+  const betaT = Math.max(0, Math.min(1, beta / DRIFT_FX_CONFIG.SMOKE_BETA_REF));
+  const speedT = Math.max(0, Math.min(1, (car.speed || 0) / Math.max(80, maxCruise)));
+  const rateMix = 0.35 + 0.45 * betaT + 0.30 * speedT; // 0.35..1.10
+  const rate = DRIFT_FX_CONFIG.SMOKE_RATE_BASE
+    + (DRIFT_FX_CONFIG.SMOKE_RATE_PEAK - DRIFT_FX_CONFIG.SMOKE_RATE_BASE)
+      * Math.max(0, Math.min(1, rateMix));
+
+  state.smokeTimer -= dt;
+  while (state.smokeTimer <= 0) {
+    state.smokeTimer += 1 / Math.max(5, rate);
+    _emitSmokeBurst(car, smokePool);
+  }
+}
+
+function _emitSmokeBurst(car, smokePool) {
+  const a  = car.angle || 0;
+  const cs = Math.cos(a), sn = Math.sin(a);
+  const rx = DRIFT_FX_CONFIG.SMOKE_REAR_OFFSET;
+  const ry = DRIFT_FX_CONFIG.SMOKE_SIDE_OFFSET;
+  const dir = car._driftDir || (Math.sign(car.sideSpeed || car.steerAngle || 1));
+
+  // sideSign: -1=left wheel, +1=right wheel
+  for (const sideSign of [-1, 1]) {
+    // 로컬 (rx, 0, sideSign*ry) → 월드 2D (z-axis flip이 wy → -wy)
+    const wx = car.x + rx * cs - sideSign * ry * sn;
+    const wy = car.y + rx * sn + sideSign * ry * cs;
+    const w3y = DRIFT_FX_CONFIG.SMOKE_Y;
+    const w3z = -wy;
+
+    // 속도: 카트 뒤(-forward) + 바깥(side away from drift direction) + 살짝 위
+    // forward 단위 벡터 (cs, sn) — 월드 2D. 3D에선 (cs, 0, -sn).
+    const backX = -cs * DRIFT_SMOKE_TUNING.SMOKE_BACK_SPEED;
+    const backZ =  sn * DRIFT_SMOKE_TUNING.SMOKE_BACK_SPEED;
+    // right vector: (-sn, 0, -cs) in 3D. sideSign * outward (반대 sign 효과)
+    // 바깥 방향 = drift 반대 방향이 자연스러움 (휘는 바깥)
+    const outSign = sideSign; // 좌우 바퀴 각자 자기 바깥쪽
+    const outX = -sn * DRIFT_SMOKE_TUNING.SMOKE_OUT_SPEED * outSign;
+    const outZ = -cs * DRIFT_SMOKE_TUNING.SMOKE_OUT_SPEED * outSign;
+
+    const vx = backX + outX + (Math.random() - 0.5) * 2;
+    const vy = DRIFT_SMOKE_TUNING.SMOKE_UP_SPEED * (0.6 + Math.random() * 0.6);
+    const vz = backZ + outZ + (Math.random() - 0.5) * 2;
+
+    for (let i = 0; i < DRIFT_FX_CONFIG.SMOKE_PER_BURST; i++) {
+      spawnDriftSmoke3D(smokePool, wx, w3y, w3z, vx, vy, vz);
+    }
   }
 }
 

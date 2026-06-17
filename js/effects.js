@@ -113,11 +113,12 @@ export function createSkidBuffer(scene, capSegments = 400) {
     new THREE.Vector3(-20000, -20, -20000),
     new THREE.Vector3(20000, 20, 20000)
   );
+  // KartRider식: 연회색 스키드, 어둡지도 형광도 아닌 자연스러운 흔적.
   const mat = new THREE.MeshBasicMaterial({
     vertexColors: true,
     transparent: true,
-    opacity: 0.96,
-    blending: THREE.AdditiveBlending,
+    opacity: 0.42,
+    blending: THREE.NormalBlending,
     depthWrite: false,
     side: THREE.DoubleSide,
   });
@@ -258,20 +259,25 @@ export function makeSpeedLines(count = 60) {
   return arr;
 }
 
-export function drawSpeedLines(ctx, lines, kmh, w, h, dt, cameraMode = 'chase') {
+export function drawSpeedLines(ctx, lines, kmh, w, h, dt, cameraMode = 'chase', boostT = 0) {
   if (cameraMode === 'high') {
     for (const p of lines) p.life = 0;
     return;
   }
-  // KartRider 연출: ~60 m/s (≈216 km/h) 이상에서 강하게 발동.
-  if (kmh < 160) {
+  // 평소: 160km/h 이상 활성. boost 中: 임계 낮춤 (0 km/h부터 발동).
+  const threshold = boostT > 0.05 ? 0 : 160;
+  if (kmh < threshold) {
     for (const p of lines) p.life = 0;
     return;
   }
-  const intensity = Math.min(1, (kmh - 160) / 130);
+  // intensity: 속도 + boost 강도 합성 (가장자리만 진하게)
+  const speedI = Math.max(0, Math.min(1, (kmh - 160) / 130));
+  const boostI = Math.max(0, Math.min(1, boostT));
+  const intensity = Math.max(speedI, boostI);
   const cx = w * 0.5, cy = h * 0.58;
   const speedScale = 1500 + intensity * 3200;
-  const spawnRate  = boostActiveRate(kmh) + intensity * 180;
+  const spawnRate  = boostActiveRate(kmh) + intensity * 180
+    + boostI * KC.SPEEDLINE_BOOST_RATE;
 
   // Spawn fresh particles
   let toSpawn = spawnRate * dt;
@@ -309,8 +315,14 @@ export function drawSpeedLines(ctx, lines, kmh, w, h, dt, cameraMode = 'chase') 
     const dl = Math.hypot(dx, dy) || 1;
     const tx = -dx / dl * p.len;
     const ty = -dy / dl * p.len;
-    ctx.strokeStyle = `rgba(190,220,255,${p.alpha * intensity})`;
-    ctx.lineWidth = 1.0 + intensity * 1.2;
+    // 가장자리 진하게 — 중심에서 거리 비례 alpha
+    const ddx = p.x - cx, ddy = p.y - cy;
+    const distNorm = Math.min(1, Math.hypot(ddx, ddy) / (Math.min(w, h) * 0.42));
+    const baseAlpha = p.alpha * intensity * distNorm * distNorm;
+    const boostAlphaMul = 1 + boostI * (KC.SPEEDLINE_MAX_OPACITY / 0.25);
+    const a = Math.min(KC.SPEEDLINE_MAX_OPACITY, baseAlpha * boostAlphaMul);
+    ctx.strokeStyle = `rgba(190,220,255,${a})`;
+    ctx.lineWidth = 1.0 + intensity * 1.2 + boostI * 1.5;
     ctx.beginPath();
     ctx.moveTo(p.x, p.y);
     ctx.lineTo(p.x + tx, p.y + ty);
@@ -323,17 +335,20 @@ function boostActiveRate(kmh) {
   return kmh > 180 ? 105 : 70;
 }
 
-// ── FOV pump (KartRider 원작형: 72 → 92, in 0.3s / out 0.5s) ─────────
-//   부스트 발동 순간 화면이 "확" 벌어지는 게 손맛의 정체.
-//   signature는 upstream 호환 유지 (kmh/maxKmh 인자는 unused).
-export function updateFovPump(camera, kmh, maxKmh, boostActive, dt) {
-  const BASE_FOV  = 72;
-  const BOOST_FOV = 92;
-  const target = boostActive ? BOOST_FOV : BASE_FOV;
-  // τ초에 95% 도달 (1 - e^-3 ≈ 0.95)
-  const tau = (target > camera.fov) ? 0.30 : 0.50;
-  const k = 1 - Math.exp(-(3.0 / tau) * dt);
-  camera.fov += (target - camera.fov) * k;
+// ── FOV: 속도 비례 + boost 추가량 + 외부 kick (부스트 발동 펀치) ──
+// fovExtra (deg) = 호출자가 매 프레임 갱신하는 발동 펀치 값 (즉시 가산).
+// 평소 lerp는 부드럽게, kick은 외부에서 즉시 +K로 점프시키므로 안 부드러움.
+import { KART_CAMERA as KC } from '../kart-boost/config.js';
+export function updateFovPump(camera, kmh, maxKmh, boostActive, dt, fovExtra = 0) {
+  const topSpeed = Math.max(80, maxKmh || 240);
+  const t = Math.max(0, Math.min(1, (kmh || 0) / topSpeed));
+  let smoothTarget = KC.FOV_BASE + (KC.FOV_MAX - KC.FOV_BASE) * t;
+  if (boostActive) smoothTarget += KC.FOV_BOOST_BUMP;
+  const k = 1 - Math.pow(1 - KC.FOV_LERP, Math.max(0, dt) * 60);
+  // smoothed 부분만 lerp, kick은 즉시 가산 (camera._smoothFov 분리)
+  camera._smoothFov = camera._smoothFov ?? camera.fov;
+  camera._smoothFov += (smoothTarget - camera._smoothFov) * k;
+  camera.fov = camera._smoothFov + (fovExtra || 0);
   camera.updateProjectionMatrix();
 }
 
@@ -341,6 +356,118 @@ export function spawnDriftSmoke(position, pool = null) {
   if (!pool || !position) return false;
   spawnSmoke(pool, position.x || 0, position.y || 2, position.z || 0);
   return true;
+}
+
+// ── KartRider 드리프트 흰 연기 (전용 풀) ─────────────────────
+// 부드러운 원형 알파 + NormalBlending + depthWrite:false.
+// 입자: 뒤+바깥+살짝 위로 방출. 수명 동안 크기 커지며 페이드아웃.
+export const DRIFT_SMOKE_TUNING = {
+  SMOKE_RATE:       55,    // /s — base rate (β/속도로 가산)
+  SMOKE_RATE_MAX:   120,   // /s — β=깊고 속도 cruise+ 시
+  SMOKE_LIFE:       0.85,  // s
+  SMOKE_LIFE_JIT:   0.25,  // ± random
+  SMOKE_SIZE_START: 4.5,
+  SMOKE_SIZE_END:   17.0,
+  SMOKE_OPACITY:    0.62,
+  SMOKE_COLOR:      0xf2f4f6, // 흰~연회색
+  SMOKE_OUT_SPEED:  16,    // 바깥 방향 속도 (단위/s)
+  SMOKE_UP_SPEED:   8,     // 위로 (천천히)
+  SMOKE_BACK_SPEED: 10,    // 뒤로
+  SMOKE_VY_DAMP:    0.55,  // /s (감쇠 계수)
+};
+
+export function createDriftSmokePool(scene, count = 96) {
+  const tex = _makeDriftSmokeTexture();
+  const geo = new THREE.PlaneGeometry(1, 1);
+  geo.rotateX(-Math.PI / 2);
+  const matProto = new THREE.MeshBasicMaterial({
+    map: tex,
+    color: DRIFT_SMOKE_TUNING.SMOKE_COLOR,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+    blending: THREE.NormalBlending,
+    alphaTest: 0.01,
+  });
+  const pool = [];
+  for (let i = 0; i < count; i++) {
+    const m = new THREE.Mesh(geo, matProto.clone());
+    m.visible = false;
+    m.renderOrder = 4;
+    scene.add(m);
+    pool.push({
+      mesh: m,
+      age:  0,
+      life: 0,
+      vx: 0, vy: 0, vz: 0,
+      sizeStart: DRIFT_SMOKE_TUNING.SMOKE_SIZE_START,
+      sizeEnd:   DRIFT_SMOKE_TUNING.SMOKE_SIZE_END,
+      opacity0:  DRIFT_SMOKE_TUNING.SMOKE_OPACITY,
+    });
+  }
+  return pool;
+}
+
+function _makeDriftSmokeTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  const g = ctx.createRadialGradient(64, 64, 4, 64, 64, 64);
+  g.addColorStop(0,    'rgba(255,255,255,1.0)');
+  g.addColorStop(0.35, 'rgba(255,255,255,0.55)');
+  g.addColorStop(0.7,  'rgba(255,255,255,0.12)');
+  g.addColorStop(1,    'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 128, 128);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+// vBack/vOut/vUp = 카트 좌표계에서 뒤/바깥/위 속도. 월드 변환은 호출자.
+export function spawnDriftSmoke3D(pool, x, y, z, vx, vy, vz, opts = {}) {
+  for (const p of pool) {
+    if (p.life > 0) continue;
+    const life = (opts.life ?? DRIFT_SMOKE_TUNING.SMOKE_LIFE)
+      + (Math.random() - 0.5) * 2 * (opts.lifeJit ?? DRIFT_SMOKE_TUNING.SMOKE_LIFE_JIT);
+    const sizeStart = opts.sizeStart ?? DRIFT_SMOKE_TUNING.SMOKE_SIZE_START;
+    const sizeEnd   = opts.sizeEnd   ?? DRIFT_SMOKE_TUNING.SMOKE_SIZE_END;
+    const opacity0  = opts.opacity   ?? DRIFT_SMOKE_TUNING.SMOKE_OPACITY;
+    p.mesh.position.set(x, y, z);
+    p.mesh.scale.set(sizeStart, 1, sizeStart);
+    p.mesh.rotation.y = Math.random() * Math.PI * 2;
+    p.mesh.material.opacity = opacity0;
+    p.mesh.material.color.setHex(opts.color ?? DRIFT_SMOKE_TUNING.SMOKE_COLOR);
+    p.mesh.visible = true;
+    p.age = 0;
+    p.life = Math.max(0.15, life);
+    p.vx = vx; p.vy = vy; p.vz = vz;
+    p.sizeStart = sizeStart;
+    p.sizeEnd   = sizeEnd;
+    p.opacity0  = opacity0;
+    return true;
+  }
+  return false;
+}
+
+export function updateDriftSmoke(pool, dt) {
+  if (!pool) return;
+  for (const p of pool) {
+    if (p.life <= 0) continue;
+    p.age += dt;
+    p.life -= dt;
+    if (p.life <= 0) { p.mesh.visible = false; continue; }
+    const total = p.age + p.life;
+    const t = total > 0 ? p.age / total : 0;
+    const size = p.sizeStart + (p.sizeEnd - p.sizeStart) * t;
+    p.mesh.scale.set(size, 1, size);
+    p.mesh.material.opacity = Math.max(0, p.opacity0 * (1 - t));
+    p.mesh.position.x += p.vx * dt;
+    p.mesh.position.y += p.vy * dt;
+    p.mesh.position.z += p.vz * dt;
+    p.vy *= Math.pow(DRIFT_SMOKE_TUNING.SMOKE_VY_DAMP, dt);
+  }
 }
 
 export function showBoostEffect(target = document.body) {

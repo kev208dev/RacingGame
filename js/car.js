@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { createCarDesign } from './carDesigns.js';
 import { mapStatToPhysics, normalizeCarStats } from './carStats.js';
 import { getSkinById } from '../data/skins.js';
+import { KART_CAMERA as KC } from '../kart-boost/config.js';
 
 const CAR_DESIGN_BY_ID = {
   apex_gt3: 'gt_silver',
@@ -140,7 +141,7 @@ function _applySkin(model, skinData) {
 }
 
 // ── per-frame mesh sync ──────────────────────────────────────
-export function updateCar3D(mesh3d, car, input, track = null) {
+export function updateCar3D(mesh3d, car, input, track = null, dt = 1 / 60) {
   // 2D y → 3D -z mapping
   const wallRideLift = car.wallRiding ? Math.min(2.2, 0.35 + (car.speed || 0) * 0.006) : 0;
   const surfaceY = _trackSurfaceHeight(track, car.x, car.y) + wallRideLift;
@@ -225,10 +226,35 @@ export function updateCar3D(mesh3d, car, input, track = null) {
     const driftDrop = car.drifting ? 0.22 : 0;
     mesh3d.body.position.y = avgY - baseRef - driftDrop;
     const targetPitch = (rAvg - fAvg) * 0.02 + throttle * 0.018 - brake * 0.048;
-    // KartRider 연출: 드리프트 시 차체 롤 ~4-5°
-    const driftLean = car.drifting ? -Math.sign(car.sideSpeed || car.steerAngle || 1) * 0.080 : 0;
-    const wallRideLean = car.wallRiding ? -(car.wallRideSide || Math.sign(car.sideSpeed || 1)) * 0.075 : 0;
-    const targetRoll = (rAvg2 - lAvg) * 0.02 - car.steerAngle * speed * 0.00062 + driftLean + wallRideLean;
+    // KartRider 연출: 드리프트 = 안쪽으로 확 누움.
+    // intensity = β / REF_SLIP, REF_SLIP 낮춰서 중간 각도에서도 풀강도.
+    // 모델 sign: 기존 검증된 sign(sideSpeed) 방향과 일치하도록 -dir 적용.
+    const refSlip = KC.REF_SLIP || (25 * Math.PI / 180);
+    const intensity = car.drifting
+      ? Math.min(1, Math.abs(car.slipBeta || car.driftAngle || 0) / Math.max(1e-3, refSlip))
+      : 0;
+    const dir = car._driftDir || Math.sign(car.sideSpeed || car.steerAngle || 1);
+
+    // 종료가 cut/align/spin이면 빠르게 0으로 스냅. 그 외 정상 lerp.
+    const isSnapEnd = !car.drifting
+      && (car._lastDriftEndReason === 'align'
+       || car._lastDriftEndReason === 'spin'
+       || car._lastDriftEndReason === 'cut')
+      && (car.driftStateTime || 0) < 0.25;
+    const rate = isSnapEnd ? KC.ROLL_SNAP : KC.ROLL_LERP;
+    car._kartRoll = car._kartRoll ?? 0;
+    const rollTarget = car.drifting ? (-dir * KC.KART_ROLL_MAX * intensity) : 0;
+    car._kartRoll += (rollTarget - car._kartRoll) * (1 - Math.exp(-rate * Math.max(0, dt)));
+
+    // 일반 코너링 미세 롤 — drift 아닐 때 |steerAngle| 비례
+    const steerRoll = !car.drifting
+      ? (-Math.sign(car.steerAngle || 0)) * (KC.STEER_ROLL_MAX || 0)
+        * Math.min(1, Math.abs(car.steerAngle || 0) * 1.6)
+      : 0;
+
+    const driftLean    = car._kartRoll;
+    const wallRideLean = car.wallRiding ? (car.wallRideSide || Math.sign(car.sideSpeed || 1)) * 0.075 : 0;
+    const targetRoll = (rAvg2 - lAvg) * 0.02 + driftLean + wallRideLean + steerRoll;
     mesh3d.body.rotation.z += (targetPitch - mesh3d.body.rotation.z) * 0.20;
     mesh3d.body.rotation.x += (targetRoll - mesh3d.body.rotation.x) * 0.20;
   }
@@ -255,9 +281,13 @@ export function updateCar3D(mesh3d, car, input, track = null) {
       const on = !!car.boosting || !!car.drsActive;
       c.visible = on;
       const power = Math.max(car.boostPower || 0, car.drsPower || 0);
+      const boostBoost = car.boosting ? KC.FLAME_BOOST_SCALE : 1.0;
       const base = 1.0 * (car.flameScale || 1) * (0.46 + power * 0.82);
       const flicker = 0.92 + Math.random() * 0.14;
-      c.scale.set(base * 0.52 * flicker, base * 0.48, base * 0.72);
+      // boost 中엔 길이(z) 더 길게, 두께도 약간 더
+      c.scale.set(base * 0.52 * flicker * (1 + (boostBoost - 1) * 0.5),
+                  base * 0.48 * (1 + (boostBoost - 1) * 0.4),
+                  base * 0.72 * boostBoost);
       c.children.forEach(part => {
         if (!part.material) return;
         const inner = part.name === 'flameinner';

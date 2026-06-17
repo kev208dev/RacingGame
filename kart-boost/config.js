@@ -1,71 +1,142 @@
-// KartRider 원작형(즉발 폭발) 드리프트+부스트 튜닝 상수.
+// KartRider 원작형 드리프트+부스트 — 물리 모델 튜닝 상수.
 // 모든 값은 60fps 1프레임 기준 또는 km/h 단위.
+//
+// 모델 요약:
+//   • 마찰력 단절: drift 진입 = 횡속 retention이 GRIP_NORMAL → GRIP_DRIFT로 즉시 점프.
+//     release = 즉시 GRIP_NORMAL 복원 (μ 원복).
+//   • 슬립각 β = atan2(|vL|, |vF|). DRIFT_MIN_BETA(8°) 이상이면 IsDrifting 유지.
+//   • 감속 = K_base + K_angle(β) + K_input. K_angle은 exp 성장. K_input은 안쪽
+//     방향키 hold 시만 가산 (톡톡이 시 0).
+//   • 게이지 ΔG = speed × sin(β) × W_track × dt.
+//   • 카운터 키 = alignment torque (heading을 velocity로 보간). β < RELEASE_BETA(3°)
+//     이면 자동 release. 스핀: β ≥ SPIN_BETA(88°) 시 vF/vL 대폭 감소.
+//   • 부스트 = Spacebar로만 발동, sequential, 스택 최대 2.
 
 export const KART_TUNING = {
   // ── 그립 (횡속 유지율 / 60fps 프레임) ──────────────────────
-  GRIP_DRIFT:  0.92, // 드리프트 中 — 뒷바퀴 살짝 물려 굴러감 (0.97=완전 미끄러짐)
-  GRIP_NORMAL: 0.80, // 평소 — "레일 위에 붙은" 느낌
-  ROLL_FWD:    0.995, // 전진 구름저항 — 사실상 안 죽음
-  GRIP_TRANSITION_TIME: 0.25, // s — 드리프트 시작/해제 시 그립 lerp 시간
+  // drift 전환 = 즉시 (수식 드롭). μ는 normal→drift = 약 30% 수준으로 표현.
+  GRIP_DRIFT:  0.95, // 드리프트 中 — 횡속 거의 유지 (~95%/프레임 = 5%/프레임 손실)
+  GRIP_NORMAL: 0.78, // 평소 — 빠른 횡속 감쇠 (22%/프레임 손실 → 빠른 그립)
+  ROLL_FWD:    0.995, // 전진 구름저항
 
   // ── 속도 티어 (km/h) ───────────────────────────────────────
-  CRUISE_MUL:  1.35,  // car.maxSpeed에 곱하는 전역 cruise 배율
-  V_BOOST_MUL: 1.30,  // boost top = 1.30× cruise (부스트가 너무 폭주하지 않게)
-  ACCEL_BASE:  150,   // km/h/s — 정지→cruise ≈ 1.3s
+  CRUISE_MUL:  1.35,
+  V_BOOST_MUL: 1.30,
+  ACCEL_BASE:  150,
   BRAKE_RATE:  205,
   REVERSE_TOP: 80,
 
   // ── 드리프트 회전 ──────────────────────────────────────────
-  DRIFT_YAW:         1.8,            // rad/s (~103°/s) — 부드럽게
-  DRIFT_YAW_SMOOTH:  8.0,            // /s — 적용 yaw rate lerp (입력→실제)
-  DRIFT_ENTRY_YAW:   0.035,          // rad — 진입 임펄스 (약화)
-  DRIFT_HEADING_FOLLOW: 0.55,        // ★ heading 회전의 55%가 속도 벡터도 따라옴
-                                     //   1.0=일반 코너링, 0.0=완전 미끄러짐
-  MAX_SLIP_ANGLE:    Math.PI * 0.16, // ~29° — 슬립각 상한
-  TAP_YAW_IMPULSE:   0.085,
-  TAP_STEER_HI:      0.55,
-  TAP_STEER_LO:      0.20,
-  TAP_GAUGE_BUMP:    4,
+  DRIFT_YAW:         2.4,            // rad/s — 헤딩 회전속도
+  DRIFT_YAW_SMOOTH:  9.0,            // /s — yaw rate lerp 응답 (스텝 응답)
+  DRIFT_ENTRY_YAW:   0.060,          // rad — 진입 임펄스 (β 즉시 키움)
+  DRIFT_HEADING_FOLLOW: 0.38,        // heading 회전의 일부만 velocity 따라옴
+  MAX_SLIP_ANGLE:    Math.PI * 0.48, // ~86° — driftAngle 비주얼 클램프
 
-  // ── 게이지 & 부스트 ────────────────────────────────────────
+  // ── 드리프트 판정 (β 임계값) ───────────────────────────────
+  DRIFT_MIN_HOLD:     0.15,          // s — 진입 직후 그레이스 (즉시 release 방지)
+  DRIFT_MIN_BETA:     8 * Math.PI / 180,  // 8° — 이 이상이면 IsDrifting 유지
+  DRIFT_RELEASE_BETA: 3 * Math.PI / 180,  // 3° — 이 이하로 떨어지면 자동 release
+  DRIFT_SPIN_BETA:    88 * Math.PI / 180, // 88° — 이 이상이면 스핀오프 (속도 증발)
+  SPIN_SPEED_KEEP:    0.18,          // 스핀 시 vF/vL 잔존율 (=82% 손실)
+
+  // ── 감속 모델: Current_Speed = ∫(K_base + K_angle(β) + K_input) dt ─
+  // K_base: 카트 고유. 좋은 카트일수록 작음.
+  // K_angle: exp 성장 — 깊이 꺾을수록 급격히 감속.
+  // K_input: 안쪽 키 hold 시 가산. 톡톡이(키 떼기) 시 0.
+  DRIFT_KBASE:        18,            // km/h/s
+  DRIFT_KANGLE_SCALE: 8,             // K_scale
+  DRIFT_KANGLE_TAU:   0.55,          // rad — exp(β/tau) - 1
+  DRIFT_KINPUT:       24,            // km/h/s — 안쪽 키 hold 시
+  INSIDE_HOLD_THRESHOLD: 0.4,        // |steer| 이상이고 _driftDir 같은 부호면 hold
+
+  // ── 카운터 스티어 (Alignment Torque) ──────────────────────
+  // 반대 방향키 입력 시 heading을 velocity 벡터로 능동 정렬 → β 축소.
+  // β < RELEASE_BETA 떨어지면 drift release.
+  COUNTER_STEER_THRESHOLD: 0.3,      // 반대 부호 |steer| 이상이면 카운터 인정
+  ALIGNMENT_GAIN:    3.5,            // /s — heading→velocity 정렬 속도
+
+  // ── 게이지 & 부스트 스택 ──────────────────────────────────
+  // ΔG = speed × sin(β) × W_track × dt
+  // 100 → 스택+1, 게이지 0. 스택 만석(2) 시 충전 멈춤.
+  // 벽 박으면 boostMeter=0 (스택 보존).
   GAUGE_MAX:           100,
-  GAUGE_RATE:          30,   // slip×speed 가중 충전
-  BOOST_COST:          30,   // 1스택
-  BOOST_INSTANT_DV:    45,   // km/h — 즉발 임펄스 (벽 충돌 완화 위해 낮춤)
-  BOOST_SUSTAIN_TIME:  1.0,  // s
-  BOOST_SUSTAIN_ACCEL: 85,   // km/h/s — 지속 가속 (감속 후 천천히 cap까지)
-  BOOST_CAP_DECAY:     0.6,  // s — 캡을 boost→cruise로 부드럽게
+  BOOST_STOCK_MAX:     2,
+  GAUGE_W_TRACK:       0.45,         // 트랙 기본 W 계수
+  IDLE_CHARGE_RATE:    4,            // /s — 일반 주행 中 작은 충전
+  IDLE_CHARGE_MIN_VF:  30,           // 이 vF 이상이어야 idle charge
+  BOOST_INSTANT_DV:    55,           // km/h — 부스트 즉발 임펄스
+  BOOST_SUSTAIN_TIME:  1.4,          // s
+  BOOST_SUSTAIN_ACCEL: 90,           // km/h/s
+  BOOST_CAP_DECAY:     0.6,          // s
 
-  // ── 조향 응답 ──────────────────────────────────────────────
+  // ── 빙판 ──────────────────────────────────────────────────
+  ICE_SIDE_RETENTION:  0.99,
+  ICE_DISABLE_GAUGE:   true,
+  ICE_DISABLE_SKID:    true,
+
+  // ── 출발부스터 ─────────────────────────────────────────────
+  START_BOOST_WINDOW:       0.4,
+  START_BOOST_FLOOD_LIMIT:  1.0,
+  START_BOOST_DV:           75,
+  START_BOOST_SUSTAIN_TIME: 1.6,
+
+  // ── 조향 응답 (비드리프트) ──────────────────────────────────
   STEER_RESPONSE_DRIFT:  11.0,
-
-  // ── 일반 주행 조향 손맛 (비드리프트 경로만 적용) ────────────
-  // 응답률 r = 3/T (T초에 95% 도달). 클수록 빠름.
-  STEER_ENGAGE:           15.0, // ≈ 0.20s에 풀조향 도달 (입력 → 휠)
-  STEER_RETURN:           20.0, // ≈ 0.15s에 0으로 복귀 (놓으면 빠르게)
-  MAX_YAW:                2.3,  // rad/s ≈ 130°/s — 최대 회전속도 cap
-  HIGHSPEED_TURN_FACTOR:  0.55, // 최고속 회전력 배율 (저속 1.0 → 최고속 0.55)
+  STEER_ENGAGE:           15.0,
+  STEER_RETURN:           20.0,
+  MAX_YAW:                2.3,
+  HIGHSPEED_TURN_FACTOR:  0.55,
 
   // ── 드리프트 진입 최저속 ───────────────────────────────────
   MIN_DRIFT_SPEED: 28,
 };
 
 // ── 카메라 / FOV 연출 ────────────────────────────────────────
+// KartRider식: 낮고 가깝게 + 속도 비례 FOV. 드리프트 거동은 별도(현 상태 유지).
 export const KART_CAMERA = {
-  FOV_BASE:        72,    // 기본 FOV
-  FOV_BOOST:       92,    // boost 中 — "슉" 감각의 정체
-  FOV_LERP_IN:     0.30,  // s — boost 진입 (95% 도달 시간)
-  FOV_LERP_OUT:    0.50,  // s — boost 종료
+  // ── chase 리그 (낮은 시점 + 짧은 거리) ──
+  CAM_HEIGHT:        17,    // 기존 36 → 17 (도로가 화면 하단을 채움)
+  CAM_DIST:          46,    // 기존 76 → 46 (가깝게)
+  CAM_LOOK_AHEAD:    64,    // 카트 앞쪽을 봄
+  CAM_LOOK_Y:        11,    // lookAt 타겟 높이 (지평선 위로 살짝)
+  CAM_DIST_SPEED_ADD: 14,   // 고속에서 추가 거리 (km/h 비율)
 
-  CAM_DIST_PULL:   0.17,  // boost 中 후방 거리 17% 당김 (6m→5m)
-  CAM_HEIGHT_DROP: 6,     // boost 中 카메라 높이 -0.3m 비례 단위
+  // ── FOV 속도 비례 ──
+  FOV_BASE:        72,
+  FOV_MAX:         90,
+  FOV_LERP:        0.08,    // 부드러움 계수 (60fps 기준, dt 보정됨)
+  FOV_BOOST_BUMP:  6,       // boost 中 추가 FOV
 
-  DRIFT_YAW_GAIN:  0.55,  // 드리프트 슬립각에 비례한 yaw 오프셋
-  DRIFT_YAW_MAX:   0.26,  // rad ≈ 15°
-  DRIFT_YAW_SMOOTH: 8.0,  // 카메라 yaw lerp 응답
+  // ── 드리프트 카메라 (yaw 오프셋 — 기존 유지) ──
+  CAM_DIST_PULL:   0.17,
+  CAM_HEIGHT_DROP: 5,
+  DRIFT_YAW_GAIN:  0.55,
+  DRIFT_YAW_MAX:   0.26,
+  DRIFT_YAW_SMOOTH: 8.0,
+  BODY_ROLL_DRIFT: 0.080,    // (legacy, 사용 안 함 — KART_ROLL_MAX로 교체)
+  SPEEDLINE_KMH:   200,
+  SPEEDLINE_RANGE: 160,
 
-  BODY_ROLL_DRIFT: 0.080, // rad ≈ 4.6° (차체 롤)
+  // ── 드리프트 차체 롤 + 카메라 뱅크 ──
+  // 카트 = 안쪽으로 확 누움. 카메라 = 같은 방향으로 살짝 뱅크.
+  // 정상 lerp는 부드럽게, cut/align/spin 종료는 빠르게 0 복귀.
+  KART_ROLL_MAX:   22 * Math.PI / 180,  // 22° — 카트라이더식 안쪽 누움
+  CAM_TILT_MAX:    7  * Math.PI / 180,  // 7° — 수평선 확실히 기울게
+  ROLL_LERP:       7.0,                 // /s — 정상 응답
+  ROLL_SNAP:       22.0,                // /s — cut/spin 시 빠른 0 복귀
+  REF_SLIP:        20 * Math.PI / 180,  // ~20° — intensity 풀강도 빠르게 도달
+  CAM_TILT_LERP:   5.5,                 // /s — 카메라 뱅크 응답 (멀미 방지로 약간 느리게)
+  STEER_ROLL_MAX:  3  * Math.PI / 180,  // ~3° — 일반 코너링 미세 롤
 
-  SPEEDLINE_KMH:   200,   // cruise 위 영역에서 발동
-  SPEEDLINE_RANGE: 160,   // intensity 정규화 폭
+  // ── 부스트 발동 펀치 (FOV kick / speedline / flame) ──
+  // 발동 순간 FOV가 +KICK으로 즉시 가산, 매 프레임 SUSTAIN(boost中)/0(끝)으로
+  // 감쇠. 체이닝 시 첫 kick만 큼, 지속 베이스 SUSTAIN 유지.
+  BOOST_FOV_KICK:        14,     // deg — 발동 순간 즉시 가산
+  BOOST_FOV_SUSTAIN:     4,      // deg — 지속 중 베이스 (kick 끝나도 유지)
+  BOOST_FOV_DECAY:       6.0,    // /s — kick → sustain/0 lerp 응답
+  BOOST_SHAKE_AMP:       7,      // 발동 순간 카메라 셰이크 (effects.triggerShake)
+  SPEEDLINE_MAX_OPACITY: 0.85,   // 부스트 中 속도선 알파 max
+  SPEEDLINE_BOOST_RATE:  260,    // /s — boost 中 추가 spawn rate
+  FLAME_BOOST_SCALE:     1.85,   // 부스트 中 화염 길이 배율 (base 추가)
 };

@@ -44,9 +44,13 @@ export function respawnAtCenter(car, track) {
   car.boosting = false;
   car.boostPower = 0;
   car.boostFireFx = 0;
+  car.boostMeter = 0;
+  car.boostStock = 0;
   car.offTrack = false;
   car.wallRiding = false;
   car.lastWallHit = null;
+  car._driftDir = 0;
+  car.slipBeta = 0;
 }
 
 const WALL_RIDE_TURN_MIN = 0.105;
@@ -69,7 +73,8 @@ export function updatePhysics(car, input, dt, track) {
   }
 
   // ─── 1. KartRider 주행: 마찰 분리 + 드리프트 상태머신 + 부스트 폭발 ───
-  stepKartDrift(car, input, dt);
+  // track 인자로 surface(빙판) 판정.
+  stepKartDrift(car, input, dt, track);
 
   // ─── 2. 수동 기어 입력 (HUD 보조) ───
   if (input.gearUp) {
@@ -212,6 +217,8 @@ function _resolveCollision(car, nextX, nextY, track) {
       totalSpeed: car.speed,
       time: performance.now(),
     };
+    // 하드 충돌 = 차고 있던 게이지 손실 (스택은 보존)
+    if (!wallRiding) car.boostMeter = 0;
   } else {
     car.offTrack = false;
     car.wallRiding = rideTouch;
