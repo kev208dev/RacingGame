@@ -617,29 +617,18 @@ function _updateCamera(dt) {
   const LOOK_AHEAD = isHigh ? 20 : isHood ? 155 : KART_CAMERA.CAM_LOOK_AHEAD;
   const LOOK_Y_BASE = isHigh ? 0 : isHood ? 10.5 : KART_CAMERA.CAM_LOOK_Y;
 
-  const fwdF = KART_CAMERA.CAM_YAW_FOLLOW ?? 1.0;
-  let targetCam = car.angle;
-  if (car.drifting && Math.hypot(car.vx, car.vy) > 5) {
-    const velAngle = Math.atan2(car.vy, car.vx);
-    let velToCar = velAngle - car.angle;
-    while (velToCar >  Math.PI) velToCar -= Math.PI * 2;
-    while (velToCar < -Math.PI) velToCar += Math.PI * 2;
-    targetCam = car.angle + velToCar * (1 - fwdF);
-  }
+  const moving = Math.hypot(car.vx, car.vy) > 5;
+  const targetCam = moving ? Math.atan2(car.vy, car.vx) : car.angle;
   let dA = targetCam - _camAngle;
   while (dA > Math.PI) dA -= Math.PI * 2;
   while (dA < -Math.PI) dA += Math.PI * 2;
   const angK = 1 - Math.exp(-9.0 * dt);
   _camAngle += dA * angK;
 
-  // 드리프트 카메라 yaw
-  const driftYawTarget = car.drifting
-    ? Math.max(-0.26, Math.min(0.26, -(car.driftAngle || 0) * 0.55))
-    : 0;
-  car._camDriftYaw = (car._camDriftYaw || 0)
-    + (driftYawTarget - (car._camDriftYaw || 0)) * (1 - Math.exp(-8.0 * dt));
+  // PC: 드리프트 yaw 오프셋 ❌. 카메라는 velocity만.
+  car._camDriftYaw = 0;
   const rearFlip = rearViewActive ? Math.PI : 0;
-  const aimAngle = _camAngle + car._camDriftYaw + rearFlip;
+  const aimAngle = _camAngle + rearFlip;
   const cs = Math.cos(aimAngle), sn = Math.sin(aimAngle);
   const roadY = car.roadHeight || 0;
 
@@ -662,27 +651,12 @@ function _updateCamera(dt) {
   _camLook.y += (ly - _camLook.y) * lookK;
   _camLook.z += (lz - _camLook.z) * lookK;
 
-  // 카메라 뱅크 — lookAt 후 rotateZ(view축 기준 roll). up 벡터 방식은 view dir이 월드 X축에 가까우면 무효.
-  const refSlip = KART_CAMERA.REF_SLIP || (25 * Math.PI / 180);
-  const intensity = car.drifting
-    ? Math.min(1, Math.abs(car.slipBeta || car.driftAngle || 0) / Math.max(1e-3, refSlip))
-    : 0;
-  const dir = car._driftDir || Math.sign(car.sideSpeed || car.steerAngle || 1);
-  const tiltTarget = car.drifting ? (-dir * KART_CAMERA.CAM_TILT_MAX * intensity) : 0;
-  const snapEnd = !car.drifting
-    && (car._lastDriftEndReason === 'align'
-     || car._lastDriftEndReason === 'spin'
-     || car._lastDriftEndReason === 'cut')
-    && (car.driftStateTime || 0) < 0.25;
-  const tiltRate = snapEnd ? KART_CAMERA.ROLL_SNAP : KART_CAMERA.CAM_TILT_LERP;
-  car._camTilt = car._camTilt ?? 0;
-  car._camTilt += (tiltTarget - car._camTilt) * (1 - Math.exp(-tiltRate * Math.max(0, dt)));
-
+  // PC: 카메라 뱅크 ❌. up 고정 + lookAt만.
+  car._camTilt = 0;
   const shk = tickShake(shake, dt);
   camera3d.position.set(_camPos.x + shk.x, _camPos.y + shk.y, _camPos.z);
   camera3d.up.set(0, 1, 0);
   camera3d.lookAt(_camLook);
-  if (car._camTilt) camera3d.rotateZ(car._camTilt);
 
   if (scene && scene.sunLight) {
     const carZ = -car.y;

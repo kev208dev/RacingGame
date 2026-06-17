@@ -613,31 +613,19 @@ function _updateCamera(dt) {
   const LOOK_AHEAD = isHigh ? 20 : isHood ? 155 : KART_CAMERA.CAM_LOOK_AHEAD;
   const LOOK_Y_BASE = isHigh ? 0 : isHood ? 10.5 : KART_CAMERA.CAM_LOOK_Y;
 
-  // CAM_YAW_FOLLOW < 1: 드리프트 시 차체 yaw 일부만 추적 (velocity 방향과 블렌드) → 측면 노출.
-  const fwdF = KART_CAMERA.CAM_YAW_FOLLOW ?? 1.0;
-  let targetCam = car.angle;
-  if (car.drifting && Math.hypot(car.vx, car.vy) > 5) {
-    const velAngle = Math.atan2(car.vy, car.vx);
-    let velToCar = velAngle - car.angle;
-    while (velToCar >  Math.PI) velToCar -= Math.PI * 2;
-    while (velToCar < -Math.PI) velToCar += Math.PI * 2;
-    targetCam = car.angle + velToCar * (1 - fwdF);
-  }
+  // PC: 카메라는 '진행방향(velocity)' 추적 — 차체 헤딩 ❌. 차가 yaw해도 카메라는 가는 방향만 봄.
+  const moving = Math.hypot(car.vx, car.vy) > 5;
+  const targetCam = moving ? Math.atan2(car.vy, car.vx) : car.angle;
   let dA = targetCam - _camAngle;
   while (dA >  Math.PI) dA -= Math.PI * 2;
   while (dA < -Math.PI) dA += Math.PI * 2;
   const angK = 1 - Math.exp(-9.0 * dt);
   _camAngle += dA * angK;
 
-  // 드리프트 카메라: 미끄러지는 반대로 ~15° yaw
-  const driftYawTarget = car.drifting
-    ? Math.max(-0.26, Math.min(0.26, -(car.driftAngle || 0) * 0.55))
-    : 0;
-  car._camDriftYaw = (car._camDriftYaw || 0)
-    + (driftYawTarget - (car._camDriftYaw || 0)) * (1 - Math.exp(-8.0 * dt));
-  // 후방 보기: '/' 누른 동안 카메라 좌우 반전
+  // 드리프트 yaw 오프셋 제거(스윙 방지) — 카메라는 velocity만 본다.
+  car._camDriftYaw = 0;
   const rearFlip = rearViewActive ? Math.PI : 0;
-  const aimAngle = _camAngle + car._camDriftYaw + rearFlip;
+  const aimAngle = _camAngle + rearFlip;
   const cs = Math.cos(aimAngle), sn = Math.sin(aimAngle);
   const roadY = car.roadHeight || 0;
 
@@ -681,10 +669,9 @@ function _updateCamera(dt) {
   // Apply screen-shake offset on top of the smoothed position.
   const shk = tickShake(shake, dt);
   camera3d.position.set(_camPos.x + shk.x, _camPos.y + shk.y, _camPos.z);
-  // 1) up 리셋  2) lookAt  3) rotateZ — 순서 중요 (lookAt이 회전 매트릭스 새로 잡음).
+  // PC: 카메라 뱅크 ❌ — up 고정, lookAt만. rotateZ 안 함 (수평선 항상 수평).
   camera3d.up.set(0, 1, 0);
   camera3d.lookAt(_camLook);
-  if (car._camTilt) camera3d.rotateZ(car._camTilt);
 
   if (scene && scene.sunLight) {
     const carZ = -car.y;

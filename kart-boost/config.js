@@ -142,10 +142,12 @@ export const KART_CAMERA = {
   // ── 드리프트 카메라 (yaw 오프셋 — 기존 유지) ──
   CAM_DIST_PULL:   0.17,
   CAM_HEIGHT_DROP: 5,
-  DRIFT_YAW_GAIN:  0.80,
-  DRIFT_YAW_MAX:   0.45,                 // ~26° — 카메라 yaw 지연 폭
+  // PC 원작: 카메라는 '진행방향(velocity)'을 추적. 차체 헤딩 추적 ❌. drift yaw 오프셋도 ❌.
+  // 아래 값은 legacy(다른 screen 참조 유지용)만 남기고 사용하지 않음.
+  DRIFT_YAW_GAIN:  0.0,
+  DRIFT_YAW_MAX:   0.0,
   DRIFT_YAW_SMOOTH: 6.0,
-  CAM_YAW_FOLLOW:  0.75,                 // PC: 카메라가 차체 yaw를 75%만 추적 (드리프트 시 측면 노출)
+  CAM_YAW_FOLLOW:  0.0,                  // (legacy) 카메라는 velocity만 추적 — heading 0%.
   BODY_ROLL_DRIFT: 0.080,    // (legacy, 사용 안 함 — KART_ROLL_MAX로 교체)
   SPEEDLINE_KMH:   200,
   SPEEDLINE_RANGE: 160,
@@ -156,8 +158,8 @@ export const KART_CAMERA = {
   // 회전 피벗 (root)을 차체 뒤쪽으로 옮기기 — drift/yaw 회전 中심이 뒷축에 가까워짐.
   KART_LENGTH:           18.7,             // GLB normalize TARGET_MAX와 동일
   KART_REAR_PIVOT_BIAS:  0.30,             // 0=중심, 1=뒤끝 (살짝)
-  KART_ROLL_MAX:   17 * Math.PI / 180,  // 17° — PC 원작 누움 폭 (15-18° 범위)
-  CAM_TILT_MAX:    7  * Math.PI / 180,  // 7° — 수평선 확실히 기울게
+  KART_ROLL_MAX:   17 * Math.PI / 180,  // 17° — 차 '모델'만 기움
+  CAM_TILT_MAX:    0,                    // PC: 카메라 뱅크 ❌. 수평선 항상 수평.
   ROLL_LERP:       7.0,                 // /s — 정상 응답
   ROLL_SNAP:       22.0,                // /s — cut/spin 시 빠른 0 복귀
   REF_SLIP:        20 * Math.PI / 180,  // ~20° — intensity 풀강도 빠르게 도달

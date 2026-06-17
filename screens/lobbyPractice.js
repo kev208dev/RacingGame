@@ -460,24 +460,10 @@ function updateLobbyCamera(dt) {
   const LOOK_AHEAD = KART_CAMERA.CAM_LOOK_AHEAD;
   const LOOK_Y = KART_CAMERA.CAM_LOOK_Y;
 
-  // 드리프트 yaw 오프셋
-  const driftYawTarget = car.drifting
-    ? Math.max(-KART_CAMERA.DRIFT_YAW_MAX, Math.min(KART_CAMERA.DRIFT_YAW_MAX,
-        -(car.driftAngle || 0) * KART_CAMERA.DRIFT_YAW_GAIN))
-    : 0;
-  car._camDriftYaw = (car._camDriftYaw || 0)
-    + (driftYawTarget - (car._camDriftYaw || 0)) * (1 - Math.exp(-KART_CAMERA.DRIFT_YAW_SMOOTH * dt));
-  // CAM_YAW_FOLLOW: 드리프트 中 차체 yaw를 일부만 추적해 측면 노출.
-  const fwdF = KART_CAMERA.CAM_YAW_FOLLOW ?? 1.0;
-  let camBase = car.angle;
-  if (car.drifting && Math.hypot(car.vx, car.vy) > 5) {
-    const velAngle = Math.atan2(car.vy, car.vx);
-    let velToCar = velAngle - car.angle;
-    while (velToCar >  Math.PI) velToCar -= Math.PI * 2;
-    while (velToCar < -Math.PI) velToCar += Math.PI * 2;
-    camBase = car.angle + velToCar * (1 - fwdF);
-  }
-  const aimAngle = camBase + car._camDriftYaw;
+  // PC: 카메라는 velocity 추적, drift yaw 오프셋 ❌.
+  car._camDriftYaw = 0;
+  const moving = Math.hypot(car.vx, car.vy) > 5;
+  const aimAngle = moving ? Math.atan2(car.vy, car.vx) : car.angle;
   const cs = Math.cos(aimAngle), sn = Math.sin(aimAngle);
 
   const targetX = car.x - cs * DIST;
@@ -494,25 +480,10 @@ function updateLobbyCamera(dt) {
   camLook.y += (LOOK_Y - camLook.y) * lookK;
   camLook.z += (-(car.y + sn * LOOK_AHEAD) - camLook.z) * lookK;
 
-  // 카메라 뱅크 — lookAt 후 rotateZ(view축 기준 roll). up 벡터 방식은 view dir이 월드 X축에 가까우면 무효.
-  const refSlip = KART_CAMERA.REF_SLIP || (25 * Math.PI / 180);
-  const intensity = car.drifting
-    ? Math.min(1, Math.abs(car.slipBeta || car.driftAngle || 0) / Math.max(1e-3, refSlip))
-    : 0;
-  const dir = car._driftDir || Math.sign(car.sideSpeed || car.steerAngle || 1);
-  const tiltTarget = car.drifting ? (-dir * KART_CAMERA.CAM_TILT_MAX * intensity) : 0;
-  const snapEnd = !car.drifting
-    && (car._lastDriftEndReason === 'align'
-     || car._lastDriftEndReason === 'spin'
-     || car._lastDriftEndReason === 'cut')
-    && (car.driftStateTime || 0) < 0.25;
-  const tiltRate = snapEnd ? KART_CAMERA.ROLL_SNAP : KART_CAMERA.CAM_TILT_LERP;
-  car._camTilt = car._camTilt ?? 0;
-  car._camTilt += (tiltTarget - car._camTilt) * (1 - Math.exp(-tiltRate * Math.max(0, dt)));
-
+  // PC: 카메라 뱅크 ❌.
+  car._camTilt = 0;
   camera.up.set(0, 1, 0);
   camera.lookAt(camLook);
-  if (car._camTilt) camera.rotateZ(car._camTilt);
 
   if (toastTimer > 0) toastTimer = Math.max(0, toastTimer - dt);
   const toast = document.getElementById('lobby-car-toast');
