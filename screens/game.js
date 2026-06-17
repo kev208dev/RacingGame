@@ -299,8 +299,7 @@ export function updateGame(dt, now) {
   updateDriftSound(car.drifting, Math.abs(car.sideSpeed || 0));
   if (car.boosting && !_prevBoosting) playBoostActivate(false);
   if (car.drsActive && !_prevDrsActive) playBoostActivate(true);
-  _prevBoosting = !!car.boosting;
-  _prevDrsActive = !!car.drsActive;
+  // _prevBoosting / _prevDrsActive 갱신은 프레임 끝(FOV 펀치 계산 뒤)에서 한다 — 같은 프레임 안에서 다른 곳도 edge 감지하려면 살아있어야 함.
 
   // ── timing ──
   const event = updateTiming(timing, car, track, now);
@@ -377,6 +376,10 @@ export function updateGame(dt, now) {
     * (1 - Math.exp(-KART_CAMERA.BOOST_FOV_DECAY * dt));
 
   updateFovPump(camera3d, kmh, car.maxSpeed * TOP_SPEED_MULT, boostActive, dt, car._boostFovKick);
+
+  // edge 감지용 prev 갱신 — kick 트리거 계산 끝난 뒤에.
+  _prevBoosting = !!car.boosting;
+  _prevDrsActive = !!car.drsActive;
 
   // ── render ──
   renderer.render(scene, camera3d);

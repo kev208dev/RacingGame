@@ -99,6 +99,10 @@ export function createCar3D(carData = {}) {
   body.add(inner);
   root.add(body);
 
+  // 배기 화염 — GLB에 boostflame 메시가 없어서 절차적으로 추가.
+  // body(서스펜션) 자식으로 붙여서 같이 흔들리게.
+  _addBoostFlame(body);
+
   root.wheelGroups   = kart ? kart.wheels : [];
   root.body          = body;
   root.bodyInner     = inner;
@@ -108,6 +112,37 @@ export function createCar3D(carData = {}) {
   root._needsGlbSwap = !kart;
 
   return root;
+}
+
+function _addBoostFlame(parent) {
+  // root 좌표계 기준: kart forward = +X, 차체 뒤끝 ≈ -7 부근(KART_LENGTH 18.7 / 2 - 피벗 bias).
+  const len = KC.KART_LENGTH || 18.7;
+  const bias = KC.KART_REAR_PIVOT_BIAS || 0.30;
+  const rearX = -(len * 0.5) + (len * 0.5 * bias);  // root-local에서 차 뒤쪽 위치
+  const group = new THREE.Group();
+  group.name = 'boostflame';
+  group.position.set(rearX - 1.2, 1.4, 0);
+  group.rotation.z = Math.PI / 2; // cone 끝을 -X로
+  // 콘 메시 3겹.
+  const layers = [
+    { name: 'flameouter', color: 0xff5a1f, opacity: 0.36, radius: 0.9 },
+    { name: 'flameinner', color: 0xfff1a8, opacity: 0.68, radius: 0.55 },
+    { name: 'flameglow',  color: 0xffd066, opacity: 0.13, radius: 1.45 },
+  ];
+  for (const L of layers) {
+    const m = new THREE.Mesh(
+      new THREE.ConeGeometry(L.radius, 3.5, 16, 1, true),
+      new THREE.MeshBasicMaterial({
+        color: L.color, transparent: true, opacity: L.opacity,
+        depthWrite: false, blending: THREE.AdditiveBlending,
+      })
+    );
+    m.name = L.name;
+    m.position.y = 1.8;
+    group.add(m);
+  }
+  group.visible = false;
+  parent.add(group);
 }
 
 function _trySwapToGlb(root) {

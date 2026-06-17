@@ -112,6 +112,7 @@ function _drawKartDebug(ctx, car) {
     `gauge    : ${gauge.toFixed(1)} / 100  stock=${stock}/2`,
     `driftTime: ${driftTime.toFixed(2)} s`,
     `boost    : ${(car.boosting ? 'ON' : 'off')} sus=${(car.boostSustainTimer || 0).toFixed(2)}`,
+    `boost FX : power=${(car.boostPower || 0).toFixed(2)} kick=${(car._boostFovKick || 0).toFixed(1)} fire=${(car.boostFireFx || 0).toFixed(2)}`,
   ];
   for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i], x + 8, y + 36 + i * 14);
 

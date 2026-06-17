@@ -166,11 +166,11 @@ export const KART_CAMERA = {
   // ── 부스트 발동 펀치 (FOV kick / speedline / flame) ──
   // 발동 순간 FOV가 +KICK으로 즉시 가산, 매 프레임 SUSTAIN(boost中)/0(끝)으로
   // 감쇠. 체이닝 시 첫 kick만 큼, 지속 베이스 SUSTAIN 유지.
-  BOOST_FOV_KICK:        14,     // deg — 발동 순간 즉시 가산
-  BOOST_FOV_SUSTAIN:     4,      // deg — 지속 중 베이스 (kick 끝나도 유지)
+  BOOST_FOV_KICK:        18,     // deg — 발동 순간 즉시 가산 (14→18, 더 확실한 펀치)
+  BOOST_FOV_SUSTAIN:     5,      // deg — 지속 중 베이스
   BOOST_FOV_DECAY:       6.0,    // /s — kick → sustain/0 lerp 응답
-  BOOST_SHAKE_AMP:       7,      // 발동 순간 카메라 셰이크 (effects.triggerShake)
+  BOOST_SHAKE_AMP:       8,      // 발동 순간 카메라 셰이크 (7→8)
   SPEEDLINE_MAX_OPACITY: 0.85,   // 부스트 中 속도선 알파 max
-  SPEEDLINE_BOOST_RATE:  260,    // /s — boost 中 추가 spawn rate
-  FLAME_BOOST_SCALE:     1.85,   // 부스트 中 화염 길이 배율 (base 추가)
+  SPEEDLINE_BOOST_RATE:  320,    // /s — boost 中 추가 spawn rate (260→320)
+  FLAME_BOOST_SCALE:     2.4,    // 부스트 中 화염 길이 배율 (1.85→2.4)
 };
