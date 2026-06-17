@@ -203,13 +203,15 @@ function _resolveCollision(car, nextX, nextY, track) {
     if (Number.isFinite(nx) && Number.isFinite(ny)) {
       const vn = car.vx * nx + car.vy * ny;
       if (vn < 0) {
-        const normalBleed = wallRiding ? 0.72 : 1.12;
+        // wallRide: 법선 성분만 약하게 깎음. hard hit: 법선 성분 반사(>1) → 퉁 튕김.
+        const normalBleed = wallRiding ? 0.72 : 1.55;
         car.vx -= vn * nx * normalBleed;
         car.vy -= vn * ny * normalBleed;
       }
     }
-    car.vx *= wallRiding ? 0.93 : 0.70;
-    car.vy *= wallRiding ? 0.93 : 0.70;
+    // 접선 마찰 — wallRide는 약하게, hard는 살짝 튕긴 뒤에도 속도 일부 보존.
+    car.vx *= wallRiding ? 0.93 : 0.84;
+    car.vy *= wallRiding ? 0.93 : 0.84;
 
     car.lastWallHit = wallRiding ? null : {
       x: fx, y: fy, nx, ny,
