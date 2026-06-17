@@ -48,8 +48,8 @@ export function listKartIds() {
 }
 
 function _normalize(scene) {
-  // 1) 최대축이 TARGET_MAX 가 되도록 scale.
-  const TARGET_MAX = 3.6;
+  // 모든 변환(최종 스케일 + 바닥/중심 정렬) 한곳에서 마감. car.js는 추가 scale ❌.
+  const TARGET_MAX = 18.7;   // 최대축 단위 (예전 3.6 × 5.2와 동일).
   const box0 = new THREE.Box3().setFromObject(scene);
   const size0 = new THREE.Vector3();
   box0.getSize(size0);
@@ -57,7 +57,7 @@ function _normalize(scene) {
   scene.scale.multiplyScalar(TARGET_MAX / maxDim);
   scene.updateMatrixWorld(true);
 
-  // 2) scaled 상태로 재측정 → 바닥 y=0, x/z 중심 0.
+  // 스케일 적용된 상태로 측정 → 바닥 y=0, x/z 중심 0.
   const box = new THREE.Box3().setFromObject(scene);
   const center = new THREE.Vector3();
   box.getCenter(center);

@@ -85,18 +85,23 @@ export function createCar3D(carData = {}) {
   const validIds  = listKartIds();
   const kartId    = validIds.includes(designId) ? designId : validIds[0];
 
-  // GLB 우선. 로드 전이면 fallback box → updateCar3D에서 GLB 준비되는 즉시 swap.
-  const kart = getKartMesh(kartId);
+  // body wrapper(서스펜션 y 바운스 슬롯) → inner(yaw rotation) → GLB scene.
+  // GLB는 normalize에서 이미 최종 스케일 + 바닥 정렬 완료. inner는 회전만 담당.
+  const body  = new THREE.Group();
+  const inner = new THREE.Group();
+  inner.rotation.y = Math.PI / 2;
+  const kart  = getKartMesh(kartId);
   const model = kart ? kart.root : _fallbackBox();
-  model.rotation.y = Math.PI / 2;
-  model.scale.multiplyScalar(5.2);
-  root.add(model);
+  inner.add(model);
+  body.add(inner);
+  root.add(body);
 
-  root.wheelGroups = kart ? kart.wheels : [];
-  root.body        = model;
-  root.castShadow  = true;
+  root.wheelGroups   = kart ? kart.wheels : [];
+  root.body          = body;
+  root.bodyInner     = inner;
+  root.castShadow    = true;
   root._lastWheelTime = performance.now();
-  root._designId    = kartId;
+  root._designId     = kartId;
   root._needsGlbSwap = !kart;
 
   return root;
@@ -106,15 +111,14 @@ function _trySwapToGlb(root) {
   if (!root._needsGlbSwap) return;
   const kart = getKartMesh(root._designId);
   if (!kart) return;
-  if (root.body) root.remove(root.body);
-  const model = kart.root;
-  model.rotation.y = Math.PI / 2;
-  model.scale.multiplyScalar(5.2);
-  root.add(model);
-  root.body = model;
+  // inner의 자식만 교체 — body(서스펜션 슬롯)와 inner(yaw) 구조 유지.
+  const inner = root.bodyInner;
+  if (!inner) return;
+  while (inner.children.length) inner.remove(inner.children[0]);
+  inner.add(kart.root);
   root.wheelGroups = kart.wheels;
   root._needsGlbSwap = false;
-  root._susState = null;  // 휠 baseY 다시 계산
+  root._susState = null;
 }
 
 function _fallbackBox() {
@@ -251,7 +255,8 @@ export function updateCar3D(mesh3d, car, input, track = null, dt = 1 / 60) {
   if (mesh3d.body) {
     const avgY = (fAvg + rAvg) / 2;
     const driftDrop = car.drifting ? 0.22 : 0;
-    mesh3d.body.position.y = avgY - baseRef - driftDrop;
+    // GLB 바디는 normalize에서 바닥=0 정렬됨. y<0 가면 바퀴가 노면 속으로 들어감 → 클램프.
+    mesh3d.body.position.y = Math.max(0, avgY - baseRef - driftDrop);
     const targetPitch = (rAvg - fAvg) * 0.02 + throttle * 0.018 - brake * 0.048;
     // KartRider 연출: 드리프트 = 안쪽으로 확 누움.
     // intensity = β / REF_SLIP, REF_SLIP 낮춰서 중간 각도에서도 풀강도.
