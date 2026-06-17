@@ -11,7 +11,7 @@ import { initLobbyPractice, updateLobbyPractice, stopLobbyPractice, switchLobbyC
 import { initAuth }         from './utils/auth.js';
 import { getCurrentUser, onAuthChange, signOut, signInLocal, signUpLocal } from './utils/auth.js';
 import { clearFrameKeys }   from './utils/input.js';
-import { preloadWhiteMesh } from './js/whiteMesh.js';
+import { preloadKartMeshes } from './js/whiteMesh.js';
 import { formatTime }       from './utils/math.js';
 import { CAR_DATA }         from './data/cars.js';
 import { isCarUnlocked }    from './utils/unlocks.js';
@@ -1036,8 +1036,8 @@ _safeInit('globalCompletionToast', _wireGlobalCompletionToast);
 // even if auth/profile init below throws or rejects.
 startGameLoopOnce();
 
-// 카트 GLB 사전 로드 (fire-and-forget; 로드 전 createCar3D는 절차적 모델로 fallback).
-preloadWhiteMesh().catch(err => console.warn('[whiteMesh] preload failed:', err));
+// 두 카트 GLB 사전 로드 (fire-and-forget; 로드 전 createCar3D는 fallback box).
+preloadKartMeshes().catch(err => console.warn('[karts] preload failed:', err));
 
 await _safeAsyncInit('auth', initAuth);
 _safeInit('profile', initProfile);

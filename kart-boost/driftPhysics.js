@@ -305,7 +305,12 @@ export function updateDriftStateMachine(car, input, dt) {
   if (car.driftState === 'idle' || car.driftState === 'release') {
     const steerSign = Math.sign(input.steer || 0);
     const hasSteer  = Math.abs(input.steer || 0) > 0.1;
-    if (handbrake && hasSteer && speed > K.MIN_DRIFT_SPEED) {
+    // 마찰원 초과 트리거 — Shift 없이도 후륜 그립 한계 넘으면 자동 진입.
+    const frictionTrigger = K.FRICTION_TRIGGER
+      && car.frictionCircleOver
+      && hasSteer
+      && speed > (K.FRICTION_TRIGGER_MIN_SPEED || 60);
+    if ((handbrake || frictionTrigger) && hasSteer && speed > K.MIN_DRIFT_SPEED) {
       car.driftState     = 'charge';
       car.driftStateTime = 0;
       car.drifting       = true;

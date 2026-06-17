@@ -1,16 +1,17 @@
 import * as THREE from 'three';
 import { createCarDesign } from './carDesigns.js';
-import { getWhiteMeshClone } from './whiteMesh.js';
+import { getKartMesh, listKartIds } from './whiteMesh.js';
 import { mapStatToPhysics, normalizeCarStats } from './carStats.js';
 import { getSkinById } from '../data/skins.js';
 import { KART_CAMERA as KC } from '../kart-boost/config.js';
 
+// 카트 → GLB 매핑. 두 GLB(kart_a/kart_b)만 사용. 미매핑은 kart_a 기본.
 const CAR_DESIGN_BY_ID = {
-  apex_gt3: 'gt_silver',
-  lmp: 'cyber_black',
-  zero_f1: 'formula_red',
-  photon_gtr: 'neon_aqua',
-  prism_evo: 'neon_magenta',
+  apex_gt3:   'kart_a',
+  lmp:        'kart_b',
+  zero_f1:    'kart_a',
+  photon_gtr: 'kart_b',
+  prism_evo:  'kart_a',
 };
 
 // ── physics state ────────────────────────────────────────────
@@ -80,42 +81,38 @@ export function createCar(carData, startPos) {
 //     └── createCarDesign(type) child
 export function createCar3D(carData = {}) {
   const root = new THREE.Group();
-  const designType = carData.designType || CAR_DESIGN_BY_ID[carData.id] || 'formula_red';
+  const designId  = carData.designType || CAR_DESIGN_BY_ID[carData.id] || 'kart_a';
+  const validIds  = listKartIds();
+  const kartId    = validIds.includes(designId) ? designId : validIds[0];
 
-  // 시도: GLB 흰 메시 모델 사용. 로드 안 됐으면 절차적 모델로 fallback.
-  const glb = getWhiteMeshClone();
-  const model = glb || createCarDesign(designType);
-  if (!glb) _applySkin(model, carData.skin);
+  // GLB 우선. 로드 전이면 simple fallback box로 보여서 첫 프레임 살림.
+  const kart = getKartMesh(kartId);
+  const model = kart ? kart.root : _fallbackBox();
   model.rotation.y = Math.PI / 2;
-  if (glb) {
-    // GLB는 normalize가 이미 TARGET 단위로 맞춰놨음 → 덮어쓰지 말고 곱하기.
-    model.scale.multiplyScalar(5.2);
-  } else {
-    model.scale.set(5.2, 5.2, 5.2);
-  }
+  // GLB는 normalize가 이미 단위 박스로 맞춤. fallback box도 단위.
+  model.scale.multiplyScalar(5.2);
   root.add(model);
 
-  const wheelGroups = [];
-  if (!glb) {
-    model.traverse(child => {
-      const childName = child.name.toLowerCase();
-      const isWheelGroup = child.isGroup && childName.includes('wheel') && !childName.includes('_pivot');
-      if (isWheelGroup) {
-        child.spinPivot = child.userData.spinPivot || child.children.find(c => c.isGroup && c.name.toLowerCase().includes('_pivot'));
-        child.baseY = child.userData.baseY ?? child.position.y;
-        child.sideSign = child.position.x < 0 ? 1 : -1;
-        child.axleSign = child.position.z > 0 ? 1 : -1;
-        wheelGroups.push(child);
-      }
-    });
-  }
-
-  root.wheelGroups = wheelGroups;
+  // 휠 — GLB가 감지한 휠 메시들. fallback box면 빈 배열.
+  const glbWheels = kart ? kart.wheels : [];
+  root.wheelGroups = glbWheels;     // {pivot, axis, front, side}
   root.body        = model;
   root.castShadow  = true;
   root._lastWheelTime = performance.now();
+  root._designId   = kartId;
 
   return root;
+}
+
+function _fallbackBox() {
+  const g = new THREE.Group();
+  const mesh = new THREE.Mesh(
+    new THREE.BoxGeometry(2.5, 1.0, 1.4),
+    new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.4 })
+  );
+  mesh.position.y = 0.5;
+  g.add(mesh);
+  return g;
 }
 
 function _applySkin(model, skinData) {
@@ -173,9 +170,13 @@ export function updateCar3D(mesh3d, car, input, track = null, dt = 1 / 60) {
   const now = performance.now();
   const wheelDt = Math.min(0.05, Math.max(0, (now - (mesh3d._lastWheelTime || now)) / 1000));
   mesh3d._lastWheelTime = now;
-  const spinRate = speed * 2.2 * wheelDt * speedSign;
+  const spinRate = speed * 0.40 * wheelDt * speedSign;
   for (const wg of (mesh3d.wheelGroups || [])) {
-    if (wg.spinPivot) wg.spinPivot.rotation.y += spinRate;
+    if (!wg.pivot) continue;
+    // 휠 메시의 짧은축(=axle)을 기준으로 굴림.
+    if      (wg.axis === 'x') wg.pivot.rotation.x += spinRate;
+    else if (wg.axis === 'y') wg.pivot.rotation.y += spinRate;
+    else                       wg.pivot.rotation.z += spinRate;
   }
 
 
@@ -186,7 +187,7 @@ export function updateCar3D(mesh3d, car, input, track = null, dt = 1 / 60) {
   const ca = Math.cos(a), sa = Math.sin(a);
 
   if (!mesh3d._susState) {
-    const initY = (mesh3d.wheelGroups?.[0]?.position?.y) ?? 0.48;
+    const initY = (mesh3d.wheelGroups?.[0]?.pivot?.position?.y) ?? 0.48;
     mesh3d._susState = {
       wheels: {
         fl: { y: initY }, fr: { y: initY },
@@ -197,7 +198,7 @@ export function updateCar3D(mesh3d, car, input, track = null, dt = 1 / 60) {
   }
 
   const sus = mesh3d._susState;
-  const baseRef = mesh3d.wheelGroups?.[0]?.baseY ?? mesh3d.wheelGroups?.[0]?.position?.y ?? 0.48;
+  const baseRef = mesh3d.wheelGroups?.[0]?.pivot?.position?.y ?? 0.48;
 
   const corners = [
     { key: 'fl', lx: 12, lz: 9 },
@@ -270,17 +271,8 @@ export function updateCar3D(mesh3d, car, input, track = null, dt = 1 / 60) {
     mesh3d.body.rotation.x += (targetRoll - mesh3d.body.rotation.x) * 0.20;
   }
 
-  for (const wg of (mesh3d.wheelGroups || [])) {
-    // Keep tires planted. Suspension now moves only the body so the wheels do
-    // not visibly bounce into/out of the road surface.
-    wg.position.y = wg.baseY ?? baseRef;
-  }
-
-  // front-wheel steer
-  if (mesh3d.wheelGroups) {
-    const frontWheels = mesh3d.wheelGroups.filter(w => w.position.z > 0);
-    for (const wg of frontWheels) wg.rotation.y = car.steerAngle * 0.9;
-  }
+  // 휠 위치는 GLB normalize한 자리 그대로. 굴림은 위 spinRate 루프에서 처리.
+  // 앞바퀴 yaw 스티어는 GLB의 회전축 다양성 때문에 일단 skip (바디 yaw는 root에서 처리).
 
   // brake lights
   const braking = input && (input.brake > 0);

@@ -8,6 +8,7 @@ import {
   MIN_DRIFT_SPEED as KART_MIN_DRIFT_SPEED,
   DOUBLE_DRIFT_MIN_SPEED as KART_DOUBLE_DRIFT_MIN_SPEED,
 } from '../kart-boost/index.js';
+import { updateAnalytics } from './driftAnalytics.js';
 
 export const TOP_SPEED_MULT = 1.0; // kart 모델은 car.maxSpeed 자체를 cruise cap으로 사용
 export const KMH_PER_UNIT   = 1;
@@ -105,6 +106,9 @@ export function updatePhysics(car, input, dt, track) {
   car.drsAvailable = false;
   car.drsPower     = (car.drsPower || 0) * Math.exp(-6 * dt);
   car.superBoostMeter = 100;
+
+  // ─── 6. 차량동역학 관측 (β, r, a_y, 축하중, phase 분류) ───
+  updateAnalytics(car, dt, input);
 }
 
 // ───────────────────────────────────────────────────────────────

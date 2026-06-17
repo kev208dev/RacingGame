@@ -1,51 +1,63 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-const URL = 'assets/cars/white_mesh.glb';
+// 두 GLB 카트 — id → 파일.
+const KART_URLS = {
+  kart_a: 'assets/cars/kart_a.glb',
+  kart_b: 'assets/cars/kart_b.glb',
+};
 
-let _loaded = null;     // THREE.Group (원본)
-let _loading = null;    // Promise
+const _loaded = {};    // id → THREE.Group (정규화된 원본)
+const _loading = {};   // id → Promise
 
-export function preloadWhiteMesh() {
-  if (_loaded) return Promise.resolve(_loaded);
-  if (_loading) return _loading;
+export function preloadKartMeshes() {
+  return Promise.all(Object.keys(KART_URLS).map(id => _loadOne(id)));
+}
+
+function _loadOne(id) {
+  if (_loaded[id]) return Promise.resolve(_loaded[id]);
+  if (_loading[id]) return _loading[id];
   const loader = new GLTFLoader();
-  _loading = new Promise((resolve, reject) => {
-    loader.load(URL, gltf => {
-      _loaded = gltf.scene;
-      _normalize(_loaded);
-      resolve(_loaded);
+  _loading[id] = new Promise((resolve, reject) => {
+    loader.load(KART_URLS[id], gltf => {
+      _loaded[id] = gltf.scene;
+      _normalize(_loaded[id]);
+      resolve(_loaded[id]);
     }, undefined, reject);
   });
-  return _loading;
+  return _loading[id];
 }
 
-export function getWhiteMeshClone() {
-  if (!_loaded) return null;
-  const clone = _loaded.clone(true);
-  return clone;
+// 카트 그룹 복제본 + 휠 메시 배열 반환. 로드 전이면 null.
+export function getKartMesh(id) {
+  const src = _loaded[id];
+  if (!src) return null;
+  const root = src.clone(true);
+  const wheels = _detectWheels(root);
+  return { root, wheels };
 }
 
-// GLB의 forward축/스케일이 게임 기대와 다를 수 있어 한 번 정규화.
-// car.js에서 model.rotation.y = π/2, scale 5.2 적용함 → 여기서는 단위 박스로 맞춤.
+export function listKartIds() {
+  return Object.keys(KART_URLS);
+}
+
 function _normalize(scene) {
-  // 1) 측정 → 가장 긴 축이 TARGET 단위가 되도록 scale 먼저 적용.
-  const TARGET_MAX = 3.6; // car.js scale 5.2 와 조합 → ~18 단위 카트.
+  // 1) 최대축이 TARGET_MAX 가 되도록 scale.
+  const TARGET_MAX = 3.6;
   const box0 = new THREE.Box3().setFromObject(scene);
   const size0 = new THREE.Vector3();
   box0.getSize(size0);
   const maxDim = Math.max(size0.x, size0.y, size0.z) || 1;
-  const k = TARGET_MAX / maxDim;
-  scene.scale.multiplyScalar(k);
+  scene.scale.multiplyScalar(TARGET_MAX / maxDim);
   scene.updateMatrixWorld(true);
 
-  // 2) scale 적용된 상태로 다시 측정 → 정확한 ground/center 보정.
+  // 2) scaled 상태로 재측정 → 바닥 y=0, x/z 중심 0.
   const box = new THREE.Box3().setFromObject(scene);
   const center = new THREE.Vector3();
   box.getCenter(center);
   scene.position.x -= center.x;
   scene.position.z -= center.z;
-  scene.position.y -= box.min.y;   // 바닥을 y=0 에 정렬
+  scene.position.y -= box.min.y;
 
   scene.traverse(c => {
     if (c.isMesh) {
@@ -53,4 +65,77 @@ function _normalize(scene) {
       c.receiveShadow = false;
     }
   });
+}
+
+// 휠 감지: 이름 매치(wheel|tire|tyre|rim) 우선, 못 찾으면 bottom-4 휴리스틱.
+// 반환: [{ pivot: Group, axis: 'x'|'y'|'z', front: bool, side: -1|1 }]
+function _detectWheels(root) {
+  const named = [];
+  root.traverse(c => {
+    if (!c.isMesh) return;
+    const n = (c.name || '').toLowerCase();
+    if (n.includes('wheel') || n.includes('tire') || n.includes('tyre') || n.includes('rim')) {
+      named.push(c);
+    }
+  });
+  let picks = named;
+  if (picks.length < 4) {
+    // 이름 매치 부족 → bottom-4 휴리스틱.
+    const meshes = [];
+    root.traverse(c => { if (c.isMesh) meshes.push(c); });
+    const withY = meshes.map(m => {
+      const b = new THREE.Box3().setFromObject(m);
+      return { mesh: m, y: (b.min.y + b.max.y) * 0.5, center: b.getCenter(new THREE.Vector3()), size: b.getSize(new THREE.Vector3()) };
+    });
+    withY.sort((a, b) => a.y - b.y);
+    picks = withY.slice(0, 8).map(o => o.mesh);
+    // 그중 4개: front-left/right + rear-left/right (x, z 좌표 극값).
+    if (picks.length > 4) {
+      const scored = picks.map(m => {
+        const c = new THREE.Box3().setFromObject(m).getCenter(new THREE.Vector3());
+        return { mesh: m, x: c.x, z: c.z };
+      });
+      // 절댓값 큰 순.
+      scored.sort((a, b) => (Math.abs(b.x) + Math.abs(b.z)) - (Math.abs(a.x) + Math.abs(a.z)));
+      picks = scored.slice(0, 4).map(s => s.mesh);
+    }
+  }
+  if (picks.length === 0) return [];
+
+  // 각 휠을 pivot Group으로 감싸기: pivot이 휠 중심에 위치 → mesh는 pivot-local 0,0,0.
+  const wheels = [];
+  for (const mesh of picks) {
+    const b = new THREE.Box3().setFromObject(mesh);
+    const center = b.getCenter(new THREE.Vector3());
+    const size = b.getSize(new THREE.Vector3());
+    // 가장 짧은 축을 축(axle)로 추정 (실린더 가정).
+    let axis = 'x';
+    const minDim = Math.min(size.x, size.y, size.z);
+    if (minDim === size.x) axis = 'x';
+    else if (minDim === size.y) axis = 'y';
+    else axis = 'z';
+
+    // pivot Group을 mesh의 parent 위치(world)에 추가, mesh를 pivot child로.
+    const pivot = new THREE.Group();
+    pivot.name = mesh.name + '_pivot';
+    const parent = mesh.parent || root;
+    // mesh world → parent local 변환은 단순화: mesh 그대로 두고 회전만 pivot에 거는 대신
+    // pivot을 mesh로 swap.
+    parent.add(pivot);
+    pivot.position.copy(mesh.position);
+    pivot.rotation.copy(mesh.rotation);
+    pivot.scale.copy(mesh.scale);
+    parent.remove(mesh);
+    mesh.position.set(0, 0, 0);
+    mesh.rotation.set(0, 0, 0);
+    mesh.scale.set(1, 1, 1);
+    pivot.add(mesh);
+
+    // x 좌표(or z 좌표) 부호로 front/side 추정.
+    // 카트 forward = local +x (car.js에서 model.rotation.y=π/2 적용 후).
+    const front = center.x > 0;
+    const side  = center.z >= 0 ? 1 : -1;
+    wheels.push({ pivot, axis, front, side, _centerLocal: center.clone() });
+  }
+  return wheels;
 }

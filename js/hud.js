@@ -66,7 +66,7 @@ export function drawHUD(ctx, car, timing, canvasW, canvasH, track, ghost = null)
 
 function _drawKartDebug(ctx, car) {
   const x = 12, y = 92;
-  const w = 240, h = 188;
+  const w = 260, h = 308;
   ctx.save();
   ctx.fillStyle = 'rgba(0,0,0,0.66)';
   ctx.fillRect(x, y, w, h);
@@ -93,14 +93,23 @@ function _drawKartDebug(ctx, car) {
 
   ctx.fillStyle = '#fff';
   ctx.font = '11px monospace';
+  // ── 차량동역학 / 6단계 분류 ──
+  const phase = car.phase || 'STRAIGHT';
+  const phaseT = car.phaseTime || 0;
+  const yawDeg = ((car.yawRate || 0) * 180 / Math.PI);
+  const al = car.axleLoads || {};
   const lines = [
+    `phase    : ${phase}  (${phaseT.toFixed(2)}s)`,
     `surface  : ${surface}`,
-    `vF       : ${vF.toFixed(1)}`,
-    `vL       : ${vL.toFixed(1)}`,
-    `β (slip) : ${betaDeg.toFixed(1)}°`,
-    `slip vis : ${slipDeg.toFixed(1)}°`,
-    `gauge    : ${gauge.toFixed(1)} / 100`,
-    `stock    : ${stock} / 2`,
+    `vF / vL  : ${vF.toFixed(1)} / ${vL.toFixed(1)}`,
+    `β (slip) : ${betaDeg.toFixed(1)}°  (vis ${slipDeg.toFixed(1)}°)`,
+    `yawRate  : ${yawDeg.toFixed(1)}°/s`,
+    `aLat/Lng : ${(car.aLat || 0).toFixed(1)} / ${(car.aLong || 0).toFixed(1)}`,
+    `N front  : ${(al.front || 0).toFixed(0)}`,
+    `N rear   : ${(al.rear || 0).toFixed(0)}`,
+    `ΔW lat   : in ${(al.inner || 0).toFixed(0)} / out ${(al.outer || 0).toFixed(0)}`,
+    `μ-circle : ${car.frictionCircleOver ? 'OVER' : 'ok'}`,
+    `gauge    : ${gauge.toFixed(1)} / 100  stock=${stock}/2`,
     `driftTime: ${driftTime.toFixed(2)} s`,
     `boost    : ${(car.boosting ? 'ON' : 'off')} sus=${(car.boostSustainTimer || 0).toFixed(2)}`,
   ];

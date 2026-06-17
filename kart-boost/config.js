@@ -65,6 +65,22 @@ export const KART_TUNING = {
   RECOVER_GRIP:       0.92,           // 횡속 retention (NORMAL 0.78보다 느슨 — 활주감)
   RECOVER_OVERSHOOT:  0,              // rad — 0=칼정렬, >0=한 번만 살짝 넘침
 
+  // ── 차량동역학 골격 (analytics + 6단계 상태머신용) ─────────────
+  // 아케이드 위에 '관측/분류' 레이어로 얹힘. 손맛은 아래 RECOVER_*/GRIP_* 가 우선.
+  MASS:        1000,                  // kg (가상)
+  CG_HEIGHT:   0.40,                  // m — 무게중심 높이
+  WHEELBASE:   2.6,                   // m — 휠베이스 L
+  TRACK:       1.5,                   // m — 트레드 T
+  MU:          1.05,                  // 타이어 μ
+  REAR_GRIP_BIAS: 0.55,               // 후륜이 떠받치는 횡력 비율
+  FRICTION_OVER_MARGIN: 1.15,         // FreqRear > Fmax*MARGIN 이면 over
+  FRICTION_TRIGGER: false,            // true: 마찰원 초과 시 Shift 없이도 drift 진입
+  FRICTION_TRIGGER_MIN_SPEED: 60,     // 이 속도 이상에서만 트리거 허용
+  // 6단계 분류 임계.
+  PHASE_ENTRY_STEER:    0.06,         // |steer| 이상이면 ENTRY
+  PHASE_TURN_AY:        40,           // |a_y| 이상이면 LOAD_SHIFT
+  PHASE_DRIFT_START_WIN: 0.22,        // s — 진입 직후 DRIFT_START 윈도우
+
   // ── 게이지 & 부스트 스택 ──────────────────────────────────
   // ΔG = speed × sin(β) × W_track × dt
   // 100 → 스택+1, 게이지 0. 스택 만석(2) 시 충전 멈춤.
