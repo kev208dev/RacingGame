@@ -208,8 +208,8 @@ export function updateCar3D(mesh3d, car, input, track = null, dt = 1 / 60) {
   // GLB 늦게 로드된 경우 첫 프레임에 fallback → GLB 교체.
   if (mesh3d._needsGlbSwap) _trySwapToGlb(mesh3d);
   // 2D y → 3D -z mapping
-  const wallRideLift = car.wallRiding ? Math.min(2.2, 0.35 + (car.speed || 0) * 0.006) : 0;
-  const surfaceY = _trackSurfaceHeight(track, car.x, car.y) + wallRideLift;
+  // 차는 항상 평평하게 — 펜스/연석 타고 올라가지 않게 수직 변위 ❌.
+  const surfaceY = _trackSurfaceHeight(track, car.x, car.y);
   car.roadHeight = surfaceY;
   mesh3d.position.set(car.x, surfaceY, -car.y);
   if (mesh3d._visualAngle == null) mesh3d._visualAngle = car.angle;
@@ -322,8 +322,8 @@ export function updateCar3D(mesh3d, car, input, track = null, dt = 1 / 60) {
       : 0;
 
     const driftLean    = car._kartRoll;
-    const wallRideLean = car.wallRiding ? (car.wallRideSide || Math.sign(car.sideSpeed || 1)) * 0.075 : 0;
-    const targetRoll = (rAvg2 - lAvg) * 0.02 + driftLean + wallRideLean + steerRoll;
+    // 벽 충돌로 차가 기울지 않게 — wallRideLean ❌.
+    const targetRoll = (rAvg2 - lAvg) * 0.02 + driftLean + steerRoll;
     mesh3d.body.rotation.z += (targetPitch - mesh3d.body.rotation.z) * 0.20;
     mesh3d.body.rotation.x += (targetRoll - mesh3d.body.rotation.x) * 0.20;
   }
