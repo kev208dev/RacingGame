@@ -345,9 +345,10 @@ export function updateDriftStateMachine(car, input, dt) {
 // 조건: 스택>0 && !boosting (sequential). 스택 -1 + 즉발 임펄스 + sustain.
 export function fireBoost(car) {
   if ((car.boostStock || 0) <= 0) return;
-  if (car.boosting) return;
-  // FX_BOOST: 발동 직전 스톡이 2였으면 = 링크/체이닝 모드. 1이면 = 단발.
-  const linked = (car.boostStock || 0) >= 2;
+  // 체이닝: 부스트 中이라도 스톡 있으면 이어붙임 (sustain 리셋 + 추가 임펄스).
+  const chained = !!car.boosting;
+  // 단순 단발이 아니라 (현재 부스트 中 → 다음 발동 = 링크) 또는 (스톡 ≥2 동시 발동 = 링크).
+  const linked = chained || (car.boostStock || 0) >= 2;
   car.boostStock = Math.max(0, (car.boostStock || 0) - 1);
   const fwdX = Math.cos(car.angle);
   const fwdY = Math.sin(car.angle);
@@ -355,16 +356,19 @@ export function fireBoost(car) {
   const rgtY =  fwdX;
   let vF = car.vx * fwdX + car.vy * fwdY;
   let vL = car.vx * rgtX + car.vy * rgtY;
-  vF += K.BOOST_INSTANT_DV;
+  // 체이닝 中엔 임펄스 약간 약화 (이미 가속 中) — 80%.
+  const dv = K.BOOST_INSTANT_DV * (chained ? 0.8 : 1.0);
+  vF += dv;
   car.vx = fwdX * vF + rgtX * vL;
   car.vy = fwdY * vF + rgtY * vL;
+  // sustain 리셋 — 체이닝이면 더 길게 (×1.6).
   const sustain = K.BOOST_SUSTAIN_TIME * (linked ? 1.6 : 1.0);
   car.boostSustainTimer  = sustain;
   car.boostCapDecayTimer = 0;
   car.boosting           = true;
   car.boostFireFx        = 1.0;
-  car._boostLinked       = linked;        // VFX 분기용
-  car._boostLinkFlash    = linked ? 1.0 : 0; // 링크 순간 플래시 1회
+  car._boostLinked       = linked;
+  car._boostLinkFlash    = linked ? 1.0 : 0;
 }
 
 export function updateBoostState(car, input, dt) {
