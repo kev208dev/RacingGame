@@ -346,6 +346,8 @@ export function updateDriftStateMachine(car, input, dt) {
 export function fireBoost(car) {
   if ((car.boostStock || 0) <= 0) return;
   if (car.boosting) return;
+  // FX_BOOST: 발동 직전 스톡이 2였으면 = 링크/체이닝 모드. 1이면 = 단발.
+  const linked = (car.boostStock || 0) >= 2;
   car.boostStock = Math.max(0, (car.boostStock || 0) - 1);
   const fwdX = Math.cos(car.angle);
   const fwdY = Math.sin(car.angle);
@@ -356,10 +358,13 @@ export function fireBoost(car) {
   vF += K.BOOST_INSTANT_DV;
   car.vx = fwdX * vF + rgtX * vL;
   car.vy = fwdY * vF + rgtY * vL;
-  car.boostSustainTimer  = K.BOOST_SUSTAIN_TIME;
+  const sustain = K.BOOST_SUSTAIN_TIME * (linked ? 1.6 : 1.0);
+  car.boostSustainTimer  = sustain;
   car.boostCapDecayTimer = 0;
   car.boosting           = true;
   car.boostFireFx        = 1.0;
+  car._boostLinked       = linked;        // VFX 분기용
+  car._boostLinkFlash    = linked ? 1.0 : 0; // 링크 순간 플래시 1회
 }
 
 export function updateBoostState(car, input, dt) {
@@ -384,6 +389,8 @@ export function updateBoostState(car, input, dt) {
   car.boostPower = (car.boostPower || 0)
     + (target - (car.boostPower || 0)) * (1 - Math.exp(-response * dt));
   car.boostFireFx = Math.max(0, (car.boostFireFx || 0) - dt * 3.0);
+  car._boostLinkFlash = Math.max(0, (car._boostLinkFlash || 0) - dt * 4.0);
+  if (!car.boosting) car._boostLinked = false;
   car.boostTimer = car.boostSustainTimer;
 }
 

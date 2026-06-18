@@ -367,8 +367,10 @@ export function updateGame(dt, now) {
   const justFiredBoost = !_prevBoosting && car.boosting;
   car._boostFovKick = car._boostFovKick ?? 0;
   if (justFiredBoost) {
-    car._boostFovKick = KART_CAMERA.BOOST_FOV_KICK;
-    triggerShake(shake, KART_CAMERA.BOOST_SHAKE_AMP);
+    // FX_BOOST 분기: 링크 부스트면 더 큰 FOV킥 + 셰이크.
+    const linked = (KART_CAMERA.FX_BOOST !== false) && car._boostLinked;
+    car._boostFovKick = linked ? (KART_CAMERA.BOOST_LINK_FOV || 20) : (KART_CAMERA.BOOST_NORMAL_FOV || 14);
+    triggerShake(shake, KART_CAMERA.BOOST_SHAKE_AMP * (linked ? 1.4 : 1.0));
   }
   // sustain 목표: boost 中엔 베이스 유지, 끝나면 0.
   const sustain = car.boosting ? KART_CAMERA.BOOST_FOV_SUSTAIN : 0;

@@ -264,14 +264,14 @@ export function drawSpeedLines(ctx, lines, kmh, w, h, dt, cameraMode = 'chase', 
     for (const p of lines) p.life = 0;
     return;
   }
-  // 평소: 160km/h 이상 활성. boost 中: 임계 낮춤 (0 km/h부터 발동).
-  const threshold = boostT > 0.05 ? 0 : 160;
+  // FX_WIND: 임계 WIND_SPEED_MIN 부터 활성, boost 중엔 즉시.
+  const windMin = (KC.FX_WIND === false) ? 99999 : (KC.WIND_SPEED_MIN || 220);
+  const threshold = boostT > 0.05 ? 0 : windMin;
   if (kmh < threshold) {
     for (const p of lines) p.life = 0;
     return;
   }
-  // intensity: 속도 + boost 강도 합성 (가장자리만 진하게)
-  const speedI = Math.max(0, Math.min(1, (kmh - 160) / 130));
+  const speedI = Math.max(0, Math.min(1, (kmh - windMin) / 100)) * (KC.WINDLINE_MAX || 1.0);
   const boostI = Math.max(0, Math.min(1, boostT));
   const intensity = Math.max(speedI, boostI);
   const cx = w * 0.5, cy = h * 0.58;
@@ -344,6 +344,12 @@ export function updateFovPump(camera, kmh, maxKmh, boostActive, dt, fovExtra = 0
   const t = Math.max(0, Math.min(1, (kmh || 0) / topSpeed));
   let smoothTarget = KC.FOV_BASE + (KC.FOV_MAX - KC.FOV_BASE) * t;
   if (boostActive) smoothTarget += KC.FOV_BOOST_BUMP;
+  // FX_WIND: 고속 추가 FOV.
+  if (KC.FX_WIND !== false) {
+    const windMin = KC.WIND_SPEED_MIN || 220;
+    const windT = Math.max(0, Math.min(1, ((kmh || 0) - windMin) / 100));
+    smoothTarget += (KC.WIND_FOV_ADD || 0) * windT;
+  }
   const k = 1 - Math.pow(1 - KC.FOV_LERP, Math.max(0, dt) * 60);
   // smoothed 부분만 lerp, kick은 즉시 가산 (camera._smoothFov 분리)
   camera._smoothFov = camera._smoothFov ?? camera.fov;

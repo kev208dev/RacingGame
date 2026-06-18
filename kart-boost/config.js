@@ -175,5 +175,34 @@ export const KART_CAMERA = {
   BOOST_SHAKE_AMP:       8,
   SPEEDLINE_MAX_OPACITY: 0.55,   // PC: 가장자리만 진하게 (0.5-0.6 범위)
   SPEEDLINE_BOOST_RATE:  320,    // /s — boost 中 추가 spawn rate
-  FLAME_BOOST_SCALE:     2.4,    // 부스트 中 화염 길이 배율 (1.85→2.4)
+  FLAME_BOOST_SCALE:     2.4,    // 부스트 中 화염 길이 배율
+
+  // ── PART 3 FX 토글 (개별 on/off 가능) ─────────────────────────
+  FX_WIND:        true,
+  FX_BRAKE:       true,
+  FX_DRIFT_TRAIL: true,
+  FX_BOOST:       true,
+
+  // 1) 고속 바람저항
+  WIND_SPEED_MIN:    220,        // km/h — 이 이상부터 효과 시작
+  WIND_FOV_ADD:      5,          // 최고속에서 추가 FOV (속도FOV 위에)
+  WINDLINE_MAX:      1.0,        // 속도선 강도 배율 max
+  RADIALBLUR_MAX:    0.0,        // (구현 안 함 — speedline으로 대체)
+
+  // 2) 브레이크
+  BRAKE_GLOW_INTENSITY: 1.0,     // 후미등 emissive 강도
+  NOSE_DIVE_DEG:        2.5,     // 노즈다이브 각도 (deg)
+  BRAKE_SMOKE_RATE:     14,      // /s — 브레이크 연기 spawn
+
+  // 3) 드리프트 트레일 — 색은 gauge로 보간
+  TRAIL_COLOR_LOW:   0xfff099,   // 진입 초반: 옅은 노랑
+  TRAIL_COLOR_HIGH:  0x6688ff,   // 게이지 만점: 파랑/보라
+
+  // 4) 부스트 단발 vs 링크
+  BOOST_NORMAL_FOV:      14,
+  BOOST_LINK_FOV:        20,
+  BOOST_NORMAL_FLAME_COLOR: 0xff8033,   // 주황
+  BOOST_LINK_FLAME_COLOR:   0x66b4ff,   // 청백
+  BOOST_LINK_FLAME_SCALE:   3.2,        // 링크 부스트는 더 굵게
+  BOOST_LINK_SUSTAIN_MUL:   1.6,        // 지속 시간 배수
 };

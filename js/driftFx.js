@@ -8,6 +8,16 @@
 //   emitDriftSparks(driftFxState, car, sparkPool, dt);
 
 import { spawnSparks, spawnDriftSmoke3D, DRIFT_SMOKE_TUNING } from './effects.js';
+import { KART_CAMERA as KC } from '../kart-boost/config.js';
+
+function _lerpColor(c0, c1, t) {
+  const r0 = (c0 >> 16) & 0xff, g0 = (c0 >> 8) & 0xff, b0 = c0 & 0xff;
+  const r1 = (c1 >> 16) & 0xff, g1 = (c1 >> 8) & 0xff, b1 = c1 & 0xff;
+  const r = Math.round(r0 + (r1 - r0) * t);
+  const g = Math.round(g0 + (g1 - g0) * t);
+  const b = Math.round(b0 + (b1 - b0) * t);
+  return (r << 16) | (g << 8) | b;
+}
 
 // ─── 튜닝 한 곳 ────────────────────────────────────────────────
 export const DRIFT_FX_CONFIG = {
@@ -193,8 +203,15 @@ function _emitSmokeBurst(car, smokePool) {
     const vy = DRIFT_SMOKE_TUNING.SMOKE_UP_SPEED * (0.6 + Math.random() * 0.6);
     const vz = backZ + outZ + (Math.random() - 0.5) * 2;
 
+    // FX_DRIFT_TRAIL: gauge에 따라 색 보간 (저→흰/노랑, 고→파랑/보라).
+    let opts;
+    if (KC.FX_DRIFT_TRAIL !== false) {
+      const g = Math.max(0, Math.min(1, (car.boostMeter || 0) / 100));
+      const color = _lerpColor(KC.TRAIL_COLOR_LOW || 0xfff099, KC.TRAIL_COLOR_HIGH || 0x6688ff, g);
+      opts = { color };
+    }
     for (let i = 0; i < DRIFT_FX_CONFIG.SMOKE_PER_BURST; i++) {
-      spawnDriftSmoke3D(smokePool, wx, w3y, w3z, vx, vy, vz);
+      spawnDriftSmoke3D(smokePool, wx, w3y, w3z, vx, vy, vz, opts);
     }
   }
 }

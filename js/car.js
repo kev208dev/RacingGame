@@ -99,9 +99,9 @@ export function createCar3D(carData = {}) {
   body.add(inner);
   root.add(body);
 
-  // 배기 화염 — GLB에 boostflame 메시가 없어서 절차적으로 추가.
-  // body(서스펜션) 자식으로 붙여서 같이 흔들리게.
+  // 배기 화염 + 후미 브레이크등 — GLB에 해당 메시가 없어서 절차적으로 추가.
   _addBoostFlame(body);
+  _addBrakeLight(body);
 
   root.wheelGroups   = kart ? kart.wheels : [];
   root.body          = body;
@@ -112,6 +112,26 @@ export function createCar3D(carData = {}) {
   root._needsGlbSwap = !kart;
 
   return root;
+}
+
+function _addBrakeLight(parent) {
+  const len = KC.KART_LENGTH || 18.7;
+  const bias = KC.KART_REAR_PIVOT_BIAS || 0.30;
+  const rearX = -(len * 0.5) + (len * 0.5 * bias);
+  // 두 개 후미등(좌/우) — 명도로 ON/OFF.
+  for (const side of [-1, 1]) {
+    const m = new THREE.Mesh(
+      new THREE.BoxGeometry(0.6, 0.5, 1.8),
+      new THREE.MeshStandardMaterial({
+        color: 0x441111,
+        emissive: 0x441111,
+        emissiveIntensity: 0.4,
+      })
+    );
+    m.name = 'brakelight';
+    m.position.set(rearX - 0.4, 1.8, side * 2.6);
+    parent.add(m);
+  }
 }
 
 function _addBoostFlame(parent) {
@@ -291,9 +311,10 @@ export function updateCar3D(mesh3d, car, input, track = null, dt = 1 / 60) {
   const rAvg2 = (sus.wheels.fr.y + sus.wheels.rr.y) / 2;
 
   if (mesh3d.body) {
-    // 차는 항상 평평 + 평면 — 펜스/연석/충돌이 Y/피치/롤에 영향 ❌.
     mesh3d.body.position.y = 0;
-    const targetPitch = 0;
+    // FX_BRAKE: 브레이크 입력 시 노즈다이브 (앞으로 살짝 숙임). 외엔 0.
+    const brakeOn = (KC.FX_BRAKE !== false) && (brake > 0.05);
+    const targetPitch = brakeOn ? -(KC.NOSE_DIVE_DEG || 2.5) * Math.PI / 180 : 0;
     car._kartRoll = 0;
     const targetRoll = 0;
     mesh3d.body.rotation.z += (targetPitch - mesh3d.body.rotation.z) * 0.20;
@@ -307,19 +328,27 @@ export function updateCar3D(mesh3d, car, input, track = null, dt = 1 / 60) {
   const braking = input && (input.brake > 0);
   mesh3d.traverse(c => {
     if (c.name === 'brakelight' && c.material) {
-      c.material.emissive.setHex(braking ? 0xff2222 : 0x441111);
+      const on = braking && (KC.FX_BRAKE !== false);
+      c.material.emissive.setHex(on ? 0xff2222 : 0x441111);
+      c.material.emissiveIntensity = on ? (KC.BRAKE_GLOW_INTENSITY || 1.0) * 2.4 : 0.4;
     }
     if (c.name === 'boostflame') {
       const on = !!car.boosting || !!car.drsActive;
       c.visible = on;
       const power = Math.max(car.boostPower || 0, car.drsPower || 0);
-      const boostBoost = car.boosting ? KC.FLAME_BOOST_SCALE : 1.0;
+      // FX_BOOST: 링크면 더 굵게.
+      const linked = (KC.FX_BOOST !== false) && car._boostLinked;
+      const scaleMul = linked ? (KC.BOOST_LINK_FLAME_SCALE || 3.2) : KC.FLAME_BOOST_SCALE;
+      const boostBoost = car.boosting ? scaleMul : 1.0;
       const base = 1.0 * (car.flameScale || 1) * (0.46 + power * 0.82);
       const flicker = 0.92 + Math.random() * 0.14;
-      // boost 中엔 길이(z) 더 길게, 두께도 약간 더
       c.scale.set(base * 0.52 * flicker * (1 + (boostBoost - 1) * 0.5),
                   base * 0.48 * (1 + (boostBoost - 1) * 0.4),
                   base * 0.72 * boostBoost);
+      // 색: 링크=청백, 단발=주황.
+      const flameColor = (KC.FX_BOOST !== false) && linked
+        ? (KC.BOOST_LINK_FLAME_COLOR || 0x66b4ff)
+        : (KC.BOOST_NORMAL_FLAME_COLOR || 0xff8033);
       c.children.forEach(part => {
         if (!part.material) return;
         const inner = part.name === 'flameinner';
@@ -327,6 +356,7 @@ export function updateCar3D(mesh3d, car, input, track = null, dt = 1 / 60) {
         part.material.opacity = on
           ? (inner ? 0.68 : glow ? 0.13 : 0.36) * (0.55 + power * 0.45)
           : 0;
+        if (on && part.material.color) part.material.color.setHex(flameColor);
       });
     }
   });
