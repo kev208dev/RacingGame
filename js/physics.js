@@ -55,10 +55,10 @@ export function respawnAtCenter(car, track) {
 }
 
 const WALL_RIDE_TURN_MIN = 0.105;
-const WALL_RIDE_EXTRA    = 7;
+const WALL_RIDE_EXTRA    = 3;        // 7→3 — 가드레일 폭 좁힘
 const WALL_RIDE_MIN_SPEED = 58;
-const COLLISION_EDGE_GRACE = 24;
-const OFF_ROAD_GRACE       = 18;
+const COLLISION_EDGE_GRACE = 6;      // 24→6 — 가드레일(half+6) 바로 앞에서 막음
+const OFF_ROAD_GRACE       = 6;      // 18→6 — 노면 밖 즉시 차단
 
 const SHIFT_UP_RPM   = 0.92;
 const SHIFT_DOWN_RPM = 0.32;
