@@ -76,9 +76,67 @@ function _addTrackRibbon(grp, track) {
   grp.add(mesh);
 }
 
+let _roadTex = null;
+let _groundTex = null;
+
+function _makeAsphaltTexture() {
+  if (_roadTex) return _roadTex;
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const ctx = c.getContext('2d');
+  // 베이스
+  ctx.fillStyle = '#54574f';
+  ctx.fillRect(0, 0, 256, 256);
+  // 거친 grit
+  for (let i = 0; i < 1200; i++) {
+    const x = Math.random() * 256, y = Math.random() * 256;
+    const g = 70 + Math.random() * 50;
+    ctx.fillStyle = `rgb(${g},${g + 2},${g})`;
+    ctx.fillRect(x, y, 1.4, 1.4);
+  }
+  // 균열/선
+  ctx.strokeStyle = 'rgba(30,32,28,0.35)';
+  ctx.lineWidth = 0.7;
+  for (let i = 0; i < 30; i++) {
+    ctx.beginPath();
+    ctx.moveTo(Math.random() * 256, Math.random() * 256);
+    ctx.lineTo(Math.random() * 256, Math.random() * 256);
+    ctx.stroke();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(40, 40);
+  t.anisotropy = 8;
+  _roadTex = t;
+  return t;
+}
+
+function _makeGrassTexture() {
+  if (_groundTex) return _groundTex;
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#283326';
+  ctx.fillRect(0, 0, 256, 256);
+  // 잔디 점
+  for (let i = 0; i < 2400; i++) {
+    const x = Math.random() * 256, y = Math.random() * 256;
+    const g = 30 + Math.random() * 35;
+    ctx.fillStyle = `rgb(${g - 4},${g + 12},${g})`;
+    ctx.fillRect(x, y, 1.2, 1.2);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(80, 80);
+  t.anisotropy = 4;
+  _groundTex = t;
+  return t;
+}
+
 function _makeRoadMaterial() {
   return new THREE.MeshLambertMaterial({
-    color: 0x5f625c,
+    map: _makeAsphaltTexture(),
+    color: 0xa0a39a,    // 텍스처 위에 살짝 톤
     polygonOffset: true,
     polygonOffsetFactor: 1,
     polygonOffsetUnits: 1,
@@ -86,7 +144,10 @@ function _makeRoadMaterial() {
 }
 
 function _makeGroundMaterial() {
-  return new THREE.MeshLambertMaterial({ color: 0x293426 });
+  return new THREE.MeshLambertMaterial({
+    map: _makeGrassTexture(),
+    color: 0xa0a8a0,
+  });
 }
 
 function _addRoadMarkings(grp, track) {

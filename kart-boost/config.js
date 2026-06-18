@@ -131,7 +131,7 @@ export const KART_CAMERA = {
   CAM_DIST:          30,    // 유지 (가까움)
   CAM_LOOK_AHEAD:    55,    // 50→55 (앞 도로 더 보임)
   CAM_LOOK_Y:        2,     // 9→2 (타겟 낮춤 → 카메라 약 -14° 피치)
-  CAM_DIST_SPEED_ADD: 10,
+  CAM_DIST_SPEED_ADD: 4,    // 10→4 — 고속에서도 거의 안 멀어짐
 
   // ── FOV 속도 비례 ──
   FOV_BASE:        64,    // 72→64 (정지 시 기본)
