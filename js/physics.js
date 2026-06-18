@@ -130,14 +130,14 @@ const CAR_CORNERS = [
 ];
 
 // 충돌 튜닝 — 수평면(XZ)만, 차 평평 유지, vN/vT 분해.
-const RESTITUTION       = 0.30;   // 법선 성분 반사율 (들어간 만큼만 되튕김).
-const WALL_FRICTION     = 0.15;   // 접선 감속률 (스침은 거의 유지: 1-0.15=0.85).
-const WALL_FRICTION_HARD = 0.30;  // head-on 시 접선도 좀 깎음.
-// vIntoWall/speed = sin(입사각 from wall). 입사각 ≥55°(head-on): ≥sin55°≈0.819. ≤30°(glance): ≤sin30°=0.5.
+const RESTITUTION       = 0.30;
+const WALL_FRICTION     = 0.15;
+const WALL_FRICTION_HARD = 0.30;
 const HEADON_COS        = 0.819;
 const GLANCE_COS        = 0.5;
-const DEPEN_EPS         = 0.6;    // 침투 0 + 여유 (다음 프레임 재충돌 방지)
-const DEPEN_ITERS       = 4;
+const DEPEN_EPS         = 2.0;        // 0.6→2.0 — 확실히 벽 밖으로 분리해 재충돌 차단
+const DEPEN_ITERS       = 6;          // 4→6
+const MIN_BOUNCE_VN     = 18;         // vIntoWall 이하 = 미세 접촉 → 마찰 없이 vN만 제거(끼임/데드스톱 차단)
 
 const _trackCollisionCaches = new WeakMap();
 
@@ -226,39 +226,38 @@ function _resolveCollision(car, nextX, nextY, track) {
     const nx = aggrNx / nl;
     const ny = aggrNy / nl;
     if (Number.isFinite(nx) && Number.isFinite(ny)) {
-      // 속도 분해: vN(법선 성분) + vT(접선 성분).
+      // 분해: vN(법선) + vT(접선).
       const vn = car.vx * nx + car.vy * ny;        // dot(v, n_inward)
-      const vIntoWall = -vn;                        // 벽으로 들어가는 속도 (음수면 이미 벗어남)
+      const vIntoWall = -vn;
       if (vIntoWall > 0) {
-        const speed = Math.hypot(car.vx, car.vy) || 1;
-        const cosI = vIntoWall / speed;             // = sin(입사각 from wall)
-        const headOn = cosI >= HEADON_COS;
-        const glance = cosI <= GLANCE_COS;
+        const vNx = vn * nx, vNy = vn * ny;
+        const vTx = car.vx - vNx, vTy = car.vy - vNy;
 
-        // 분해.
-        const vNx = vn * nx;
-        const vNy = vn * ny;
-        const vTx = car.vx - vNx;
-        const vTy = car.vy - vNy;
+        if (vIntoWall < MIN_BOUNCE_VN) {
+          // 미세 접촉(throttle로 벽에 살짝 닿음 등) → 마찰 ❌, vN만 제거.
+          // 접선 그대로 → 벽 따라 미끄러짐, 끼임/데드스톱 차단.
+          car.vx = vTx;
+          car.vy = vTy;
+        } else {
+          // 실 충돌: 법선 반사 + 접선 마찰.
+          const speed = Math.hypot(car.vx, car.vy) || 1;
+          const cosI = vIntoWall / speed;
+          const headOn = cosI >= HEADON_COS;
+          const glance = cosI <= GLANCE_COS;
 
-        // 법선 반사: 들어간 성분만 R 배로 되튕김.
-        const vN_newX = nx * vIntoWall * RESTITUTION; // n_inward × |vIntoWall| × R
-        const vN_newY = ny * vIntoWall * RESTITUTION;
+          const vN_newX = nx * vIntoWall * RESTITUTION;
+          const vN_newY = ny * vIntoWall * RESTITUTION;
 
-        // 접선 마찰: 스침은 거의 유지, head-on 만 더 깎음.
-        let fricT;
-        if (wallRiding || glance) fricT = WALL_FRICTION;       // 0.15 → 0.85 유지
-        else if (headOn)          fricT = WALL_FRICTION_HARD;  // 0.30 → 0.70 유지
-        else                       fricT = (WALL_FRICTION + WALL_FRICTION_HARD) * 0.5;
-        const vT_newX = vTx * (1 - fricT);
-        const vT_newY = vTy * (1 - fricT);
+          let fricT;
+          if (wallRiding || glance) fricT = WALL_FRICTION;
+          else if (headOn)          fricT = WALL_FRICTION_HARD;
+          else                       fricT = (WALL_FRICTION + WALL_FRICTION_HARD) * 0.5;
 
-        // 재합성 — 절대 v=0 으로 통째 죽이지 않음.
-        car.vx = vN_newX + vT_newX;
-        car.vy = vN_newY + vT_newY;
+          car.vx = vN_newX + vTx * (1 - fricT);
+          car.vy = vN_newY + vTy * (1 - fricT);
 
-        // head-on 만 게이지 소멸. 스침/wall-ride 유지.
-        if (headOn && !wallRiding) car.boostMeter = 0;
+          if (headOn && !wallRiding) car.boostMeter = 0;
+        }
       }
     }
 
