@@ -164,7 +164,7 @@ export const KART_CAMERA = {
   ROLL_SNAP:       22.0,                // /s — cut/spin 시 빠른 0 복귀
   REF_SLIP:        20 * Math.PI / 180,  // ~20° — intensity 풀강도 빠르게 도달
   CAM_TILT_LERP:   5.5,                 // /s — 카메라 뱅크 응답 (멀미 방지로 약간 느리게)
-  STEER_ROLL_MAX:  0,                   // 일반 코너 롤 ❌
+  STEER_ROLL_MAX:  4 * Math.PI / 180,   // 4° — 비드리프트 코너에서 차체만 살짝 기움 (드리프트 中은 yaw만)
 
   // ── 부스트 발동 펀치 (FOV kick / speedline / flame) ──
   // 발동 순간 FOV가 +KICK으로 즉시 가산, 매 프레임 SUSTAIN(boost中)/0(끝)으로

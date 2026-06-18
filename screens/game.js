@@ -514,8 +514,8 @@ function _emitDriftFx(dt, driveInput) {
 }
 
 function _driftTrailColor() {
-  // KartRider식: 연회색 단일 스키드 (저투명은 appendTrail 두께/alpha 조절 영역).
-  return 0x9aa0a6;
+  // PC 카트라이더식: 진한 검정 스키드 (mat opacity 0.42 + 짙은 색).
+  return 0x141414;
 }
 
 function _scheduleResults(ev) {

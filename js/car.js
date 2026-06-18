@@ -315,11 +315,15 @@ export function updateCar3D(mesh3d, car, input, track = null, dt = 1 / 60) {
 
   if (mesh3d.body) {
     mesh3d.body.position.y = 0;
-    // FX_BRAKE: 브레이크 입력 시 노즈다이브 (앞으로 살짝 숙임). 외엔 0.
     const brakeOn = (KC.FX_BRAKE !== false) && (brake > 0.05);
     const targetPitch = brakeOn ? -(KC.NOSE_DIVE_DEG || 2.5) * Math.PI / 180 : 0;
+    // 비드리프트 코너 미세 롤 — 조향 방향 반대로 살짝(원심력 표현).
+    const steerRoll = !car.drifting
+      ? (-Math.sign(car.steerAngle || 0)) * (KC.STEER_ROLL_MAX || 0)
+        * Math.min(1, Math.abs(car.steerAngle || 0) * 1.6)
+      : 0;
     car._kartRoll = 0;
-    const targetRoll = 0;
+    const targetRoll = steerRoll;
     mesh3d.body.rotation.z += (targetPitch - mesh3d.body.rotation.z) * 0.20;
     mesh3d.body.rotation.x += (targetRoll - mesh3d.body.rotation.x) * 0.20;
   }

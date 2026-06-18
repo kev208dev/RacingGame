@@ -592,7 +592,7 @@ function _emitDriftFx(dt, driveInput) {
     if (prev) {
       const dx = wx - prev.x, dz = w3z - prev.z;
       if (dx * dx + dz * dz > 4.0) {
-        skidBuf.appendTrail(prev.x, prev.z, wx, w3z, 1.15, 0x9aa0a6);
+        skidBuf.appendTrail(prev.x, prev.z, wx, w3z, 1.15, 0x141414);
         car[key] = { x: wx, z: w3z };
       }
     } else {
