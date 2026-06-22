@@ -22,8 +22,8 @@ export const KART_TUNING = {
 
   // ── 속도 티어 (km/h) ───────────────────────────────────────
   // 속도 하향 (확대 맵 컨트롤 — 35~40% cut). 미세조정 가능 상수.
-  CRUISE_MUL:  0.85,    // 1.35→0.85: cruise cap = maxSpeed × 0.85 (base 180 → 153 km/h)
-  V_BOOST_MUL: 1.30,    // boost cap = cruise × 1.30 (153 → 199 km/h)
+  CRUISE_MUL:  1.10,    // 0.85→1.10: cruise = 180 × 1.10 = 198 km/h
+  V_BOOST_MUL: 1.30,    // boost cap = 198 × 1.30 = 257 km/h
   ACCEL_BASE:  150,
   BRAKE_RATE:  205,
   REVERSE_TOP: 80,
@@ -132,9 +132,10 @@ export const KART_TUNING = {
   STEER_SMOOTH:           0.15,  // 0.20→0.15 — 살짝 경쾌 (굼뜸 제거)
   STEER_ENGAGE:           6.7,   // = 1/STEER_SMOOTH
   STEER_RETURN:          11.0,   // 9→11 — 복귀 약간 빠르게
-  MAX_YAW:                1.5,   // 1.25→1.5 — 일반 조향 캡 ↑ (방향전환 답답함 제거)
-  MAX_YAW_RATE_NORMAL:    1.5,
-  HIGHSPEED_TURN_FACTOR:  0.60,  // 0.45→0.60 — 고속서도 충분히 돌아감
+  MAX_YAW:                2.0,   // 1.5→2.0 — 답답한 조향 해소
+  MAX_YAW_RATE_NORMAL:    2.0,
+  HIGHSPEED_TURN_FACTOR:  0.75,  // 0.60→0.75 — 고속서도 잘 돌아감
+  NORMAL_TURN_GAIN:       1.30,  // 신규 — baseGain 0.95 대체 (driftPhysics 참조)
 
   // ── 드리프트 진입 최저속 ───────────────────────────────────
   MIN_DRIFT_SPEED: 28,

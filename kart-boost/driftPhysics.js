@@ -143,7 +143,7 @@ export function stepKartDrift(car, input, dt, track) {
       car.angle += car._driftYawRate * dt;
     } else {
       car._driftYawRate = 0;
-      const baseGain = 0.95 * (car.turnStrength || 1);
+      const baseGain = (K.NORMAL_TURN_GAIN || 0.95) * (car.turnStrength || 1);
       const speedFactor = 1 - (1 - K.HIGHSPEED_TURN_FACTOR) * speedRatio;
       let yawRate = car.steerAngle * baseGain * speedFactor * dirSign;
       if (yawRate >  K.MAX_YAW) yawRate =  K.MAX_YAW;
