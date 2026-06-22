@@ -8,7 +8,6 @@ import {
   MIN_DRIFT_SPEED as KART_MIN_DRIFT_SPEED,
   DOUBLE_DRIFT_MIN_SPEED as KART_DOUBLE_DRIFT_MIN_SPEED,
 } from '../kart-boost/index.js';
-import { updateAnalytics } from './driftAnalytics.js';
 
 export const TOP_SPEED_MULT = 1.0; // kart 모델은 car.maxSpeed 자체를 cruise cap으로 사용
 export const KMH_PER_UNIT   = 1;
@@ -55,10 +54,10 @@ export function respawnAtCenter(car, track) {
 }
 
 const WALL_RIDE_TURN_MIN = 0.105;
-const WALL_RIDE_EXTRA    = 3;        // 7→3 — 가드레일 폭 좁힘
+const WALL_RIDE_EXTRA    = 7;
 const WALL_RIDE_MIN_SPEED = 58;
-const COLLISION_EDGE_GRACE = 6;      // 24→6 — 가드레일(half+6) 바로 앞에서 막음
-const OFF_ROAD_GRACE       = 6;      // 18→6 — 노면 밖 즉시 차단
+const COLLISION_EDGE_GRACE = 24;
+const OFF_ROAD_GRACE       = 18;
 
 const SHIFT_UP_RPM   = 0.92;
 const SHIFT_DOWN_RPM = 0.32;
@@ -106,50 +105,30 @@ export function updatePhysics(car, input, dt, track) {
   car.drsAvailable = false;
   car.drsPower     = (car.drsPower || 0) * Math.exp(-6 * dt);
   car.superBoostMeter = 100;
-
-  // ─── 6. 차량동역학 관측 (β, r, a_y, 축하중, phase 분류) ───
-  updateAnalytics(car, dt, input);
 }
 
 // ───────────────────────────────────────────────────────────────
 //  Collision (upstream 그대로)
 // ───────────────────────────────────────────────────────────────
 
-// OBB sample points (car-local). 모서리 4 + 측면 중점 4 = 8 → 어느 부위가 닿아도 잡힘.
-const CAR_HALF_LEN = 11;
-const CAR_HALF_WID = 8;
 const CAR_CORNERS = [
-  [ CAR_HALF_LEN,  CAR_HALF_WID], // front-right
-  [ CAR_HALF_LEN, -CAR_HALF_WID], // front-left
-  [-CAR_HALF_LEN,  CAR_HALF_WID], // rear-right
-  [-CAR_HALF_LEN, -CAR_HALF_WID], // rear-left
-  [ CAR_HALF_LEN,  0],            // front-mid (nose)
-  [-CAR_HALF_LEN,  0],            // rear-mid (tail)
-  [ 0,  CAR_HALF_WID],            // right-mid (side)
-  [ 0, -CAR_HALF_WID],            // left-mid (side)
+  [ 11,   8],
+  [ 11,  -8],
+  [-10,   8],
+  [-10,  -8],
 ];
-
-// 충돌 튜닝 — 수평면(XZ)만, 차 평평 유지, vN/vT 분해.
-const RESTITUTION       = 0.30;
-const WALL_FRICTION     = 0.15;
-const WALL_FRICTION_HARD = 0.30;
-const HEADON_COS        = 0.819;
-const GLANCE_COS        = 0.5;
-const DEPEN_EPS         = 2.0;        // 0.6→2.0 — 확실히 벽 밖으로 분리해 재충돌 차단
-const DEPEN_ITERS       = 6;          // 4→6
-const MIN_BOUNCE_VN     = 18;         // vIntoWall 이하 = 미세 접촉 → 마찰 없이 vN만 제거(끼임/데드스톱 차단)
 
 const _trackCollisionCaches = new WeakMap();
 
 function _moveWithCollisionSubsteps(car, dt, track) {
-  // 매 substep마다 'live' vx/vy 사용 — 튕긴 후엔 즉시 새 방향으로 이동.
-  const totalDist = Math.hypot(car.vx, car.vy) * dt;
-  const steps = Math.max(1, Math.min(8, Math.ceil(totalDist / 4)));
-  const subDt = dt / steps;
+  const dx = car.vx * dt;
+  const dy = car.vy * dt;
+  const steps = Math.max(1, Math.min(6, Math.ceil(Math.hypot(dx, dy) / 10)));
   for (let i = 0; i < steps; i++) {
-    const nextX = car.x + car.vx * subDt;
-    const nextY = car.y + car.vy * subDt;
-    _resolveCollision(car, nextX, nextY, track);
+    const prevX = car.x;
+    const prevY = car.y;
+    _resolveCollision(car, prevX + dx / steps, prevY + dy / steps, track);
+    if (car.lastWallHit?.time && Math.hypot(car.x - (prevX + dx / steps), car.y - (prevY + dy / steps)) > 4) break;
   }
 }
 
@@ -169,8 +148,7 @@ function _resolveCollision(car, nextX, nextY, track) {
   let rideSide = 0;
   let aggrNx  = 0, aggrNy = 0;
 
-  // 완전 디펜에트레이션: 4회 반복까지 침투 0 + epsilon 까지 밀어냄. 끼임 방지.
-  for (let iter = 0; iter < DEPEN_ITERS; iter++) {
+  for (let iter = 0; iter < 2; iter++) {
     let pushX = 0, pushY = 0, pushCount = 0;
     let anyOff = false;
 
@@ -193,15 +171,13 @@ function _resolveCollision(car, nextX, nextY, track) {
 
       anyOff = true;
       const softRideHit = rideable && hit.dist <= wallRideLimit + 8;
-      // 침투 + 충분한 ε 으로 한번에 벽 밖으로.
-      const excess = Math.max(0, hit.dist - activeLimit) + (invalidSurface ? 2.4 : (softRideHit ? 0.25 : DEPEN_EPS));
-      // hit.dx/dy = (corner - segPt). dx,dy 방향 = wall outward. push 방향 = -outward = inward.
-      const nxOut = hit.dx / (hit.dist || 1);
-      const nyOut = hit.dy / (hit.dist || 1);
-      pushX -= nxOut * excess;
-      pushY -= nyOut * excess;
-      aggrNx -= nxOut;       // inward 누적 (벽이 차에 가하는 법선 방향)
-      aggrNy -= nyOut;
+      const excess = Math.max(0, hit.dist - activeLimit) + (invalidSurface ? 2.4 : (softRideHit ? 0.25 : 0.8));
+      const nx = hit.dx / (hit.dist || 1);
+      const ny = hit.dy / (hit.dist || 1);
+      pushX -= nx * excess;
+      pushY -= ny * excess;
+      aggrNx -= nx;
+      aggrNy -= ny;
       if (softRideHit) rideCollisions++;
       else hardCollisions++;
       pushCount++;
@@ -222,51 +198,29 @@ function _resolveCollision(car, nextX, nextY, track) {
     car.wallRideSide = Math.sign(rideSide) || car.wallRideSide || 0;
 
     const nl = Math.hypot(aggrNx, aggrNy) || 1;
-    // n = 벽 안쪽(차 쪽) 방향.
     const nx = aggrNx / nl;
     const ny = aggrNy / nl;
     if (Number.isFinite(nx) && Number.isFinite(ny)) {
-      // 분해: vN(법선) + vT(접선).
-      const vn = car.vx * nx + car.vy * ny;        // dot(v, n_inward)
-      const vIntoWall = -vn;
-      if (vIntoWall > 0) {
-        const vNx = vn * nx, vNy = vn * ny;
-        const vTx = car.vx - vNx, vTy = car.vy - vNy;
-
-        if (vIntoWall < MIN_BOUNCE_VN) {
-          // 미세 접촉(throttle로 벽에 살짝 닿음 등) → 마찰 ❌, vN만 제거.
-          // 접선 그대로 → 벽 따라 미끄러짐, 끼임/데드스톱 차단.
-          car.vx = vTx;
-          car.vy = vTy;
-        } else {
-          // 실 충돌: 법선 반사 + 접선 마찰.
-          const speed = Math.hypot(car.vx, car.vy) || 1;
-          const cosI = vIntoWall / speed;
-          const headOn = cosI >= HEADON_COS;
-          const glance = cosI <= GLANCE_COS;
-
-          const vN_newX = nx * vIntoWall * RESTITUTION;
-          const vN_newY = ny * vIntoWall * RESTITUTION;
-
-          let fricT;
-          if (wallRiding || glance) fricT = WALL_FRICTION;
-          else if (headOn)          fricT = WALL_FRICTION_HARD;
-          else                       fricT = (WALL_FRICTION + WALL_FRICTION_HARD) * 0.5;
-
-          car.vx = vN_newX + vTx * (1 - fricT);
-          car.vy = vN_newY + vTy * (1 - fricT);
-
-          if (headOn && !wallRiding) car.boostMeter = 0;
-        }
+      const vn = car.vx * nx + car.vy * ny;
+      if (vn < 0) {
+        // 법선 반사 — RESTITUTION 0.3. hard hit = (1+0.3)=1.30. wallRide = 0.72 약한 깎음.
+        const normalBleed = wallRiding ? 0.72 : 1.30;
+        car.vx -= vn * nx * normalBleed;
+        car.vy -= vn * ny * normalBleed;
       }
     }
+    // 접선 마찰 — 정면 hard는 크게 깎고, 측면 wallRide는 약하게.
+    car.vx *= wallRiding ? 0.95 : 0.82;
+    car.vy *= wallRiding ? 0.95 : 0.82;
 
     car.lastWallHit = wallRiding ? null : {
       x: fx, y: fy, nx, ny,
-      impactSpeed: Math.hypot(car.vx, car.vy),
+      impactSpeed: car.speed,
       totalSpeed: car.speed,
       time: performance.now(),
     };
+    // 하드 충돌 = 차고 있던 게이지 손실 (스택은 보존)
+    if (!wallRiding) car.boostMeter = 0;
   } else {
     car.offTrack = false;
     car.wallRiding = rideTouch;

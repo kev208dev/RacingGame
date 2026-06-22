@@ -125,13 +125,19 @@ export function stepKartDrift(car, input, dt, track) {
   if (Math.abs(vF) > 0.6) {
     const dirSign = vF >= 0 ? 1 : -1;
     if (car.drifting) {
-      // β를 TARGET_SLIP으로 수렴: |β| < TARGET 이면 full yaw 권한, 도달하면 0, 초과하면 약하게 되돌림.
-      const slipNorm = Math.abs(beta) / Math.max(1e-3, K.TARGET_SLIP);
+      // DRIFT_SLIP_GAIN: 1.0=baseline. 키우면 TARGET 천장 ↑ → yaw 더 허용 → 슬립각 ↑.
+      const slipGain = K.DRIFT_SLIP_GAIN || 1.0;
+      const effTarget = K.TARGET_SLIP * slipGain;
+      const slipNorm = Math.abs(beta) / Math.max(1e-3, effTarget);
       const driftGate = slipNorm < 1
-        ? (1 - slipNorm * slipNorm)        // 0~TARGET: 1 → 0 (smooth)
-        : -0.35 * Math.min(1, slipNorm - 1); // 초과: 음의 yaw로 되돌림
+        ? (1 - slipNorm * slipNorm)
+        : -0.35 * Math.min(1, slipNorm - 1);
       const mulHold   = (K.DRIFT_YAW_MUL || 1.0);
-      const targetYawRate = -input.steer * K.DRIFT_YAW * Math.max(0.35, speedRatio) * dirSign * driftGate * mulHold;
+      // 슬립 빌드업 — 드리프트 진입 직후 SLIP_BUILD_TIME 동안 yaw 권한이 0→1 ramp.
+      // 즉발 스냅 ❌, 슬립각이 시간에 걸쳐 부드럽게 쌓임.
+      const buildT = K.SLIP_BUILD_TIME || 0.35;
+      const slipBuildup = Math.min(1, (car.driftStateTime || 0) / Math.max(1e-3, buildT));
+      const targetYawRate = -input.steer * K.DRIFT_YAW * Math.max(0.35, speedRatio) * dirSign * driftGate * mulHold * slipBuildup;
       car._driftYawRate = car._driftYawRate || 0;
       car._driftYawRate += (targetYawRate - car._driftYawRate) * (1 - Math.exp(-K.DRIFT_YAW_SMOOTH * dt));
       car.angle += car._driftYawRate * dt;
@@ -146,16 +152,24 @@ export function stepKartDrift(car, input, dt, track) {
     }
   }
 
-  // ─── 카운터 스티어 alignment torque (drift 中만) ───
-  // 반대 방향키 입력 시 heading을 velocity 방향으로 능동 정렬 → β 감소.
+  // ─── 카운터스티어 회복 (drift 中만) ───
+  // 카트라이더 리듬: 안쪽 hold = 슬립 유지/심화. 반대로 꺾으면 = 카운터 → 차 빠르게 펴짐.
+  // 카운터 안 하면 미세 자동 펴짐(천천히). 회복은 기본 '플레이어 카운터' 입력으로.
   let counterSteer = false;
   if (car.drifting && car._driftDir !== 0) {
     const s = input.steer || 0;
-    counterSteer = Math.sign(s) === -car._driftDir && Math.abs(s) > K.COUNTER_STEER_THRESHOLD;
+    const threshold = K.COUNTER_STEER_THRESHOLD;
+    counterSteer = Math.sign(s) === -car._driftDir && Math.abs(s) > threshold;
+    const velAngle = Math.atan2(car.vy, car.vx);
+    const delta    = wrapAngle(velAngle - car.angle);
     if (counterSteer) {
-      const velAngle = Math.atan2(car.vy, car.vx);
-      const delta = wrapAngle(velAngle - car.angle);
-      car.angle += delta * K.ALIGNMENT_GAIN * dt;
+      // 카운터 입력량 비례 회복 (강하게 꺾을수록 빨리 펴짐)
+      const counterMag = Math.min(1, (Math.abs(s) - threshold) / Math.max(0.05, 1 - threshold));
+      const rate = K.COUNTER_STEER_RECOVERY_RATE || 9.0;
+      car.angle += delta * rate * counterMag * dt;
+    } else {
+      // 카운터 안 함: 미세 자동 펴짐 (천천히만, 급격한 자동 회복 X)
+      car.angle += delta * (K.AUTO_RECOVER_RATE || 1.2) * dt;
     }
   }
 
@@ -186,20 +200,24 @@ export function stepKartDrift(car, input, dt, track) {
     }
   }
 
-  // ─── ★ 드리프트 감속 (K_base + K_angle(β) + K_input) ───
+  // ─── ★ 드리프트 감속 (K_base + K_angle + K_input + deep) + ESCAPE_FORCE ───
   if (car.drifting) {
     const Kbase  = K.DRIFT_KBASE;
     const Kangle = K.DRIFT_KANGLE_SCALE * (Math.exp(beta / Math.max(1e-3, K.DRIFT_KANGLE_TAU)) - 1);
-    // K_input: 안쪽 키 hold 시 가산 (톡톡이로 떼면 0)
     const s = input.steer || 0;
     const insideHold = car._driftDir !== 0
       && Math.sign(s) === car._driftDir
       && Math.abs(s) > K.INSIDE_HOLD_THRESHOLD;
     const Kinput = insideHold ? K.DRIFT_KINPUT : 0;
-    vF -= (Kbase + Kangle + Kinput) * dt;
+    // 깊은각(>DEEP_ANGLE) 추가 페널티 — 헤어핀선 묵직.
+    const deepExtra = beta > K.DEEP_ANGLE
+      ? (beta - K.DEEP_ANGLE) * (K.DEEP_ANGLE_PENALTY || 0)
+      : 0;
+    vF -= (Kbase + Kangle + Kinput + deepExtra) * dt;
+    // ESCAPE_FORCE — passive 전진 가속 (속도 유지~약간 가속). topCap 이내.
+    vF += (K.DRIFT_ESCAPE_FORCE || 0) * dt;
     if (vF < 0) vF = 0;
 
-    // 스핀오프: β가 SPIN_BETA 이상이면 vF/vL 대폭 손실
     if (beta >= K.DRIFT_SPIN_BETA) {
       vF *= K.SPIN_SPEED_KEEP;
       vL *= K.SPIN_SPEED_KEEP;
@@ -224,11 +242,22 @@ export function stepKartDrift(car, input, dt, track) {
   car.vx = fwdX * vF + rgtX * vL;
   car.vy = fwdY * vF + rgtY * vL;
 
-  // heading 회전의 일부를 velocity가 따라옴 (곡선 감싸돌기)
+  // heading 회전의 일부를 velocity가 따라옴 (곡선 감싸돌기).
+  // 안쪽 hold = 호 따라 돔 (DRIFT_ARC_GRIP 강), 카운터 = 약함 (직진 슬라이드 후 펴짐).
   if (car.drifting && (K.DRIFT_HEADING_FOLLOW || 0) > 0) {
+    const slipGain = K.DRIFT_SLIP_GAIN || 1.0;
+    const s = input.steer || 0;
+    const insideHold = car._driftDir !== 0
+      && Math.sign(s) === car._driftDir
+      && Math.abs(s) > 0.25;
+    // 안쪽 hold 면 ARC_GRIP 적용 → velocity가 heading 강하게 따라옴 → 코너 호 (벽 흘러감 방지).
+    const baseFollow = insideHold
+      ? (K.DRIFT_ARC_GRIP ?? 0.30)
+      : K.DRIFT_HEADING_FOLLOW;
+    const effFollow = baseFollow / Math.max(0.5, slipGain);
     const yawDelta = car.angle - angleBeforeYaw;
     if (yawDelta !== 0) {
-      const blendAngle = yawDelta * K.DRIFT_HEADING_FOLLOW;
+      const blendAngle = yawDelta * effFollow;
       const cb = Math.cos(blendAngle), sb = Math.sin(blendAngle);
       const nvx = car.vx * cb - car.vy * sb;
       const nvy = car.vx * sb + car.vy * cb;

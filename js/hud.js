@@ -61,6 +61,20 @@ export function drawHUD(ctx, car, timing, canvasW, canvasH, track, ghost = null)
 
   if (_kartDebugOn) _drawKartDebug(ctx, car);
 
+  // 상시 슬립각 디버그 (heading vs velocity, deg). DRIFT_SLIP_GAIN 튜닝용.
+  _drawSlipBadge(ctx, car);
+
+  ctx.restore();
+}
+
+function _drawSlipBadge(ctx, car) {
+  const beta = Math.abs(car.slipBeta || 0) * 180 / Math.PI;
+  const drift = !!car.drifting;
+  ctx.save();
+  ctx.font = 'bold 13px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = drift ? '#ffd166' : 'rgba(255,255,255,0.55)';
+  ctx.fillText(`SLIP ${beta.toFixed(1)}°${drift ? ' *' : ''}`, 12, 80);
   ctx.restore();
 }
 

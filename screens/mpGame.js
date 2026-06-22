@@ -20,6 +20,7 @@ import {
   createSkidBuffer,
   createSparkPool, spawnSparks, updateSparks,
   createDriftSmokePool, updateDriftSmoke,
+  createWindPool, updateWind, emitWindFromCar,
   makeShake, triggerShake, tickShake,
   makeSpeedLines, drawSpeedLines,
   updateFovPump,
@@ -55,6 +56,8 @@ let rearViewActive = false;
 let driftFxState = null;
 let smokePool = null;
 let driftSmokePool = null;
+let windPool  = null;
+let windState = { _windT: 0 };
 let skidBuf = null;
 let sparkPool = null;
 let shake = null;
@@ -169,8 +172,10 @@ export function initMpGame({
   scene.add(carMesh);
   updateCar3D(carMesh, car, { brake: 0 });
 
-  smokePool = createSmokePool(scene, 32);
-  driftSmokePool = createDriftSmokePool(scene, 56);
+  smokePool = createSmokePool(scene, 48);
+  driftSmokePool = createDriftSmokePool(scene, 110);
+  windPool  = createWindPool(scene, 56);
+  windState = { _windT: 0 };
   skidBuf = createSkidBuffer(scene, 360);
   sparkPool = createSparkPool(scene, 64);
   driftFxState = makeDriftFxState();
@@ -312,8 +317,11 @@ export function updateMpGame(dt, now) {
   emitDriftSparks(driftFxState, car, sparkPool, dt);
   emitDriftSmoke(driftFxState, car, driftSmokePool, dt,
     (car.maxSpeed || 180) * TOP_SPEED_MULT);
+  emitWindFromCar(windState, car, windPool, dt, car.speed * KMH_PER_UNIT,
+    car.boosting ? 1 : 0);
   updateSmoke(smokePool, dt);
   updateDriftSmoke(driftSmokePool, dt);
+  updateWind(windPool, dt);
   updateSparks(sparkPool, dt);
 
   // Local mesh
@@ -528,17 +536,14 @@ function _updateRemoteCars(now) {
 
 function _checkMultiplayerVehicleCollisions() {
   if (!raceReleased || myFinished || !car || remotePlayers.size === 0) return;
-  // 실제 syntheticCar 참조를 그대로 넘김 — spread 복사하면 임펄스가 사본에만 적용됨.
-  const opponents = [];
-  for (const ghost of remotePlayers.values()) {
-    if (ghost.finished) continue;
-    const synth = ghost.syntheticCar;
-    if (!synth) continue;
-    synth.collisionRadius = 28;   // 차 OBB(반장 11 × 2)에 가깝게 — 너무 작으면 안 부딪힘
-    opponents.push(synth);
-  }
+  const opponents = [...remotePlayers.values()]
+    .filter(ghost => !ghost.finished)
+    .map(ghost => ({
+      ...ghost.syntheticCar,
+      collisionRadius: 16,
+    }));
   const hit = checkVehicleCollisions(car, opponents, 'friendly');
-  if (hit) triggerShake(shake, 4.5);
+  if (hit) triggerShake(shake, 3.5);
 }
 
 function _makeNameSprite(name, color) {
@@ -592,13 +597,27 @@ function _emitDriftFx(dt, driveInput) {
     if (prev) {
       const dx = wx - prev.x, dz = w3z - prev.z;
       if (dx * dx + dz * dz > 4.0) {
-        skidBuf.appendTrail(prev.x, prev.z, wx, w3z, 1.15, 0x141414);
+        skidBuf.appendTrail(prev.x, prev.z, wx, w3z, 0.65, _mpDriftTrailColor(car));
         car[key] = { x: wx, z: w3z };
       }
     } else {
       car[key] = { x: wx, z: w3z };
     }
   }
+}
+
+function _mpDriftTrailColor(c) {
+  const meter = Math.max(0, Math.min(100, c?.boostMeter || 0));
+  const stock = Math.max(0, Math.min(2, c?.boostStock || 0));
+  const t = Math.min(1, (stock * 100 + meter) / 200);
+  const lo = KART_CAMERA.TRAIL_COLOR_LOW ?? 0xfff099;
+  const hi = KART_CAMERA.TRAIL_COLOR_HIGH ?? 0x6688ff;
+  const ar = (lo >> 16) & 0xff, ag = (lo >> 8) & 0xff, ab = lo & 0xff;
+  const br = (hi >> 16) & 0xff, bg = (hi >> 8) & 0xff, bb = hi & 0xff;
+  const r = Math.round(ar + (br - ar) * t);
+  const g = Math.round(ag + (bg - ag) * t);
+  const bl = Math.round(ab + (bb - ab) * t);
+  return (r << 16) | (g << 8) | bl;
 }
 
 function _updateCamera(dt) {
@@ -620,19 +639,20 @@ function _updateCamera(dt) {
   const LOOK_AHEAD = isHigh ? 20 : isHood ? 155 : KART_CAMERA.CAM_LOOK_AHEAD;
   const LOOK_Y_BASE = isHigh ? 0 : isHood ? 10.5 : KART_CAMERA.CAM_LOOK_Y;
 
-  // 후진 시 시점 그대로(carAngle 유지).
-  const movingFwd = (car.forwardSpeed || 0) > 5;
-  const targetCam = movingFwd ? Math.atan2(car.vy, car.vx) : car.angle;
-  let dA = targetCam - _camAngle;
+  let dA = car.angle - _camAngle;
   while (dA > Math.PI) dA -= Math.PI * 2;
   while (dA < -Math.PI) dA += Math.PI * 2;
-  const angK = 1 - Math.exp(-5.0 * dt);
+  const angK = 1 - Math.exp(-9.0 * dt);
   _camAngle += dA * angK;
 
-  // PC: 드리프트 yaw 오프셋 ❌. 카메라는 velocity만.
-  car._camDriftYaw = 0;
+  // 드리프트 카메라 yaw
+  const driftYawTarget = car.drifting
+    ? Math.max(-0.26, Math.min(0.26, -(car.driftAngle || 0) * 0.55))
+    : 0;
+  car._camDriftYaw = (car._camDriftYaw || 0)
+    + (driftYawTarget - (car._camDriftYaw || 0)) * (1 - Math.exp(-8.0 * dt));
   const rearFlip = rearViewActive ? Math.PI : 0;
-  const aimAngle = _camAngle + rearFlip;
+  const aimAngle = _camAngle + car._camDriftYaw + rearFlip;
   const cs = Math.cos(aimAngle), sn = Math.sin(aimAngle);
   const roadY = car.roadHeight || 0;
 
@@ -655,12 +675,27 @@ function _updateCamera(dt) {
   _camLook.y += (ly - _camLook.y) * lookK;
   _camLook.z += (lz - _camLook.z) * lookK;
 
-  // PC: 카메라 뱅크 ❌. up 고정 + lookAt만.
-  car._camTilt = 0;
+  // 카메라 뱅크 — lookAt 후 rotateZ(view축 기준 roll). up 벡터 방식은 view dir이 월드 X축에 가까우면 무효.
+  const refSlip = KART_CAMERA.REF_SLIP || (25 * Math.PI / 180);
+  const intensity = car.drifting
+    ? Math.min(1, Math.abs(car.slipBeta || car.driftAngle || 0) / Math.max(1e-3, refSlip))
+    : 0;
+  const dir = car._driftDir || Math.sign(car.sideSpeed || car.steerAngle || 1);
+  const tiltTarget = car.drifting ? (-dir * KART_CAMERA.CAM_TILT_MAX * intensity) : 0;
+  const snapEnd = !car.drifting
+    && (car._lastDriftEndReason === 'align'
+     || car._lastDriftEndReason === 'spin'
+     || car._lastDriftEndReason === 'cut')
+    && (car.driftStateTime || 0) < 0.25;
+  const tiltRate = snapEnd ? KART_CAMERA.ROLL_SNAP : KART_CAMERA.CAM_TILT_LERP;
+  car._camTilt = car._camTilt ?? 0;
+  car._camTilt += (tiltTarget - car._camTilt) * (1 - Math.exp(-tiltRate * Math.max(0, dt)));
+
   const shk = tickShake(shake, dt);
   camera3d.position.set(_camPos.x + shk.x, _camPos.y + shk.y, _camPos.z);
   camera3d.up.set(0, 1, 0);
   camera3d.lookAt(_camLook);
+  if (car._camTilt) camera3d.rotateZ(car._camTilt);
 
   if (scene && scene.sunLight) {
     const carZ = -car.y;

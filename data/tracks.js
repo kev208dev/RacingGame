@@ -229,215 +229,194 @@ function avgStep(center) {
   return total / center.length;
 }
 
+// ─── 절차적 트랙 (센터라인 폴리곤 필렛 + 압출) ─────────────────
+// 다각형 꼭짓점을 CORNER_RADIUS 호로 필렛 → 닫힌 부드러운 경로 → 도로 압출은 기존 시스템(offsetWalls).
+// Hermanos Rodriguez와 동일 패턴(centerLine 폴리라인). 모듈 피스 스냅 ❌.
+const NEON_APEX = {
+  GRID_UNIT:      200,   // 전체 크기 (verts에 곱해짐)
+  ROAD_WIDTH:     160,   // 매우 넓게 (카트 5~6대, 드리프트 공간 충분)
+  CORNER_RADIUS:  220,   // 넉넉한 스윕 코너
+  SAMPLE_STEP:    24,    // 12→24 — 점 수 절반, 메시·콜라이더 부담 ↓
+};
+
+// 다각형의 각 꼭짓점을 호로 필렛. 90° 코너 전제 시 offset = R / tan(45°) = R.
+// 반환: 부드러운 closed centerline 점 배열.
+function _filletPolygon(verts, radius, step) {
+  const N = verts.length;
+  // 각 꼭짓점에서 tangent_in/out + arc center 계산.
+  const tan = new Array(N);
+  for (let i = 0; i < N; i++) {
+    const prev = verts[(i - 1 + N) % N];
+    const cur  = verts[i];
+    const next = verts[(i + 1) % N];
+    const v1x = cur.x - prev.x, v1y = cur.y - prev.y;
+    const v2x = next.x - cur.x, v2y = next.y - cur.y;
+    const l1 = Math.hypot(v1x, v1y) || 1;
+    const l2 = Math.hypot(v2x, v2y) || 1;
+    const u1x = v1x / l1, u1y = v1y / l1;
+    const u2x = v2x / l2, u2y = v2y / l2;
+    const cross = u1x * u2y - u1y * u2x;
+    const dot   = u1x * u2x + u1y * u2y;
+    const turn  = Math.atan2(cross, dot);     // 부호 있음 (+CCW, −CW)
+    const absT  = Math.abs(turn);
+    // 직선 꼭짓점(absT≈0) — offset 0, 호 없음.
+    const offset = absT < 1e-3
+      ? 0
+      : radius / Math.tan((Math.PI - absT) / 2);
+    const tInX  = cur.x - u1x * offset;
+    const tInY  = cur.y - u1y * offset;
+    const tOutX = cur.x + u2x * offset;
+    const tOutY = cur.y + u2y * offset;
+    const sign  = Math.sign(cross) || 1;
+    // arc center: tIn에서 u1의 (안쪽)수직 방향으로 R.
+    const perpX = -u1y * sign;
+    const perpY =  u1x * sign;
+    const cx = tInX + perpX * radius;
+    const cy = tInY + perpY * radius;
+    tan[i] = { tInX, tInY, tOutX, tOutY, cx, cy, sign, absT };
+  }
+  // emit: 각 꼭짓점의 (tOut → 다음 꼭짓점 tIn) 직선 + 다음 꼭짓점 arc.
+  const pts = [];
+  for (let i = 0; i < N; i++) {
+    const cur  = tan[i];
+    const nxt  = tan[(i + 1) % N];
+    // straight from cur.tOut → nxt.tIn
+    const sx = cur.tOutX, sy = cur.tOutY;
+    const ex = nxt.tInX,  ey = nxt.tInY;
+    const slen = Math.hypot(ex - sx, ey - sy);
+    const sn = Math.max(1, Math.round(slen / step));
+    for (let j = 0; j < sn; j++) {
+      const t = j / sn;
+      pts.push({ x: sx + (ex - sx) * t, y: sy + (ey - sy) * t });
+    }
+    // arc at next vertex (absT 작으면 skip)
+    if (nxt.absT > 1e-3) {
+      const a0 = Math.atan2(nxt.tInY - nxt.cy, nxt.tInX - nxt.cx);
+      const dir = nxt.sign;
+      const arcLen = radius * nxt.absT;
+      const nA = Math.max(6, Math.round(arcLen / step));
+      for (let j = 0; j < nA; j++) {
+        const a = a0 + dir * nxt.absT * (j / nA);
+        pts.push({
+          x: nxt.cx + radius * Math.cos(a),
+          y: nxt.cy + radius * Math.sin(a),
+        });
+      }
+    }
+  }
+  return pts;
+}
+
+function makeNeonApexTrack() {
+  // 새 사양: 20 꼭짓점 grid (각 좌표 × GRID_UNIT), START/FINISH (2, 12) × GRID_UNIT.
+  // 좌측 긴 직선 (V0(2,14)→V1(2,2)) 위에 START.
+  const G = NEON_APEX.GRID_UNIT;
+  const verts = [
+    { x:  2, y: 14 }, { x:  2, y:  2 }, { x:  6, y:  2 }, { x:  6, y:  7 },
+    { x:  9, y:  7 }, { x:  9, y:  2 }, { x: 13, y:  2 }, { x: 13, y:  7 },
+    { x: 16, y:  7 }, { x: 16, y:  2 }, { x: 22, y:  2 }, { x: 22, y: 14 },
+    { x: 16, y: 14 }, { x: 16, y:  9 }, { x: 13, y:  9 }, { x: 13, y: 14 },
+    { x:  9, y: 14 }, { x:  9, y:  9 }, { x:  6, y:  9 }, { x:  6, y: 14 },
+  ].map(p => ({ x: p.x * G, y: p.y * G }));
+  const startAbs = { x: 2 * G, y: 12 * G };
+
+  const width = NEON_APEX.ROAD_WIDTH;
+  const filleted = _filletPolygon(verts, NEON_APEX.CORNER_RADIUS, NEON_APEX.SAMPLE_STEP);
+
+  // 원점 중심화 (다른 트랙들과 일관). startAbs도 같은 변환.
+  const xs = filleted.map(p => p.x);
+  const ys = filleted.map(p => p.y);
+  const ox = (Math.min(...xs) + Math.max(...xs)) / 2;
+  const oy = (Math.min(...ys) + Math.max(...ys)) / 2;
+  const center = filleted.map(p => ({ x: p.x - ox, y: p.y - oy }));
+  const startCentered = { x: startAbs.x - ox, y: startAbs.y - oy };
+
+  // START 위치 = (80,240)에 가장 가까운 centerline index.
+  let startIdx = 0, bestD2 = Infinity;
+  for (let i = 0; i < center.length; i++) {
+    const dx = center[i].x - startCentered.x;
+    const dy = center[i].y - startCentered.y;
+    const d2 = dx*dx + dy*dy;
+    if (d2 < bestD2) { bestD2 = d2; startIdx = i; }
+  }
+  // centerLine 회전 — startIdx를 0번으로.
+  const rotated = center.slice(startIdx).concat(center.slice(0, startIdx));
+
+  const { outer, inner } = offsetWalls(rotated, width);
+
+  const N = rotated.length;
+  const sc = rotated[0];
+  const scNext = rotated[1];
+  const sAngle = Math.atan2(scNext.y - sc.y, scNext.x - sc.x);
+  const halfW = width * 0.58;
+  const perpDx = -Math.sin(sAngle);
+  const perpDy = Math.cos(sAngle);
+  // spawn = START 라인 직전 (살짝 뒤쪽)
+  const approxStep = avgStep(rotated);
+  const backSeg = Math.max(3, Math.round(60 / approxStep));
+  const spawnIdx = (N - backSeg) % N;
+  const spawn = rotated[spawnIdx];
+  const spawnN = rotated[(spawnIdx + 1) % N];
+  const spawnAngle = Math.atan2(spawnN.y - spawn.y, spawnN.x - spawn.x);
+
+  const startPos = { x: spawn.x, y: spawn.y, angle: spawnAngle };
+  const startLine = {
+    x1: sc.x + perpDx * halfW, y1: sc.y + perpDy * halfW,
+    x2: sc.x - perpDx * halfW, y2: sc.y - perpDy * halfW,
+    tx: Math.cos(sAngle), ty: Math.sin(sAngle),
+  };
+  const sectors = [];
+  for (let s = 1; s <= 2; s++) {
+    const idx = Math.floor((s * N / 3) % N);
+    const c = rotated[idx];
+    const cN = rotated[(idx + 1) % N];
+    const a = Math.atan2(cN.y - c.y, cN.x - c.x);
+    const px = -Math.sin(a);
+    const py = Math.cos(a);
+    sectors.push({
+      id: s,
+      checkLine: {
+        x1: c.x + px * halfW, y1: c.y + py * halfW,
+        x2: c.x - px * halfW, y2: c.y - py * halfW,
+        tx: Math.cos(a), ty: Math.sin(a),
+      },
+      color: s === 1 ? '#2ec4b6' : '#c77dff',
+    });
+  }
+  // 추정 길이: 직선합 + 코너 호(각 πR/2)
+  const approxLen = Math.round((rotated.length * approxStep) / 100) / 10;
+  const targetTime = estimateTargetTimeMs(`${approxLen} km`, 'Normal');
+
+  return {
+    id: 'neon_apex',
+    name: 'Neon Apex',
+    length: `${approxLen} km`,
+    difficulty: 'Normal',
+    desc: 'PC 카트라이더식 와이드 도로 + 라운드 90° 12 코너 닫힌 루프.',
+    character: 'flow',
+    width,
+    targetTime,
+    silverTime: Math.round(targetTime * 0.92),
+    goldTime: Math.round(targetTime * 0.84),
+    outerBoundary: outer,
+    innerBoundary: inner,
+    centerLine: rotated.map(c => [c.x, c.y]),
+    boostPads: _computeBoostPads(rotated, 4),
+    startLine,
+    sectors,
+    startPos,
+    backgroundColor: '#1a2030',
+    trackColor: '#303542',
+    accentColor: '#ffd166',
+    mapColor: '#e7edf3',
+    sourceSize: { width: 720, height: 520 },
+    theme: { noDesertWalls: true, minimal: true },   // 사암 벽 ❌, props(피라미드/박스/스탠드) ❌
+  };
+}
+
+// ─── 트랙 등록 — Neon Apex 하나만 ─────────────────────────────────
+// 기존 트랙 (Autodromo Hermanos Rodriguez + 5개 official) 모두 삭제됨.
 export const TRACKS = [
-  makeOfficialCircuit({
-    id: 'autodromo_hermanos_rodriguez',
-    name: 'Autodromo Hermanos Rodriguez',
-    length: '4.304 km',
-    difficulty: 'Normal',
-    desc: 'A wide, fast technical circuit inspired by Mexico City Grand Prix rhythm.',
-    character: 'Long main straight, stadium section, and medium-speed technical corners.',
-    width: 138,
-    scale: 3.0,
-    startBackOffset: 150,
-    sourceSize: { width: 1940, height: 1082 },
-    theme: { accent: '#d71920', sector1: '#22c55e', sector2: '#facc15', map: '#fff5f5' },
-    info: {
-      country: 'Mexico',
-      gpName: 'Mexico City Grand Prix',
-      laps: 71,
-      turns: 17,
-      elevationChangeM: 0,
-      firstGrandPrix: 1963,
-      fastestLapRecord: '1:17.774',
-      fastestLapDriver: 'Valtteri Bottas',
-      polePositionRecord: '1:14.758',
-      polePositionDriver: 'Daniel Ricciardo',
-      mostWinsDriver: 'Max Verstappen',
-      mostWinsCount: 5,
-      iconicMomentTitle: '1970: Unsafe Crowds Halt Race',
-      famousCorners: ['Foro Sol (Stadium Section)', 'Peraltada'],
-      sourceUrl: 'https://f1-circuits.com/circuits/autodromo-hermanos-rodriguez',
-    },
-    trace: [
-      [320, 110], [1580, 110], [1710, 250], [1600, 560], [1460, 900],
-      [1365, 780], [1310, 595], [1080, 505], [760, 430], [420, 405],
-      [240, 260], [320, 110],
-    ],
-  }),
-  makeOfficialCircuit({
-    id: 'pacifica_sweep',
-    name: 'Pacifica Sweep GP',
-    length: '5.840 km',
-    difficulty: 'Normal',
-    desc: 'A flowing coastal speed course with generous racing width.',
-    character: 'Two long straights, sweeping bends, and stable exit zones.',
-    width: 152,
-    scale: 2.85,
-    startBackOffset: 190,
-    sourceSize: { width: 1940, height: 1083 },
-    theme: { accent: '#14b8a6', sector1: '#3b82f6', sector2: '#facc15', map: '#f0fdfa' },
-    info: {
-      country: 'Fantasy',
-      gpName: 'Pacifica Speed Trial',
-      laps: 48,
-      turns: 11,
-      elevationChangeM: 18,
-      firstGrandPrix: 2026,
-      fastestLapRecord: 'No record',
-      fastestLapDriver: 'Open',
-      polePositionRecord: 'No record',
-      polePositionDriver: 'Open',
-      mostWinsDriver: 'Open',
-      mostWinsCount: 0,
-      iconicMomentTitle: 'High-Speed Rhythm Course',
-      famousCorners: ['Harbor Bend', 'Backstretch Kink'],
-    },
-    trace: [
-      [245, 250], [1510, 245], [1740, 395], [1650, 610], [1390, 760],
-      [1180, 905], [880, 915], [420, 805], [235, 560], [390, 390],
-      [245, 250],
-    ],
-  }),
-  makeOfficialCircuit({
-    id: 'pylon_p_loop',
-    name: 'Pylon P-Loop',
-    length: '4.920 km',
-    difficulty: 'Hard',
-    desc: 'A P-shaped braking and rotation challenge for precise drivers.',
-    character: 'Long entry, tight P loop, and a late technical sector.',
-    width: 142,
-    scale: 2.95,
-    startBackOffset: 210,
-    sourceSize: { width: 1935, height: 1080 },
-    theme: { accent: '#f97316', sector1: '#22c55e', sector2: '#f43f5e', map: '#fff7ed' },
-    info: {
-      country: 'Fantasy',
-      gpName: 'Pylon Technical Cup',
-      laps: 62,
-      turns: 16,
-      elevationChangeM: 22,
-      firstGrandPrix: 2026,
-      fastestLapRecord: 'No record',
-      fastestLapDriver: 'Open',
-      polePositionRecord: 'No record',
-      polePositionDriver: 'Open',
-      mostWinsDriver: 'Open',
-      mostWinsCount: 0,
-      iconicMomentTitle: 'P-Shaped Brake Test',
-      famousCorners: ['P Loop', 'Stem Hairpin'],
-    },
-    trace: [
-      [420, 930], [420, 210], [1110, 205], [1510, 360], [1545, 585],
-      [1480, 805], [1290, 970], [970, 1020], [620, 1005], [420, 930],
-    ],
-  }),
-  makeOfficialCircuit({
-    id: 'monaco_street',
-    name: 'Circuit de Monaco',
-    length: '3.337 km',
-    difficulty: 'Very Hard',
-    desc: 'A compact street circuit with demanding precision and rhythm.',
-    character: 'Square turns, hairpins, tunnel-style flow, and fast pool-side chicanes.',
-    width: 128,
-    scale: 2.85,
-    startBackOffset: 180,
-    sourceSize: { width: 1940, height: 1080 },
-    theme: { accent: '#dc2626', sector1: '#3b82f6', sector2: '#fbbf24', map: '#fef2f2' },
-    info: {
-      country: 'Monaco',
-      gpName: 'Monaco Grand Prix',
-      laps: 78,
-      turns: 19,
-      elevationChangeM: 42,
-      firstGrandPrix: 1929,
-      fastestLapRecord: '1:12.909',
-      fastestLapDriver: 'Lewis Hamilton',
-      polePositionRecord: '1:10.166',
-      polePositionDriver: 'Charles Leclerc',
-      mostWinsDriver: 'Ayrton Senna',
-      mostWinsCount: 6,
-      iconicMomentTitle: '1996: Olivier Panis Wins in Chaos',
-      famousCorners: ['Monte Carlo Square', 'Grand Hotel Hairpin', 'Swimming Pool'],
-    },
-    trace: [
-      [290, 760], [340, 555], [510, 345], [750, 225], [1045, 205],
-      [1285, 305], [1450, 490], [1605, 650], [1585, 835], [1440, 980],
-      [1210, 1010], [1015, 925], [835, 1000], [600, 950], [405, 855],
-      [290, 760],
-    ],
-  }),
-  makeOfficialCircuit({
-    id: 'monza_temple',
-    name: 'Autodromo Nazionale Monza',
-    length: '5.793 km',
-    difficulty: 'Easy',
-    desc: 'A temple of speed built around long straights and clean braking zones.',
-    character: 'Main straight, three chicanes, Curva Grande, and Parabolica.',
-    width: 152,
-    scale: 2.75,
-    startBackOffset: 240,
-    sourceSize: { width: 1940, height: 1080 },
-    theme: { accent: '#16a34a', sector1: '#dc2626', sector2: '#f8fafc', map: '#f0fdf4' },
-    info: {
-      country: 'Italy',
-      gpName: 'Italian Grand Prix',
-      laps: 53,
-      turns: 11,
-      elevationChangeM: 12,
-      firstGrandPrix: 1950,
-      fastestLapRecord: '1:21.046',
-      fastestLapDriver: 'Rubens Barrichello',
-      polePositionRecord: '1:18.887',
-      polePositionDriver: 'Lewis Hamilton',
-      mostWinsDriver: 'Michael Schumacher',
-      mostWinsCount: 5,
-      iconicMomentTitle: 'Temple of Speed',
-      famousCorners: ['Variante del Rettifilo', 'Curva Grande', 'Parabolica'],
-    },
-    trace: [
-      [220, 800], [1510, 800], [1665, 720], [1735, 580], [1695, 430],
-      [1570, 270], [1385, 185], [1210, 240], [1150, 350], [995, 355],
-      [850, 440], [710, 535], [540, 605], [380, 680], [270, 785],
-      [255, 900], [355, 980], [560, 1000], [720, 925], [610, 835],
-      [220, 800],
-    ],
-  }),
-  makeOfficialCircuit({
-    id: 'aurora_endurance',
-    name: 'Aurora Endurance',
-    length: '11.620 km',
-    difficulty: 'Very Hard',
-    desc: 'A long endurance route with high-speed rhythm changes.',
-    character: 'Extended straights, linked esses, elevation rhythm, and a final hairpin.',
-    width: 150,
-    scale: 4.15,
-    startBackOffset: 120,
-    sourceSize: { width: 1940, height: 1080 },
-    theme: { accent: '#38bdf8', sector1: '#facc15', sector2: '#fb7185', map: '#ecfeff', background: '#26384a', track: '#2f343b' },
-    info: {
-      country: 'Fantasy',
-      gpName: 'Aurora Long Trial',
-      laps: 24,
-      turns: 28,
-      elevationChangeM: 64,
-      firstGrandPrix: 2026,
-      fastestLapRecord: 'No record',
-      fastestLapDriver: 'Open',
-      polePositionRecord: 'No record',
-      polePositionDriver: 'Open',
-      mostWinsDriver: 'Open',
-      mostWinsCount: 0,
-      iconicMomentTitle: 'Double-Length Variable Course',
-      famousCorners: ['North Lights', 'Mirror Esses', 'Last Dawn Hairpin'],
-    },
-    trace: [
-      [170, 815], [510, 760], [875, 820], [1275, 775], [1700, 705],
-      [1835, 545], [1725, 390], [1465, 310], [1190, 190], [860, 170],
-      [590, 250], [360, 385], [235, 555], [305, 720], [570, 825],
-      [890, 900], [1225, 875], [1515, 785], [1640, 895], [1480, 1000],
-      [1115, 1015], [770, 945], [465, 990], [250, 930], [170, 815],
-    ],
-  }),
+  makeNeonApexTrack(),
 ];
 

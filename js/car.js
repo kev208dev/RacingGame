@@ -1,17 +1,15 @@
 import * as THREE from 'three';
 import { createCarDesign } from './carDesigns.js';
-import { getKartMesh, listKartIds } from './whiteMesh.js';
 import { mapStatToPhysics, normalizeCarStats } from './carStats.js';
 import { getSkinById } from '../data/skins.js';
 import { KART_CAMERA as KC } from '../kart-boost/config.js';
 
-// 카트 → GLB 매핑. 두 GLB(kart_a/kart_b)만 사용. 미매핑은 kart_a 기본.
 const CAR_DESIGN_BY_ID = {
-  apex_gt3:   'kart_a',
-  lmp:        'kart_b',
-  zero_f1:    'kart_a',
-  photon_gtr: 'kart_b',
-  prism_evo:  'kart_a',
+  apex_gt3: 'gt_silver',
+  lmp: 'cyber_black',
+  zero_f1: 'formula_red',
+  photon_gtr: 'neon_aqua',
+  prism_evo: 'neon_magenta',
 };
 
 // ── physics state ────────────────────────────────────────────
@@ -81,116 +79,32 @@ export function createCar(carData, startPos) {
 //     └── createCarDesign(type) child
 export function createCar3D(carData = {}) {
   const root = new THREE.Group();
-  const designId  = carData.designType || CAR_DESIGN_BY_ID[carData.id] || 'kart_a';
-  const validIds  = listKartIds();
-  const kartId    = validIds.includes(designId) ? designId : validIds[0];
+  const designType = carData.designType || CAR_DESIGN_BY_ID[carData.id] || 'formula_red';
+  const model = createCarDesign(designType);
+  _applySkin(model, carData.skin);
+  model.rotation.y = Math.PI / 2;
+  model.scale.set(5.2, 5.2, 5.2);
+  root.add(model);
 
-  // body wrapper(서스펜션 y 바운스 슬롯) → inner(yaw rotation) → GLB scene.
-  // GLB는 normalize에서 이미 최종 스케일 + 바닥 정렬 완료. inner는 회전만 담당.
-  const body  = new THREE.Group();
-  const inner = new THREE.Group();
-  inner.rotation.y = Math.PI / 2;
-  // 회전축(=root origin)을 차체 뒤로 살짝 옮기기 — inner를 차 forward(+X) 로 밀어 GLB를 앞으로 보냄.
-  // KART_REAR_PIVOT_BIAS: 0=중심, 1=뒤끝. 살짝 → 0.30.
-  inner.position.x = (KC.KART_LENGTH || 18.7) * 0.5 * (KC.KART_REAR_PIVOT_BIAS || 0.30);
-  const kart  = getKartMesh(kartId);
-  const model = kart ? kart.root : _fallbackBox();
-  inner.add(model);
-  body.add(inner);
-  root.add(body);
+  const wheelGroups = [];
+  model.traverse(child => {
+    const childName = child.name.toLowerCase();
+    const isWheelGroup = child.isGroup && childName.includes('wheel') && !childName.includes('_pivot');
+    if (isWheelGroup) {
+      child.spinPivot = child.userData.spinPivot || child.children.find(c => c.isGroup && c.name.toLowerCase().includes('_pivot'));
+      child.baseY = child.userData.baseY ?? child.position.y;
+      child.sideSign = child.position.x < 0 ? 1 : -1;
+      child.axleSign = child.position.z > 0 ? 1 : -1;
+      wheelGroups.push(child);
+    }
+  });
 
-  // 배기 화염 + 후미 브레이크등 — GLB에 해당 메시가 없어서 절차적으로 추가.
-  _addBoostFlame(body);
-  _addBrakeLight(body);
-
-  root.wheelGroups   = kart ? kart.wheels : [];
-  root.body          = body;
-  root.bodyInner     = inner;
-  root.castShadow    = true;
+  root.wheelGroups = wheelGroups;
+  root.body        = model;
+  root.castShadow  = true;
   root._lastWheelTime = performance.now();
-  root._designId     = kartId;
-  root._needsGlbSwap = !kart;
 
   return root;
-}
-
-function _addBrakeLight(parent) {
-  // 차 후미 범퍼 위치에 작게 부착 — 허공에 안 뜨게 GLB 안쪽으로 당김.
-  const len = KC.KART_LENGTH || 18.7;
-  const bias = KC.KART_REAR_PIVOT_BIAS || 0.30;
-  // root-local rear face ≈ -(len/2 - len*0.5*bias). 거기서 살짝 안쪽으로(+0.3).
-  const rearX = -(len * 0.5) + (len * 0.5 * bias) + 0.3;
-  for (const side of [-1, 1]) {
-    const m = new THREE.Mesh(
-      new THREE.BoxGeometry(0.3, 0.25, 0.9),
-      new THREE.MeshStandardMaterial({
-        color: 0x220000,
-        emissive: 0x110000,
-        emissiveIntensity: 0.0,
-        transparent: true,
-        opacity: 0.0,
-      })
-    );
-    m.name = 'brakelight';
-    m.position.set(rearX, 0.9, side * 2.0);   // 낮은 위치, 차폭 안쪽
-    parent.add(m);
-  }
-}
-
-function _addBoostFlame(parent) {
-  // root 좌표계 기준: kart forward = +X, 차체 뒤끝 ≈ -7 부근(KART_LENGTH 18.7 / 2 - 피벗 bias).
-  const len = KC.KART_LENGTH || 18.7;
-  const bias = KC.KART_REAR_PIVOT_BIAS || 0.30;
-  const rearX = -(len * 0.5) + (len * 0.5 * bias);  // root-local에서 차 뒤쪽 위치
-  const group = new THREE.Group();
-  group.name = 'boostflame';
-  group.position.set(rearX - 1.2, 1.4, 0);
-  group.rotation.z = Math.PI / 2; // cone 끝을 -X로
-  // 콘 메시 3겹.
-  const layers = [
-    { name: 'flameouter', color: 0xff5a1f, opacity: 0.36, radius: 0.9 },
-    { name: 'flameinner', color: 0xfff1a8, opacity: 0.68, radius: 0.55 },
-    { name: 'flameglow',  color: 0xffd066, opacity: 0.13, radius: 1.45 },
-  ];
-  for (const L of layers) {
-    const m = new THREE.Mesh(
-      new THREE.ConeGeometry(L.radius, 3.5, 16, 1, true),
-      new THREE.MeshBasicMaterial({
-        color: L.color, transparent: true, opacity: L.opacity,
-        depthWrite: false, blending: THREE.AdditiveBlending,
-      })
-    );
-    m.name = L.name;
-    m.position.y = 1.8;
-    group.add(m);
-  }
-  group.visible = false;
-  parent.add(group);
-}
-
-function _trySwapToGlb(root) {
-  if (!root._needsGlbSwap) return;
-  const kart = getKartMesh(root._designId);
-  if (!kart) return;
-  // inner의 자식만 교체 — body(서스펜션 슬롯)와 inner(yaw) 구조 유지.
-  const inner = root.bodyInner;
-  if (!inner) return;
-  while (inner.children.length) inner.remove(inner.children[0]);
-  inner.add(kart.root);
-  root.wheelGroups = kart.wheels;
-  root._needsGlbSwap = false;
-  root._susState = null;
-}
-
-function _fallbackBox() {
-  const g = new THREE.Group();
-  const mesh = new THREE.Mesh(
-    new THREE.BoxGeometry(2.5, 1.0, 1.4),
-    new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.4 })
-  );
-  mesh.position.y = 0.5;
-  g.add(mesh);
-  return g;
 }
 
 function _applySkin(model, skinData) {
@@ -228,11 +142,9 @@ function _applySkin(model, skinData) {
 
 // ── per-frame mesh sync ──────────────────────────────────────
 export function updateCar3D(mesh3d, car, input, track = null, dt = 1 / 60) {
-  // GLB 늦게 로드된 경우 첫 프레임에 fallback → GLB 교체.
-  if (mesh3d._needsGlbSwap) _trySwapToGlb(mesh3d);
   // 2D y → 3D -z mapping
-  // 차는 항상 평평하게 — 펜스/연석 타고 올라가지 않게 수직 변위 ❌.
-  const surfaceY = _trackSurfaceHeight(track, car.x, car.y);
+  const wallRideLift = car.wallRiding ? Math.min(2.2, 0.35 + (car.speed || 0) * 0.006) : 0;
+  const surfaceY = _trackSurfaceHeight(track, car.x, car.y) + wallRideLift;
   car.roadHeight = surfaceY;
   mesh3d.position.set(car.x, surfaceY, -car.y);
   if (mesh3d._visualAngle == null) mesh3d._visualAngle = car.angle;
@@ -250,13 +162,9 @@ export function updateCar3D(mesh3d, car, input, track = null, dt = 1 / 60) {
   const now = performance.now();
   const wheelDt = Math.min(0.05, Math.max(0, (now - (mesh3d._lastWheelTime || now)) / 1000));
   mesh3d._lastWheelTime = now;
-  const spinRate = speed * 0.40 * wheelDt * speedSign;
+  const spinRate = speed * 2.2 * wheelDt * speedSign;
   for (const wg of (mesh3d.wheelGroups || [])) {
-    if (!wg.pivot) continue;
-    // 휠 메시의 짧은축(=axle)을 기준으로 굴림.
-    if      (wg.axis === 'x') wg.pivot.rotation.x += spinRate;
-    else if (wg.axis === 'y') wg.pivot.rotation.y += spinRate;
-    else                       wg.pivot.rotation.z += spinRate;
+    if (wg.spinPivot) wg.spinPivot.rotation.y += spinRate;
   }
 
 
@@ -267,7 +175,7 @@ export function updateCar3D(mesh3d, car, input, track = null, dt = 1 / 60) {
   const ca = Math.cos(a), sa = Math.sin(a);
 
   if (!mesh3d._susState) {
-    const initY = (mesh3d.wheelGroups?.[0]?.pivot?.position?.y) ?? 0.48;
+    const initY = (mesh3d.wheelGroups?.[0]?.position?.y) ?? 0.48;
     mesh3d._susState = {
       wheels: {
         fl: { y: initY }, fr: { y: initY },
@@ -278,7 +186,7 @@ export function updateCar3D(mesh3d, car, input, track = null, dt = 1 / 60) {
   }
 
   const sus = mesh3d._susState;
-  const baseRef = mesh3d.wheelGroups?.[0]?.pivot?.position?.y ?? 0.48;
+  const baseRef = mesh3d.wheelGroups?.[0]?.baseY ?? mesh3d.wheelGroups?.[0]?.position?.y ?? 0.48;
 
   const corners = [
     { key: 'fl', lx: 12, lz: 9 },
@@ -314,59 +222,110 @@ export function updateCar3D(mesh3d, car, input, track = null, dt = 1 / 60) {
   const rAvg2 = (sus.wheels.fr.y + sus.wheels.rr.y) / 2;
 
   if (mesh3d.body) {
-    mesh3d.body.position.y = 0;
-    const brakeOn = (KC.FX_BRAKE !== false) && (brake > 0.05);
-    const targetPitch = brakeOn ? -(KC.NOSE_DIVE_DEG || 2.5) * Math.PI / 180 : 0;
-    // 비드리프트 코너 미세 롤 — 조향 방향 반대로 살짝(원심력 표현).
+    const avgY = (fAvg + rAvg) / 2;
+    const driftDrop = car.drifting ? 0.22 : 0;
+    mesh3d.body.position.y = avgY - baseRef - driftDrop;
+    const targetPitch = (rAvg - fAvg) * 0.02 + throttle * 0.018 - brake * 0.048;
+    // KartRider 연출: 드리프트 = 안쪽으로 확 누움.
+    // intensity = β / REF_SLIP, REF_SLIP 낮춰서 중간 각도에서도 풀강도.
+    // 모델 sign: 기존 검증된 sign(sideSpeed) 방향과 일치하도록 -dir 적용.
+    const refSlip = KC.REF_SLIP || (25 * Math.PI / 180);
+    const intensity = car.drifting
+      ? Math.min(1, Math.abs(car.slipBeta || car.driftAngle || 0) / Math.max(1e-3, refSlip))
+      : 0;
+    const dir = car._driftDir || Math.sign(car.sideSpeed || car.steerAngle || 1);
+
+    // 종료가 cut/align/spin이면 빠르게 0으로 스냅. 그 외 정상 lerp.
+    const isSnapEnd = !car.drifting
+      && (car._lastDriftEndReason === 'align'
+       || car._lastDriftEndReason === 'spin'
+       || car._lastDriftEndReason === 'cut')
+      && (car.driftStateTime || 0) < 0.25;
+    const rate = isSnapEnd ? KC.ROLL_SNAP : KC.ROLL_LERP;
+    car._kartRoll = car._kartRoll ?? 0;
+    const rollTarget = car.drifting ? (-dir * KC.KART_ROLL_MAX * intensity) : 0;
+    car._kartRoll += (rollTarget - car._kartRoll) * (1 - Math.exp(-rate * Math.max(0, dt)));
+
+    // 일반 코너링 미세 롤 — drift 아닐 때 |steerAngle| 비례
     const steerRoll = !car.drifting
       ? (-Math.sign(car.steerAngle || 0)) * (KC.STEER_ROLL_MAX || 0)
         * Math.min(1, Math.abs(car.steerAngle || 0) * 1.6)
       : 0;
-    car._kartRoll = 0;
-    const targetRoll = steerRoll;
+
+    const driftLean    = car._kartRoll;
+    const wallRideLean = car.wallRiding ? (car.wallRideSide || Math.sign(car.sideSpeed || 1)) * 0.075 : 0;
+    const targetRoll = (rAvg2 - lAvg) * 0.02 + driftLean + wallRideLean + steerRoll;
     mesh3d.body.rotation.z += (targetPitch - mesh3d.body.rotation.z) * 0.20;
     mesh3d.body.rotation.x += (targetRoll - mesh3d.body.rotation.x) * 0.20;
   }
 
-  // 휠 위치는 GLB normalize한 자리 그대로. 굴림은 위 spinRate 루프에서 처리.
-  // 앞바퀴 yaw 스티어는 GLB의 회전축 다양성 때문에 일단 skip (바디 yaw는 root에서 처리).
+  for (const wg of (mesh3d.wheelGroups || [])) {
+    // Keep tires planted. Suspension now moves only the body so the wheels do
+    // not visibly bounce into/out of the road surface.
+    wg.position.y = wg.baseY ?? baseRef;
+  }
+
+  // front-wheel steer
+  if (mesh3d.wheelGroups) {
+    const frontWheels = mesh3d.wheelGroups.filter(w => w.position.z > 0);
+    for (const wg of frontWheels) wg.rotation.y = car.steerAngle * 0.9;
+  }
 
   // brake lights
   const braking = input && (input.brake > 0);
   mesh3d.traverse(c => {
     if (c.name === 'brakelight' && c.material) {
-      const on = braking && (KC.FX_BRAKE !== false);
-      // ON: 빨강 발광 + 보임. OFF: 완전 투명(거의 안 보임).
-      c.material.color.setHex(on ? 0xff2020 : 0x220000);
-      c.material.emissive.setHex(on ? 0xff2020 : 0x000000);
-      c.material.emissiveIntensity = on ? (KC.BRAKE_GLOW_INTENSITY || 1.0) * 1.6 : 0;
-      c.material.opacity = on ? 0.95 : 0.0;
+      c.material.emissive.setHex(braking ? 0xff2222 : 0x441111);
     }
     if (c.name === 'boostflame') {
+      // 후방 화염 제트 — 짧고 또렷, 펄럭임(flicker) + 발동 순간 burst flash.
       const on = !!car.boosting || !!car.drsActive;
       c.visible = on;
-      const power = Math.max(car.boostPower || 0, car.drsPower || 0);
-      // FX_BOOST: 링크면 더 굵게.
+      const ud = c.userData;
+      // 발동 transition (false→true) 감지 → burst flash 트리거.
+      if (on && !ud._prevOn) ud._flashT = 1.0;
+      ud._prevOn = on;
+      ud._flashT = Math.max(0, (ud._flashT || 0) - (KC.BOOST_BURST_DECAY ?? 7.0) * dt);
+      if (!on) return;
+      const power  = Math.max(car.boostPower || 0, car.drsPower || 0);
       const linked = (KC.FX_BOOST !== false) && car._boostLinked;
-      const scaleMul = linked ? (KC.BOOST_LINK_FLAME_SCALE || 3.2) : KC.FLAME_BOOST_SCALE;
-      const boostBoost = car.boosting ? scaleMul : 1.0;
-      const base = 1.0 * (car.flameScale || 1) * (0.46 + power * 0.82);
-      const flicker = 0.92 + Math.random() * 0.14;
-      c.scale.set(base * 0.52 * flicker * (1 + (boostBoost - 1) * 0.5),
-                  base * 0.48 * (1 + (boostBoost - 1) * 0.4),
-                  base * 0.72 * boostBoost);
-      // 색: 링크=청백, 단발=주황.
-      const flameColor = (KC.FX_BOOST !== false) && linked
-        ? (KC.BOOST_LINK_FLAME_COLOR || 0x66b4ff)
-        : (KC.BOOST_NORMAL_FLAME_COLOR || 0xff8033);
+      // flicker — 난류 (sin 합성 + 노이즈)
+      const fAmt   = KC.FLICKER_AMOUNT ?? 0.40;
+      const fSpd   = KC.FLICKER_SPEED  ?? 32;
+      const tNow   = performance.now() * 0.001;
+      const noise  = Math.sin(tNow * fSpd) * 0.55
+                   + Math.sin(tNow * fSpd * 1.73 + 1.1) * 0.45;
+      const lenFlick   = 1 + noise * fAmt;
+      const widthFlick = 1 + (Math.random() - 0.5) * fAmt * 0.6;
+      // burst flash multiplier (발동 순간 펑)
+      const flashMul = 1 + ud._flashT * ((KC.BOOST_BURST_FLASH ?? 2.6) - 1);
+      // 베이스 — 짧고 컴팩트
+      const baseLen = 0.90 + power * 0.50 + (linked ? 0.20 : 0);
+      const baseWid = 0.85 + power * 0.20 + (linked ? 0.15 : 0);
+      c.scale.set(
+        baseWid * widthFlick * flashMul,
+        baseWid * widthFlick * flashMul,
+        baseLen * lenFlick   * flashMul,
+      );
+      // 색: 단발=주황 mid+빨강 outer, 링크=청백 mid+청 outer.
+      const inten    = KC.BOOST_FLAME_INTENSITY ?? 1.7;
+      const colMid   = linked ? 0xa0e0ff : 0xffae3c;
+      const colOuter = linked ? 0x3a8aff : 0xff3a1a;
+      const burst = 0.75 + power * 0.40 + ud._flashT * 0.35;
       c.children.forEach(part => {
         if (!part.material) return;
-        const inner = part.name === 'flameinner';
-        const glow = part.name === 'flameglow';
-        part.material.opacity = on
-          ? (inner ? 0.68 : glow ? 0.13 : 0.36) * (0.55 + power * 0.45)
-          : 0;
-        if (on && part.material.color) part.material.color.setHex(flameColor);
+        const isInner = part.name === 'flameinner';
+        const isMid   = part.name === 'flamemid';
+        const peakOp = isInner ? 1.00 : isMid ? 0.85 : 0.55;
+        // opacity flicker per-part
+        const opFlick = 1 - Math.random() * fAmt * 0.30;
+        part.material.opacity = Math.min(1, peakOp * burst * opFlick);
+        if (isInner) {
+          // 흰-핫 코어 — RGB > 1 → Additive 환경서 강한 흰 발광
+          part.material.color.setRGB(inten, inten, inten * 0.95);
+        } else {
+          part.material.color.setHex(isMid ? colMid : colOuter);
+        }
       });
     }
   });

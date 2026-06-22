@@ -34,7 +34,10 @@ function _buildTrackGroup(track) {
   _addBoostPads(grp, track);
 
   // ── 사막 테마: 양옆 수직 사암 벽 (시야 차단 → 좁고 빠른 느낌) ──
-  grp.add(buildDesertWalls(track));
+  // 트랙별 토글 — 기본 ON, theme.noDesertWalls 인 트랙은 skip (잡 지오메트리 제거).
+  if (!track.theme?.noDesertWalls) {
+    grp.add(buildDesertWalls(track));
+  }
   return grp;
 }
 
@@ -76,67 +79,10 @@ function _addTrackRibbon(grp, track) {
   grp.add(mesh);
 }
 
-let _roadTex = null;
-let _groundTex = null;
-
-function _makeAsphaltTexture() {
-  if (_roadTex) return _roadTex;
-  const c = document.createElement('canvas');
-  c.width = c.height = 256;
-  const ctx = c.getContext('2d');
-  // 베이스
-  ctx.fillStyle = '#54574f';
-  ctx.fillRect(0, 0, 256, 256);
-  // 거친 grit
-  for (let i = 0; i < 1200; i++) {
-    const x = Math.random() * 256, y = Math.random() * 256;
-    const g = 70 + Math.random() * 50;
-    ctx.fillStyle = `rgb(${g},${g + 2},${g})`;
-    ctx.fillRect(x, y, 1.4, 1.4);
-  }
-  // 균열/선
-  ctx.strokeStyle = 'rgba(30,32,28,0.35)';
-  ctx.lineWidth = 0.7;
-  for (let i = 0; i < 30; i++) {
-    ctx.beginPath();
-    ctx.moveTo(Math.random() * 256, Math.random() * 256);
-    ctx.lineTo(Math.random() * 256, Math.random() * 256);
-    ctx.stroke();
-  }
-  const t = new THREE.CanvasTexture(c);
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.repeat.set(40, 40);
-  t.anisotropy = 8;
-  _roadTex = t;
-  return t;
-}
-
-function _makeGrassTexture() {
-  if (_groundTex) return _groundTex;
-  const c = document.createElement('canvas');
-  c.width = c.height = 256;
-  const ctx = c.getContext('2d');
-  ctx.fillStyle = '#283326';
-  ctx.fillRect(0, 0, 256, 256);
-  // 잔디 점
-  for (let i = 0; i < 2400; i++) {
-    const x = Math.random() * 256, y = Math.random() * 256;
-    const g = 30 + Math.random() * 35;
-    ctx.fillStyle = `rgb(${g - 4},${g + 12},${g})`;
-    ctx.fillRect(x, y, 1.2, 1.2);
-  }
-  const t = new THREE.CanvasTexture(c);
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.repeat.set(80, 80);
-  t.anisotropy = 4;
-  _groundTex = t;
-  return t;
-}
-
 function _makeRoadMaterial() {
+  // 어두운 아스팔트 — 지면과 확실한 대비.
   return new THREE.MeshLambertMaterial({
-    map: _makeAsphaltTexture(),
-    color: 0xa0a39a,    // 텍스처 위에 살짝 톤
+    color: 0x2e2e2e,
     polygonOffset: true,
     polygonOffsetFactor: 1,
     polygonOffsetUnits: 1,
@@ -144,10 +90,8 @@ function _makeRoadMaterial() {
 }
 
 function _makeGroundMaterial() {
-  return new THREE.MeshLambertMaterial({
-    map: _makeGrassTexture(),
-    color: 0xa0a8a0,
-  });
+  // 잔디/이끼 — 도로와 명확히 구분.
+  return new THREE.MeshLambertMaterial({ color: 0x1f4530 });
 }
 
 function _addRoadMarkings(grp, track) {
@@ -164,15 +108,16 @@ function _addRoadMarkings(grp, track) {
       const mx = (x1 + x2) / 2;
       const my = (y1 + y2) / 2;
       const h = _trackHeight(track, i, mx, my);
-      _addCenteredDash(grp, x1, y1, x2, y2, 0xf0ece0, 2.0, 0.32 + h, 14);
+      _addCenteredDash(grp, x1, y1, x2, y2, 0xffffff, 2.2, 0.32 + h, 12);
     }
   }
 }
 
 function _addKerbStripes(grp, track) {
+  // 도로 양 가장자리에 빨강/흰 줄무늬 연석.
   const cl = track.centerLine || [];
   const half = (track.width || 100) / 2;
-  const stride = 1;
+  const stride = 3;   // 1→3 — 메시 수 1/3로 줄여 렉 완화
   const matA = new THREE.MeshLambertMaterial({ color: 0xc91f1f });
   const matB = new THREE.MeshLambertMaterial({ color: 0xf3f3ee });
 
@@ -183,18 +128,18 @@ function _addKerbStripes(grp, track) {
     if (len < 1) continue;
 
     for (const side of [-1, 1]) {
-      const off = half + 2.5;
+      const off = half + 1.6;
       const cx = (x1 + x2) / 2 + side * px * off;
       const cy = (y1 + y2) / 2 + side * py * off;
-      if (_localTurnMax(cl, i, 3) > 0.14) continue;
+      // 다른 트랙 구간 근처(시케인 inner conflict)만 skip.
       if (!_offsetVisualIsClear(track, cx, cy, half - 8, i)) continue;
 
       const h = _trackHeight(track, i, cx, cy);
       const mesh = new THREE.Mesh(
-        new THREE.BoxGeometry(Math.min(len, 24), 0.18, 5),
+        new THREE.BoxGeometry(Math.min(len, 72), 0.30, 3.2),
         Math.floor(i / stride) % 2 === 0 ? matA : matB
       );
-      mesh.position.set(cx, 0.18 + h, -cy);
+      mesh.position.set(cx, 0.30 + h, -cy);
       mesh.rotation.y = angle;
       grp.add(mesh);
     }
@@ -211,9 +156,10 @@ function _addGuardrails(grp, track) {
 
   for (const side of [-1, 1]) {
     const rail = _offsetLine(cl, side, off);
-    _addGuardrailStrip(grp, rail, wallMat, 0.7, 4.7, track);
-    _addGuardrailStrip(grp, rail, stripeMat, 4.75, 5.35, track);
-    _addGuardrailPosts(grp, rail, postMat, 10, track);
+    // 낮은 배리어 — 높이 4.7→2.5 (kart 가시성 + 위협감 적당)
+    _addGuardrailStrip(grp, rail, wallMat, 0.5, 2.5, track);
+    _addGuardrailStrip(grp, rail, stripeMat, 2.55, 3.0, track);
+    _addGuardrailPosts(grp, rail, postMat, 14, track);
   }
 }
 

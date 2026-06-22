@@ -279,6 +279,9 @@ export function scatterProps(scene, track) {
   const propsGroup = new THREE.Group();
   scene.add(propsGroup);
 
+  // 미니멀 트랙은 잡 오브젝트 일체 ❌ (지평선 + 단색 하늘만).
+  if (track?.theme?.minimal) return propsGroup;
+
   // ── distant mountain ring ──
   for (let i = 0; i < 8; i++) {
     const a = (i / 8) * Math.PI * 2 + 0.21;

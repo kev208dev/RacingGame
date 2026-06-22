@@ -30,14 +30,21 @@ export const DRIFT_FX_CONFIG = {
   ENABLE_TRAIL:       false,
   ENABLE_BLOOM:       false,
 
-  // ── 연기 방출 (rate는 β/속도 비례) ──
+  // ── 마찰 긁힘 dust ── 뒷타이어 접지점에서 슬립 속도 비례로 방출.
   SMOKE_REAR_OFFSET:    -7.6,   // 차 로컬 X (뒤)
-  SMOKE_SIDE_OFFSET:    7.2,    // 차 로컬 Z (양옆)
-  SMOKE_Y:              0.25,   // 1.0→0.25 — 뒷바퀴 접지점 가까이
-  SMOKE_RATE_BASE:      22,     // /s — 진입 시
-  SMOKE_RATE_PEAK:      65,     // /s — 깊은 β + 고속 (렉 줄이려 cap 낮춤)
-  SMOKE_BETA_REF:       Math.PI * 0.35, // 이 β에서 peak 도달
-  SMOKE_PER_BURST:      1,      // burst당 입자 수 (양쪽 각각)
+  SMOKE_SIDE_OFFSET:    8.0,    // 차 로컬 Z (양옆)
+  SMOKE_Y:              0.05,   // ground level
+  SMOKE_RATE_PEAK:      120,    // /s 캡
+  SMOKE_BETA_REF:       Math.PI * 0.35,
+  SMOKE_PER_BURST:      1,
+  SMOKE_BACK_SPEED:     4,      // 살짝 뒤
+  SMOKE_OUT_SPEED:      2,      // 살짝 바깥
+  // 슬립 → dust 변환 (마찰). 바닥 붙어 피어오름.
+  SCRAPE_MIN:        14,
+  SCRAPE_TO_RATE:    1.6,
+  SCRAPE_TO_SPEED:   0.25,      // 0.35→0.25 — 흩어짐 줄임
+  DUST_UP:           3,         // 7→3 — 공중 부유 ❌ 바닥 부근만
+  DUST_LIFE:         0.85,      // 0.42→0.85 — 부드럽게 페이드
 
   // ── 차체 squash ──
   BOOST_STRETCH_Z:   0.18,   // 부스트 펄스 정점에서 +18% 길어짐 (앞뒤)
@@ -148,66 +155,84 @@ function _emitOneBurst(car, sparkPool, tierColor) {
   }
 }
 
-// ─── 카트라이더식 흰 연기 ──────────────────────────────────
-// 양 뒷바퀴에서 부드러운 흰 알파 입자를 β/속도 비례 rate로 방출.
-// 빙판(iceSurface)에서는 발사 ❌.
+// ─── 타이어 긁힘 dust ─────────────────────────────────────
+// 슬립 속도(scrapeSpeed) 비례로 방출. 슬립 0 → dust 0. 직진/접지 시 안 남.
+// 방향 = 슬립 반대 (고무가 흙을 미는 방향).
 export function emitDriftSmoke(state, car, smokePool, dt, maxCruise = 240) {
   if (!DRIFT_FX_CONFIG.ENABLE_SMOKE) return;
   if (!smokePool) return;
-  if (!car.drifting || car.iceSurface) {
-    state.smokeTimer = Math.max(0, state.smokeTimer - dt);
-    return;
-  }
-  // β 비례 (0..1), 속도 비례 가산
-  const beta = Math.abs(car.slipBeta || car.driftAngle || 0);
-  const betaT = Math.max(0, Math.min(1, beta / DRIFT_FX_CONFIG.SMOKE_BETA_REF));
-  const speedT = Math.max(0, Math.min(1, (car.speed || 0) / Math.max(80, maxCruise)));
-  const rateMix = 0.35 + 0.45 * betaT + 0.30 * speedT; // 0.35..1.10
-  const rate = DRIFT_FX_CONFIG.SMOKE_RATE_BASE
-    + (DRIFT_FX_CONFIG.SMOKE_RATE_PEAK - DRIFT_FX_CONFIG.SMOKE_RATE_BASE)
-      * Math.max(0, Math.min(1, rateMix));
-
+  if (car.iceSurface) { state.smokeTimer = 0; return; }
+  // scrapeSpeed = 횡슬립 크기 (vL = sideSpeed). 단순화: 양 뒷바퀴 공통.
+  const scrape = Math.abs(car.sideSpeed || 0);
+  const minScr = DRIFT_FX_CONFIG.SCRAPE_MIN;
+  if (scrape < minScr) { state.smokeTimer = 0; return; }
+  // rate ∝ (scrape - MIN), cap at PEAK
+  const rate = Math.min(
+    DRIFT_FX_CONFIG.SMOKE_RATE_PEAK,
+    DRIFT_FX_CONFIG.SCRAPE_TO_RATE * (scrape - minScr)
+  );
   state.smokeTimer -= dt;
   while (state.smokeTimer <= 0) {
-    state.smokeTimer += 1 / Math.max(5, rate);
-    _emitSmokeBurst(car, smokePool);
+    state.smokeTimer += (1 / Math.max(5, rate)) * (0.7 + Math.random() * 0.6);
+    for (const sideSign of [-1, 1]) {
+      _emitDustBurst(car, smokePool, scrape, sideSign);
+    }
   }
 }
 
-function _emitSmokeBurst(car, smokePool) {
+// 한 뒷바퀴 접지점 dust burst — 슬립 반대 방향으로 튕김.
+function _emitDustBurst(car, smokePool, scrape, sideSign) {
   const a  = car.angle || 0;
   const cs = Math.cos(a), sn = Math.sin(a);
   const rx = DRIFT_FX_CONFIG.SMOKE_REAR_OFFSET;
   const ry = DRIFT_FX_CONFIG.SMOKE_SIDE_OFFSET;
-  const dir = car._driftDir || (Math.sign(car.sideSpeed || car.steerAngle || 1));
+  // 뒷바퀴 접지점 (월드 → 3D)
+  const wx = car.x + rx * cs - sideSign * ry * sn;
+  const wy = car.y + rx * sn + sideSign * ry * cs;
+  const w3y = DRIFT_FX_CONFIG.SMOKE_Y;
+  const w3z = -wy;
 
-  // sideSign: -1=left wheel, +1=right wheel
-  for (const sideSign of [-1, 1]) {
-    // 로컬 (rx, 0, sideSign*ry) → 월드 2D (z-axis flip이 wy → -wy)
-    const wx = car.x + rx * cs - sideSign * ry * sn;
-    const wy = car.y + rx * sn + sideSign * ry * cs;
-    const w3y = DRIFT_FX_CONFIG.SMOKE_Y;
-    const w3z = -wy;
+  // 슬립 방향 derivation (driftPhysics 좌표계: rgt = (-sn, cs))
+  // vL > 0 → 차가 rgt 방향으로 미끄러짐. 흙은 -rgt 방향으로 튕김.
+  // world 2D dust dir = -sign(vL) × (-sn, cs) = sign(vL) × (sn, -cs)
+  // 3D (x,_,-y): sign(vL) × (sn, 0, cs)
+  const vL = car.sideSpeed || 0;
+  const slipSign = Math.sign(vL) || 1;
+  const dirX = slipSign * sn;
+  const dirZ = slipSign * cs;
 
-    // 속도: 카트 뒤(-forward) + 바깥(side away from drift direction) + 살짝 위
-    // forward 단위 벡터 (cs, sn) — 월드 2D. 3D에선 (cs, 0, -sn).
-    const backX = -cs * DRIFT_SMOKE_TUNING.SMOKE_BACK_SPEED;
-    const backZ =  sn * DRIFT_SMOKE_TUNING.SMOKE_BACK_SPEED;
-    // right vector: (-sn, 0, -cs) in 3D. sideSign * outward (반대 sign 효과)
-    // 바깥 방향 = drift 반대 방향이 자연스러움 (휘는 바깥)
-    const outSign = sideSign; // 좌우 바퀴 각자 자기 바깥쪽
-    const outX = -sn * DRIFT_SMOKE_TUNING.SMOKE_OUT_SPEED * outSign;
-    const outZ = -cs * DRIFT_SMOKE_TUNING.SMOKE_OUT_SPEED * outSign;
+  // 주동력 = scrape (긁힘 세기). 랜덤은 ±소량 변주만.
+  const baseSpeed = DRIFT_FX_CONFIG.SCRAPE_TO_SPEED * scrape;
+  const back = DRIFT_FX_CONFIG.SMOKE_BACK_SPEED;
+  const out  = DRIFT_FX_CONFIG.SMOKE_OUT_SPEED;
 
-    const vx = backX + outX + (Math.random() - 0.5) * 2;
-    const vy = DRIFT_SMOKE_TUNING.SMOKE_UP_SPEED * (0.6 + Math.random() * 0.6);
-    const vz = backZ + outZ + (Math.random() - 0.5) * 2;
+  const vx = dirX * baseSpeed
+           + (-cs) * back
+           + (-sn) * out * sideSign
+           + (Math.random() - 0.5) * 1.2;
+  const vz = dirZ * baseSpeed
+           +   sn  * back
+           + (-cs) * out * sideSign
+           + (Math.random() - 0.5) * 1.2;
+  const vy = DRIFT_FX_CONFIG.DUST_UP
+           + 0.08 * baseSpeed
+           + (Math.random() - 0.2) * 1.5;
 
-    // 카트라이더식: 드리프트 연기는 무조건 흰~연회색. gauge 색 보간 ❌.
-    for (let i = 0; i < DRIFT_FX_CONFIG.SMOKE_PER_BURST; i++) {
-      spawnDriftSmoke3D(smokePool, wx, w3y, w3z, vx, vy, vz);
-    }
-  }
+  // 크기/opacity = scrape 비례 (강할수록 폭발적)
+  const sNorm = Math.min(1, scrape / 60);
+  const sizeMul = 0.55 + sNorm * 1.20;          // 0.55~1.75
+  const opMul   = 0.55 + sNorm * 0.55;          // 0.55~1.10
+  spawnDriftSmoke3D(smokePool, wx, w3y, w3z, vx, vy, vz, {
+    wStart: DRIFT_SMOKE_TUNING.SHEET_W_START * sizeMul,
+    wEnd:   DRIFT_SMOKE_TUNING.SHEET_W_END   * sizeMul,
+    hStart: DRIFT_SMOKE_TUNING.SHEET_H_START * sizeMul,
+    hEnd:   DRIFT_SMOKE_TUNING.SHEET_H_END   * sizeMul,
+    opacity: DRIFT_SMOKE_TUNING.SMOKE_OPACITY * opMul,
+    life: DRIFT_FX_CONFIG.DUST_LIFE,
+    lifeJit: 0.10,
+    posRand: 0.6,    // 접지점 ±0.6 — 자연 변주
+    scaleRand: 0.20, // 각 입자 ±20%
+  });
 }
 
 // 방금 spawn된 스파크의 색만 tier로 덮어씀.

@@ -15,29 +15,38 @@
 export const KART_TUNING = {
   // ── 그립 (횡속 유지율 / 60fps 프레임) ──────────────────────
   // drift 전환 = 즉시 (수식 드롭). μ는 normal→drift = 약 30% 수준으로 표현.
-  GRIP_DRIFT:       0.985, // 드리프트 中 — 횡속 거의 유지 (β 유지)
-  DRIFT_SIDE_GRIP:  0.985,
-  GRIP_NORMAL:      0.55,  // 0.78→0.55 — 평소 횡속 강하게 잡음 (얼음판 느낌 ❌, "꽉 잡힘")
-  ROLL_FWD:         0.995,
+  GRIP_DRIFT:       0.982, // 0.993→0.982 — 길게 안 미끄러짐 (벽 박음 방지)
+  DRIFT_SIDE_GRIP:  0.982,
+  GRIP_NORMAL:      0.40,  // 0.55→0.40 — 평소 노면 꽉 물게 (떠다님 ❌)
+  ROLL_FWD:         0.998,   // 0.995→0.998 — passive 전진 감쇠 줄임 (속도 유지)
 
   // ── 속도 티어 (km/h) ───────────────────────────────────────
-  CRUISE_MUL:  1.35,
-  V_BOOST_MUL: 1.30,
+  // 속도 하향 (확대 맵 컨트롤 — 35~40% cut). 미세조정 가능 상수.
+  CRUISE_MUL:  0.85,    // 1.35→0.85: cruise cap = maxSpeed × 0.85 (base 180 → 153 km/h)
+  V_BOOST_MUL: 1.30,    // boost cap = cruise × 1.30 (153 → 199 km/h)
   ACCEL_BASE:  150,
   BRAKE_RATE:  205,
   REVERSE_TOP: 80,
 
   // ── 드리프트 회전 ──────────────────────────────────────────
-  DRIFT_YAW:         3.6,            // rad/s — 헤딩 회전속도 (β 키우려 2.4→3.6)
-  DRIFT_YAW_SMOOTH:  9.0,            // /s — yaw rate lerp 응답 (스텝 응답)
-  DRIFT_ENTRY_YAW:   0.48,           // rad ~28° — 진입 임펄스 (β 즉시 키움; 0.060→0.48)
-  DRIFT_HEADING_FOLLOW: 0.16,        // heading→velocity 추종 (β 키우려 0.38→0.16)
-  MAX_SLIP_ANGLE:    Math.PI * 0.48, // ~86° — driftAngle 비주얼 클램프
+  DRIFT_YAW:         3.4,            // 2.8→3.4 — 드리프트 中 헤딩 회전속도 ↑
+  DRIFT_YAW_SMOOTH:  6.0,            // 5→6 — 빠른 응답
+  DRIFT_ENTRY_YAW:   0.45,           // rad ~26° — 진입 yaw 킥 (뒤 빠르게 스텝아웃, 로드시프트)
+  DRIFT_ENTRY_KICK:  0.45,           // alias (가독성)
+  DRIFT_HEADING_FOLLOW: 0.22,        // 0.08→0.22 — 기본 heading 추종 강화 (호 유지)
+  SLIP_BUILD_TIME:   0.15,           // 0.35→0.15 — 빠르게 각 잡힘
+  MAX_SLIP_ANGLE:    Math.PI * 0.25,   // ~45° clamp (시각/HUD용)
   // ── 슬립각 목표·캡 ──
-  TARGET_SLIP:       45 * Math.PI / 180, // 45° — HOLD 中 목표 β. 도달 시 yaw 권한 감쇠.
+  TARGET_SLIP:       42 * Math.PI / 180, // 42° — 통제된 슬립 (48→42, 깊은 슬립 줄임)
   DEEP_ANGLE:        60 * Math.PI / 180, // 60° — 이 이상부터 감속 페널티 (54→60).
   SAFE_SLIP_CAP:     80 * Math.PI / 180, // 80° — 소프트 슬립 캡 (70→80).
   DRIFT_YAW_MUL:     1.0,                // HOLD 中 yaw 권한 전체 배수.
+  // ── 슬립각 dial (단일 상수) ──
+  // 1.0 = 현재 거동, 1.5~2.5 = 슬립각 점점 커짐(차체 옆으로 누움). 2개 효과 동시 작용:
+  //   1) effective TARGET_SLIP = TARGET_SLIP × gain → driftGate 천장 ↑ (yaw 더 허용)
+  //   2) effective HEADING_FOLLOW = HEADING_FOLLOW / gain → velocity가 heading 덜 따라옴
+  // 주의: 너무 키우면 DRIFT_SPIN_BETA(88°) 닿아 스핀.
+  DRIFT_SLIP_GAIN:   1.6,            // 1.2→1.6 — 크게 눕는 슬립각
 
   // ── 드리프트 판정 (β 임계값) ───────────────────────────────
   DRIFT_MIN_HOLD:     0.15,          // s — 진입 직후 그레이스 (즉시 release 방지)
@@ -50,17 +59,22 @@ export const KART_TUNING = {
   // K_base: 카트 고유. 좋은 카트일수록 작음.
   // K_angle: exp 성장 — 깊이 꺾을수록 급격히 감속.
   // K_input: 안쪽 키 hold 시 가산. 톡톡이(키 떼기) 시 0.
-  DRIFT_KBASE:        18,            // km/h/s
-  DRIFT_KANGLE_SCALE: 8,             // K_scale
+  DRIFT_KBASE:        3,             // 8→3 — 평이 드리프트 시 스크럽 최소 (속도 유지)
+  DRIFT_KANGLE_SCALE: 0.8,           // 2.5→0.8 — TARGET 부근서 가벼움, 깊은각만 exp로 묵직
   DRIFT_KANGLE_TAU:   0.55,          // rad — exp(β/tau) - 1
-  DRIFT_KINPUT:       24,            // km/h/s — 안쪽 키 hold 시
-  INSIDE_HOLD_THRESHOLD: 0.4,        // |steer| 이상이고 _driftDir 같은 부호면 hold
+  DRIFT_KINPUT:       0,             // 안쪽 키 hold 페널티 ❌
+  INSIDE_HOLD_THRESHOLD: 0.4,
+  DRIFT_ESCAPE_FORCE: 32,            // km/h/s — 드리프트 中 passive 전진 가속 (속도 유지~약간 가속)
+  DEEP_ANGLE_PENALTY: 55,            // km/h/s/rad — DEEP_ANGLE(60°) 초과분 × 이 값 추가 감속
 
   // ── 카운터 스티어 (Alignment Torque) ──────────────────────
   // 반대 방향키 입력 시 heading을 velocity 벡터로 능동 정렬 → β 축소.
   // β < RELEASE_BETA 떨어지면 drift release.
-  COUNTER_STEER_THRESHOLD: 0.3,      // 반대 부호 |steer| 이상이면 카운터 인정
-  ALIGNMENT_GAIN:    3.5,            // /s — heading→velocity 정렬 속도
+  COUNTER_STEER_THRESHOLD: 0.18,     // 0.3→0.18 — 살짝만 꺾어도 카운터 인정
+  ALIGNMENT_GAIN:    3.5,            // legacy
+  COUNTER_STEER_RECOVERY_RATE: 9.0,  // /s — 카운터로 펴지는 속도 (heading→velocity 빠른 정렬)
+  DRIFT_ARC_GRIP:    0.30,           // 안쪽 hold 시 heading_follow 강화 → 코너 호 따라 돔 (벽 흘러감 방지)
+  AUTO_RECOVER_RATE: 1.2,            // /s — 카운터 안 할 때 미세 자동 펴짐 (천천히만)
 
   // ── 드리프트 회복 (CM 활주 + 차체 1회 회전, yaw·속도 디커플) ──
   // 종료 시 velocity 스냅 ❌. 관성 그대로 두고 heading만 진행방향으로 회전.
@@ -68,7 +82,7 @@ export const KART_TUNING = {
   // heading 회전은 1회 수렴(임계감쇠), 도달 후 정지 → fishtail 방지.
   RECOVER_DURATION:   0.18,           // 0.45→0.18 — 드리프트 종료 직후 짧고 단호한 스냅
   RECOVER_YAW_RATE:   7.5,            // 5.5→7.5 — heading 정렬 더 빠르게
-  RECOVER_GRIP:       0.62,           // 0.92→0.62 — 라인 "탁!" 잡힘
+  RECOVER_GRIP:       0.40,           // 0.62→0.40 — 회복 더 빠르게 (질질 끌리지 않음)
   RECOVER_OVERSHOOT:  0,
 
   // ── 차량동역학 골격 (analytics + 6단계 상태머신용) ─────────────
@@ -96,9 +110,9 @@ export const KART_TUNING = {
   GAUGE_W_TRACK:       0.45,         // 트랙 기본 W 계수
   IDLE_CHARGE_RATE:    4,            // /s — 일반 주행 中 작은 충전
   IDLE_CHARGE_MIN_VF:  30,           // 이 vF 이상이어야 idle charge
-  BOOST_INSTANT_DV:    55,           // km/h — 부스트 즉발 임펄스
+  BOOST_INSTANT_DV:    32,           // 55→32 — 부스트 즉발 임펄스 (km/h)
   BOOST_SUSTAIN_TIME:  1.4,          // s
-  BOOST_SUSTAIN_ACCEL: 90,           // km/h/s
+  BOOST_SUSTAIN_ACCEL: 55,           // 90→55 — 부스트 sustain 가속 (km/h/s)
   BOOST_CAP_DECAY:     0.6,          // s
 
   // ── 빙판 ──────────────────────────────────────────────────
@@ -113,11 +127,14 @@ export const KART_TUNING = {
   START_BOOST_SUSTAIN_TIME: 1.6,
 
   // ── 조향 응답 (비드리프트) ── PC: 묵직하게 쌓이게.
-  STEER_RESPONSE_DRIFT:  11.0,
-  STEER_ENGAGE:           7.5,    // 15→7.5 — 조향이 천천히 쌓이게(휙 안 돌아감)
-  STEER_RETURN:          14.0,    // 20→14 — 복귀도 묵직
-  MAX_YAW:                1.7,    // 2.3→1.7 — 최대 yaw rate 하향 (트위치 제거)
-  HIGHSPEED_TURN_FACTOR:  0.50,   // 0.55→0.50 — 고속에서 더 둔하게
+  // 조향 응답 (비드리프트 — 그립 위주, 묵직하되 굼뜸 X)
+  STEER_RESPONSE_DRIFT:  6.0,
+  STEER_SMOOTH:           0.15,  // 0.20→0.15 — 살짝 경쾌 (굼뜸 제거)
+  STEER_ENGAGE:           6.7,   // = 1/STEER_SMOOTH
+  STEER_RETURN:          11.0,   // 9→11 — 복귀 약간 빠르게
+  MAX_YAW:                1.25,  // 1.0→1.25 — yaw 상한 살짝 ↑ (홱 도는 수준은 X)
+  MAX_YAW_RATE_NORMAL:    1.25,  // alias
+  HIGHSPEED_TURN_FACTOR:  0.45,
 
   // ── 드리프트 진입 최저속 ───────────────────────────────────
   MIN_DRIFT_SPEED: 28,
@@ -173,8 +190,8 @@ export const KART_CAMERA = {
   BOOST_FOV_SUSTAIN:     5,      // deg — 지속 中 베이스
   BOOST_FOV_DECAY:       6.0,    // /s
   BOOST_SHAKE_AMP:       8,
-  SPEEDLINE_MAX_OPACITY: 0.55,   // PC: 가장자리만 진하게 (0.5-0.6 범위)
-  SPEEDLINE_BOOST_RATE:  320,    // /s — boost 中 추가 spawn rate
+  SPEEDLINE_MAX_OPACITY: 0.70,   // 0.55→0.70, 가장자리 모션블러 느낌 강화
+  SPEEDLINE_BOOST_RATE:  380,    // 320→380, 부스트 시 더 흘러나옴
   FLAME_BOOST_SCALE:     2.4,    // 부스트 中 화염 길이 배율
 
   // ── PART 3 FX 토글 (개별 on/off 가능) ─────────────────────────
@@ -184,10 +201,21 @@ export const KART_CAMERA = {
   FX_BOOST:       true,
 
   // 1) 고속 바람저항
-  WIND_SPEED_MIN:    220,        // km/h — 이 이상부터 효과 시작
-  WIND_FOV_ADD:      5,          // 최고속에서 추가 FOV (속도FOV 위에)
-  WINDLINE_MAX:      1.0,        // 속도선 강도 배율 max
-  RADIALBLUR_MAX:    0.0,        // (구현 안 함 — speedline으로 대체)
+  WIND_SPEED_MIN:    180,        // km/h — 180부터 활성 (사용자 spec)
+  WIND_FOV_ADD:      5,
+  WINDLINE_MAX:      1.0,
+  RADIALBLUR_MAX:    0.0,
+
+  // 1-b) 앞쪽 와류 (wind_wisp.png — 카메라 향 Sprite)
+  WIND_RATE_MAX:     45,         // /s — peak emit
+  WIND_OPACITY_MAX:  0.35,       // 0.35→0 페이드 (사용자 spec)
+  WIND_SIZE:         2.4,
+  WIND_Y:            2.6,        // 차체 위쪽 (앞코 높이)
+  WIND_COLOR:        0xffffff,   // 순백 (wind_wisp.png alpha 자체가 soft)   // 평상 고속 — 연 청백
+  WIND_COLOR_BOOST:  0xffb066,   // 부스트 中 — 따뜻한 주황 (lerp 대상)
+  WIND_BOOST_RATE_MUL:    1.8,   // 부스트 시 방출량 ×1.8
+  WIND_BOOST_OPACITY_MUL: 1.45,  // 부스트 시 opacity ×1.45
+  WIND_BOOST_SIZE_MUL:    1.30,  // 부스트 시 size ×1.3
 
   // 2) 브레이크
   BRAKE_GLOW_INTENSITY: 1.0,     // 후미등 emissive 강도
@@ -201,8 +229,17 @@ export const KART_CAMERA = {
   // 4) 부스트 단발 vs 링크
   BOOST_NORMAL_FOV:      14,
   BOOST_LINK_FOV:        20,
-  BOOST_NORMAL_FLAME_COLOR: 0xff8033,   // 주황
-  BOOST_LINK_FLAME_COLOR:   0x66b4ff,   // 청백
+  BOOST_NORMAL_FLAME_COLOR: 0xff8033,   // 주황 (단발)
+  BOOST_LINK_FLAME_COLOR:   0xffcc66,   // 밝은 노랑 (링크)
+
+  // ── 부스트 화염 (cross-plane) ─────────────────────────────
+  BOOST_FLAME_LENGTH:    0.85,    // 짧고 컴팩트 (이전 3.0 → 짧게)
+  BOOST_FLAME_WIDTH:     0.50,
+  BOOST_FLAME_INTENSITY: 1.7,     // RGB multiplier (Additive에서 흰-핫 강조)
+  FLICKER_SPEED:         32,      // /s — flicker 주파수
+  FLICKER_AMOUNT:        0.40,    // ±40% 길이/폭 떨림 (펄럭임)
+  BOOST_BURST_FLASH:     2.6,     // 발동 순간 즉시 ×이만큼 펑 터짐
+  BOOST_BURST_DECAY:     7.0,     // /s — 버스트 감쇠 속도
   BOOST_LINK_FLAME_SCALE:   3.2,        // 링크 부스트는 더 굵게
   BOOST_LINK_SUSTAIN_MUL:   1.6,        // 지속 시간 배수
 };

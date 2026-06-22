@@ -15,6 +15,7 @@ import {
   createSkidBuffer,
   createSparkPool, spawnSparks, updateSparks,
   createDriftSmokePool, updateDriftSmoke,
+  createWindPool, updateWind, emitWindFromCar,
   makeShake, triggerShake, tickShake,
   makeSpeedLines, drawSpeedLines,
   updateFovPump,
@@ -52,6 +53,8 @@ let rearViewActive = false; // '/' 누르고 있는 동안 true
 // fx
 let smokePool = null;
 let driftSmokePool = null;
+let windPool  = null;
+let windState = { _windT: 0 };
 let skidBuf   = null;
 let sparkPool = null;
 let driftFxState = null;
@@ -192,8 +195,10 @@ export function initGame(cd, tr, resultsCb, menuCb, options = {}) {
   ghostMesh = null;
 
   // ── effects ──
-  smokePool  = createSmokePool(scene, 32);
-  driftSmokePool = createDriftSmokePool(scene, 56);
+  smokePool  = createSmokePool(scene, 48);
+  driftSmokePool = createDriftSmokePool(scene, 60);   // 110→60
+  windPool   = createWindPool(scene, 32);              // 56→32
+  windState  = { _windT: 0 };
   skidBuf    = createSkidBuffer(scene, 360);
   sparkPool  = createSparkPool(scene, 64);
   driftFxState = makeDriftFxState();
@@ -299,7 +304,8 @@ export function updateGame(dt, now) {
   updateDriftSound(car.drifting, Math.abs(car.sideSpeed || 0));
   if (car.boosting && !_prevBoosting) playBoostActivate(false);
   if (car.drsActive && !_prevDrsActive) playBoostActivate(true);
-  // _prevBoosting / _prevDrsActive 갱신은 프레임 끝(FOV 펀치 계산 뒤)에서 한다 — 같은 프레임 안에서 다른 곳도 edge 감지하려면 살아있어야 함.
+  _prevBoosting = !!car.boosting;
+  _prevDrsActive = !!car.drsActive;
 
   // ── timing ──
   const event = updateTiming(timing, car, track, now);
@@ -347,8 +353,11 @@ export function updateGame(dt, now) {
   emitDriftSparks(driftFxState, car, sparkPool, dt);
   emitDriftSmoke(driftFxState, car, driftSmokePool, dt,
     (car.maxSpeed || 180) * TOP_SPEED_MULT);
+  emitWindFromCar(windState, car, windPool, dt, car.speed * KMH_PER_UNIT,
+    car.boosting ? 1 : 0);
   updateSmoke(smokePool, dt);
   updateDriftSmoke(driftSmokePool, dt);
+  updateWind(windPool, dt);
   updateSparks(sparkPool, dt);
 
   // ── 3D update ──
@@ -367,10 +376,8 @@ export function updateGame(dt, now) {
   const justFiredBoost = !_prevBoosting && car.boosting;
   car._boostFovKick = car._boostFovKick ?? 0;
   if (justFiredBoost) {
-    // FX_BOOST 분기: 링크 부스트면 더 큰 FOV킥 + 셰이크.
-    const linked = (KART_CAMERA.FX_BOOST !== false) && car._boostLinked;
-    car._boostFovKick = linked ? (KART_CAMERA.BOOST_LINK_FOV || 20) : (KART_CAMERA.BOOST_NORMAL_FOV || 14);
-    triggerShake(shake, KART_CAMERA.BOOST_SHAKE_AMP * (linked ? 1.4 : 1.0));
+    car._boostFovKick = KART_CAMERA.BOOST_FOV_KICK;
+    triggerShake(shake, KART_CAMERA.BOOST_SHAKE_AMP);
   }
   // sustain 목표: boost 中엔 베이스 유지, 끝나면 0.
   const sustain = car.boosting ? KART_CAMERA.BOOST_FOV_SUSTAIN : 0;
@@ -378,10 +385,6 @@ export function updateGame(dt, now) {
     * (1 - Math.exp(-KART_CAMERA.BOOST_FOV_DECAY * dt));
 
   updateFovPump(camera3d, kmh, car.maxSpeed * TOP_SPEED_MULT, boostActive, dt, car._boostFovKick);
-
-  // edge 감지용 prev 갱신 — kick 트리거 계산 끝난 뒤에.
-  _prevBoosting = !!car.boosting;
-  _prevDrsActive = !!car.drsActive;
 
   // ── render ──
   renderer.render(scene, camera3d);
@@ -504,7 +507,7 @@ function _emitDriftFx(dt, driveInput) {
     if (prev) {
       const dx = wx - prev.x, dz = w3z - prev.z;
       if (dx*dx + dz*dz > 4.0) {
-        skidBuf.appendTrail(prev.x, prev.z, wx, w3z, 1.15, _driftTrailColor());
+        skidBuf.appendTrail(prev.x, prev.z, wx, w3z, 0.65, _driftTrailColor());
         car[key] = { x: wx, z: w3z };
       }
     } else {
@@ -514,8 +517,18 @@ function _emitDriftFx(dt, driveInput) {
 }
 
 function _driftTrailColor() {
-  // PC 카트라이더식: 진한 검정 스키드 (mat opacity 0.42 + 짙은 색).
-  return 0x141414;
+  // PC 카트라이더식: 게이지 진행도 따라 옅은 노랑→파랑/보라.
+  const meter = Math.max(0, Math.min(100, car?.boostMeter || 0));
+  const stock = Math.max(0, Math.min(2, car?.boostStock || 0));
+  const t = Math.min(1, (stock * 100 + meter) / 200);
+  const lo = KART_CAMERA.TRAIL_COLOR_LOW ?? 0xfff099;
+  const hi = KART_CAMERA.TRAIL_COLOR_HIGH ?? 0x6688ff;
+  const ar = (lo >> 16) & 0xff, ag = (lo >> 8) & 0xff, ab = lo & 0xff;
+  const br = (hi >> 16) & 0xff, bg = (hi >> 8) & 0xff, bb = hi & 0xff;
+  const r = Math.round(ar + (br - ar) * t);
+  const g = Math.round(ag + (bg - ag) * t);
+  const bl = Math.round(ab + (bb - ab) * t);
+  return (r << 16) | (g << 8) | bl;
 }
 
 function _scheduleResults(ev) {
@@ -615,20 +628,21 @@ function _updateCamera(dt) {
   const LOOK_AHEAD = isHigh ? 20 : isHood ? 155 : KART_CAMERA.CAM_LOOK_AHEAD;
   const LOOK_Y_BASE = isHigh ? 0 : isHood ? 10.5 : KART_CAMERA.CAM_LOOK_Y;
 
-  // PC: 카메라 = velocity 추적. 단, 후진(forwardSpeed<0)은 시점 안 바꾸게 → car.angle 유지.
-  const movingFwd = (car.forwardSpeed || 0) > 5;
-  const targetCam = movingFwd ? Math.atan2(car.vy, car.vx) : car.angle;
-  let dA = targetCam - _camAngle;
+  let dA = car.angle - _camAngle;
   while (dA >  Math.PI) dA -= Math.PI * 2;
   while (dA < -Math.PI) dA += Math.PI * 2;
-  // PC: 카메라 yaw 추적 더 느슨하게 (9→5) — 급격한 방향변화에 휙 안 돌아감.
-  const angK = 1 - Math.exp(-5.0 * dt);
+  const angK = 1 - Math.exp(-9.0 * dt);
   _camAngle += dA * angK;
 
-  // 드리프트 yaw 오프셋 제거(스윙 방지) — 카메라는 velocity만 본다.
-  car._camDriftYaw = 0;
+  // 드리프트 카메라: 미끄러지는 반대로 ~15° yaw
+  const driftYawTarget = car.drifting
+    ? Math.max(-0.26, Math.min(0.26, -(car.driftAngle || 0) * 0.55))
+    : 0;
+  car._camDriftYaw = (car._camDriftYaw || 0)
+    + (driftYawTarget - (car._camDriftYaw || 0)) * (1 - Math.exp(-8.0 * dt));
+  // 후방 보기: '/' 누른 동안 카메라 좌우 반전
   const rearFlip = rearViewActive ? Math.PI : 0;
-  const aimAngle = _camAngle + rearFlip;
+  const aimAngle = _camAngle + car._camDriftYaw + rearFlip;
   const cs = Math.cos(aimAngle), sn = Math.sin(aimAngle);
   const roadY = car.roadHeight || 0;
 
@@ -672,9 +686,10 @@ function _updateCamera(dt) {
   // Apply screen-shake offset on top of the smoothed position.
   const shk = tickShake(shake, dt);
   camera3d.position.set(_camPos.x + shk.x, _camPos.y + shk.y, _camPos.z);
-  // PC: 카메라 뱅크 ❌ — up 고정, lookAt만. rotateZ 안 함 (수평선 항상 수평).
+  // 1) up 리셋  2) lookAt  3) rotateZ — 순서 중요 (lookAt이 회전 매트릭스 새로 잡음).
   camera3d.up.set(0, 1, 0);
   camera3d.lookAt(_camLook);
+  if (car._camTilt) camera3d.rotateZ(car._camTilt);
 
   if (scene && scene.sunLight) {
     const carZ = -car.y;
