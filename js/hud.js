@@ -1,5 +1,6 @@
 import { formatTime } from '../utils/math.js';
 import { KMH_PER_UNIT } from './physics.js';
+import { drawTunePanel } from './debugPanel.js';
 
 // ─── Kart debug overlay (F3 토글) ──────────────────────────
 // 상태(GRIP/DRIFT/순부 윈도우), vF, slip°, gauge, driftTime 실시간 표시.
@@ -63,6 +64,9 @@ export function drawHUD(ctx, car, timing, canvasW, canvasH, track, ghost = null)
 
   // 상시 슬립각 디버그 (heading vs velocity, deg). DRIFT_SLIP_GAIN 튜닝용.
   _drawSlipBadge(ctx, car);
+
+  // F4 실시간 튜닝 패널
+  drawTunePanel(ctx, canvasW);
 
   ctx.restore();
 }
