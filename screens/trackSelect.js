@@ -38,9 +38,13 @@ function _render() {
     info.className = 'track-info';
     const cornerText = track.famousCorners?.length ? track.famousCorners.join(' / ') : '';
     const trackInfo = getTrackInfo(track.id);
+    const title = track.nameKo || track.name;
+    const stars = _difficultyStars(track.difficulty);
+    const wm = Number.isFinite(track.widthMul) ? `×${track.widthMul.toFixed(2)}` : '';
     info.innerHTML = `
-      <h3>${track.name}</h3>
-      <span class="desc">Recommended car: ${trackInfo.recommendedCar}</span>
+      <h3>${title}</h3>
+      <span class="desc">Difficulty: ${stars} (${track.difficulty})</span>
+      ${wm ? `<span class="desc">Width mul: ${wm}</span>` : ''}
       <span class="desc">My best: ${trackInfo.myBest}</span>
       ${track.gpName ? `<span class="track-gp">${track.country} - ${track.gpName}</span>` : ''}
       <span>${track.length}</span>
@@ -49,9 +53,8 @@ function _render() {
       ${track.laps ? `<span>${track.laps} laps</span>` : ''}
       ${track.turns ? `<span>${track.turns} turns</span>` : ''}
       ${track.firstGrandPrix ? `<span>since ${track.firstGrandPrix}</span>` : ''}
-      <span>Difficulty: ${track.difficulty}</span>
-      ${track.desc ? `<span class="desc">${track.desc}</span>` : ''}
       ${track.character ? `<span class="desc track-character">${track.character}</span>` : ''}
+      ${track.note ? `<span class="desc">${track.note}</span>` : (track.desc ? `<span class="desc">${track.desc}</span>` : '')}
       ${cornerText ? `<span class="desc">Famous corners: ${cornerText}</span>` : ''}
       ${track.fastestLapRecord ? `<span class="desc">Fastest lap: ${track.fastestLapRecord} - ${track.fastestLapDriver}</span>` : ''}
       ${track.polePositionRecord ? `<span class="desc">Pole record: ${track.polePositionRecord} - ${track.polePositionDriver}</span>` : ''}
@@ -106,6 +109,16 @@ export function renderTrackSelect() {
 }
 
 export { fetchTrackLeaderboard };
+
+function _difficultyStars(d) {
+  const t = String(d || '').toLowerCase();
+  let n = 2;
+  if (t.includes('very') || t.includes('expert') || t.includes('매우')) n = 5;
+  else if (t.includes('hard') || t.includes('어려')) n = 4;
+  else if (t.includes('easy') || t.includes('쉬')) n = 1;
+  else if (t.includes('normal')) n = 3;
+  return '★'.repeat(n) + '☆'.repeat(5 - n);
+}
 
 export function formatTrackTime(ms) {
   const value = Number(ms);

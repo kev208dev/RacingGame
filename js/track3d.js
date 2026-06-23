@@ -46,18 +46,29 @@ function _addTrackRibbon(grp, track) {
   const width = track.width || 100;
   if (cl.length < 3) return;
 
+  const useEdges = _hasEdges(track);
   const verts = [];
   const uvs = [];
   const indices = [];
 
   for (let i = 0; i < cl.length; i++) {
     const [x, y] = cl[i];
-    const left = _offsetPoint(cl, i, width / 2, 1);
-    const right = _offsetPoint(cl, i, width / 2, -1);
+    let lx, ly, rx, ry;
+    if (useEdges) {
+      const le = track.leftEdge[i];
+      const re = track.rightEdge[i];
+      lx = le[0]; ly = le[1];
+      rx = re[0]; ry = re[1];
+    } else {
+      const left = _offsetPoint(cl, i, width / 2, 1);
+      const right = _offsetPoint(cl, i, width / 2, -1);
+      lx = left.x; ly = left.y;
+      rx = right.x; ry = right.y;
+    }
     const crown = 0.08 + Math.sin(i * 0.17) * 0.015 + _trackHeight(track, i, x, y);
 
-    verts.push(left.x, crown, -left.y);
-    verts.push(right.x, crown, -right.y);
+    verts.push(lx, crown, -ly);
+    verts.push(rx, crown, -ry);
     uvs.push(0, i / 18, 1, i / 18);
   }
 
@@ -114,25 +125,37 @@ function _addRoadMarkings(grp, track) {
 }
 
 function _addKerbStripes(grp, track) {
-  // 도로 양 가장자리에 빨강/흰 줄무늬 연석.
   const cl = track.centerLine || [];
   const half = (track.width || 100) / 2;
-  const stride = 3;   // 1→3 — 메시 수 1/3로 줄여 렉 완화
+  const stride = 3;
   const matA = new THREE.MeshLambertMaterial({ color: 0xc91f1f });
   const matB = new THREE.MeshLambertMaterial({ color: 0xf3f3ee });
 
+  const useEdges = _hasEdges(track);
+  const kerbPerpOff = 1.6;
+
   for (let i = 0; i < cl.length; i += stride) {
+    const j = (i + stride) % cl.length;
     const [x1, y1] = cl[i];
-    const [x2, y2] = cl[(i + stride) % cl.length];
+    const [x2, y2] = cl[j];
     const { len, px, py, angle } = _segBasis(x1, y1, x2, y2);
     if (len < 1) continue;
 
     for (const side of [-1, 1]) {
-      const off = half + 1.6;
-      const cx = (x1 + x2) / 2 + side * px * off;
-      const cy = (y1 + y2) / 2 + side * py * off;
-      // 다른 트랙 구간 근처(시케인 inner conflict)만 skip.
-      if (!_offsetVisualIsClear(track, cx, cy, half - 8, i)) continue;
+      let cx, cy;
+      if (useEdges) {
+        const e1 = side > 0 ? track.rightEdge[i] : track.leftEdge[i];
+        const e2 = side > 0 ? track.rightEdge[j] : track.leftEdge[j];
+        const mx = (e1[0] + e2[0]) / 2;
+        const my = (e1[1] + e2[1]) / 2;
+        cx = mx + side * px * kerbPerpOff;
+        cy = my + side * py * kerbPerpOff;
+      } else {
+        const off = half + kerbPerpOff;
+        cx = (x1 + x2) / 2 + side * px * off;
+        cy = (y1 + y2) / 2 + side * py * off;
+        if (!_offsetVisualIsClear(track, cx, cy, half - 8, i)) continue;
+      }
 
       const h = _trackHeight(track, i, cx, cy);
       const mesh = new THREE.Mesh(
@@ -148,15 +171,22 @@ function _addKerbStripes(grp, track) {
 
 function _addGuardrails(grp, track) {
   const cl = track.centerLine || [];
-  const half = (track.width || 100) / 2;
   const wallMat = new THREE.MeshLambertMaterial({ color: 0xbec4c8, side: THREE.DoubleSide });
   const stripeMat = new THREE.MeshLambertMaterial({ color: 0xc91f1f, side: THREE.DoubleSide });
   const postMat = new THREE.MeshLambertMaterial({ color: 0x202225 });
-  const off = half + 6;
+  const guardOff = 6;
+
+  const useEdges = _hasEdges(track);
+  const half = (track.width || 100) / 2;
+  const off = half + guardOff;
 
   for (const side of [-1, 1]) {
-    const rail = _offsetLine(cl, side, off);
-    // 낮은 배리어 — 높이 4.7→2.5 (kart 가시성 + 위협감 적당)
+    let rail;
+    if (useEdges) {
+      rail = _edgeRail(track, side, guardOff);
+    } else {
+      rail = _offsetLine(cl, side, off);
+    }
     _addGuardrailStrip(grp, rail, wallMat, 0.5, 2.5, track);
     _addGuardrailStrip(grp, rail, stripeMat, 2.55, 3.0, track);
     _addGuardrailPosts(grp, rail, postMat, 14, track);
@@ -168,6 +198,7 @@ function _addWallRideBanks(grp, track) {
   const half = (track.width || 100) / 2;
   if (cl.length < 8) return;
 
+  const useEdges = _hasEdges(track);
   const mats = [
     _makeWallRideBankMaterial(0x22d3ee),
     _makeWallRideBankMaterial(0xfacc15),
@@ -186,8 +217,71 @@ function _addWallRideBanks(grp, track) {
     const outerSide = _curveOuterSide(cl, i, stride);
     if (!outerSide) continue;
     const mat = mats[Math.floor(i / stride) % mats.length];
-    _addWallRideBankSegment(grp, cl, i, stride, outerSide, half, turn, mat, track);
+    if (useEdges) {
+      _addWallRideBankSegmentEdges(grp, track, i, stride, outerSide, turn, mat);
+    } else {
+      _addWallRideBankSegment(grp, cl, i, stride, outerSide, half, turn, mat, track);
+    }
   }
+}
+
+function _addWallRideBankSegmentEdges(grp, track, i, stride, side, turn, mat) {
+  const cl = track.centerLine;
+  const N = cl.length;
+  const i2 = (i + stride) % N;
+  const innerPerpOff = 3.5;
+  const outerPerpOff = 13.0;
+  const innerY = 0.32;
+  const outerY = 2.05 + Math.min(0.95, turn * 1.6);
+  const baseY = 0.08;
+
+  const edge = side > 0 ? track.rightEdge : track.leftEdge;
+
+  function basePoint(idx, off) {
+    const [px0, py0] = cl[(idx - 1 + N) % N];
+    const [nx0, ny0] = cl[(idx + 1) % N];
+    const tx = nx0 - px0;
+    const ty = ny0 - py0;
+    const l = Math.hypot(tx, ty) || 1;
+    const perpX = ty / l;
+    const perpY = -tx / l;
+    return { x: edge[idx][0] + side * perpX * off, y: edge[idx][1] + side * perpY * off };
+  }
+
+  const a1 = basePoint(i, innerPerpOff);
+  const a2 = basePoint(i2, innerPerpOff);
+  const b1 = basePoint(i, outerPerpOff);
+  const b2 = basePoint(i2, outerPerpOff);
+  const h1 = _trackHeight(track, i, a1.x, a1.y);
+  const h2 = _trackHeight(track, i2, a2.x, a2.y);
+
+  const v = (pt, h, ph) => [pt.x, h + ph, -pt.y];
+  const verts = [
+    ...v(a1, innerY, h1),
+    ...v(a2, innerY, h2),
+    ...v(b2, outerY, h2),
+    ...v(b1, outerY, h1),
+    ...v(a1, baseY, h1),
+    ...v(a2, baseY, h2),
+    ...v(b2, baseY, h2),
+    ...v(b1, baseY, h1),
+  ];
+  const indices = [
+    0, 1, 2, 0, 2, 3,
+    3, 2, 6, 3, 6, 7,
+    1, 0, 4, 1, 4, 5,
+    0, 3, 7, 0, 7, 4,
+    2, 1, 5, 2, 5, 6,
+  ];
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  const bank = new THREE.Mesh(geo, mat);
+  bank.receiveShadow = true;
+  bank.castShadow = true;
+  bank.frustumCulled = false;
+  grp.add(bank);
 }
 
 function _curveOuterSide(cl, i, stride) {
@@ -497,6 +591,11 @@ function _visualStride(points, targetSegments) {
 }
 
 function _trackHeight(track, i, x, y) {
+  if (Array.isArray(track.height) && track.height.length > 0) {
+    const idx = Math.max(0, Math.min(track.height.length - 1, i | 0));
+    const v = track.height[idx];
+    if (Number.isFinite(v)) return v;
+  }
   const profile = track.roadProfile;
   if (!profile) return 0;
   const n = Math.max(1, track.centerLine?.length || 1);
@@ -512,4 +611,32 @@ function _trackHeight(track, i, x, y) {
       + Math.sin(x * 0.041 - y * 0.023) * amp * 0.55;
   }
   return 0;
+}
+
+function _hasEdges(track) {
+  const cl = track?.centerLine;
+  const le = track?.leftEdge;
+  const re = track?.rightEdge;
+  if (!cl || !le || !re) return false;
+  return le.length === cl.length && re.length === cl.length;
+}
+
+function _edgeRail(track, side, perpOff) {
+  const cl = track.centerLine;
+  const edge = side > 0 ? track.rightEdge : track.leftEdge;
+  const out = new Array(cl.length);
+  for (let i = 0; i < cl.length; i++) {
+    const N = cl.length;
+    const [px0, py0] = cl[(i - 1 + N) % N];
+    const [nx0, ny0] = cl[(i + 1) % N];
+    const tx = nx0 - px0;
+    const ty = ny0 - py0;
+    const l = Math.hypot(tx, ty) || 1;
+    const perpX = ty / l;
+    const perpY = -tx / l;
+    const ex = edge[i][0] + side * perpX * perpOff;
+    const ey = edge[i][1] + side * perpY * perpOff;
+    out[i] = { x: ex, y: ey, i };
+  }
+  return out;
 }

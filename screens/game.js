@@ -3,10 +3,10 @@ import { createCar, createCar3D, updateCar3D } from '../js/car.js';
 import { updatePhysics, KMH_PER_UNIT, TOP_SPEED_MULT, respawnAtCenter }  from '../js/physics.js';
 import { initStartBoostState, tickStartBoost } from '../kart-boost/index.js';
 import { KART_CAMERA } from '../kart-boost/config.js';
-import { getTrackGroup }  from '../js/track3d.js';
+import { loadCircuit, disposeCircuit } from '../js/circuitLoader.js';
 import { drawHUD }        from '../js/hud.js';
 import { createTiming, startTiming, updateTiming } from '../js/timing.js';
-import { getInput }       from '../utils/input.js';
+import { getInput, smoothSteer, resetSmoothedInput } from '../utils/input.js';
 import { startEngine, stopEngine, updateEngineSound, resumeContext, playLapDing, playWallThud, updateDriftSound, playBoostActivate, playStartBeep } from '../js/audio.js';
 import { formatTime } from '../utils/math.js';
 import { saveBestLap, addLapHistory, getBestSectors, saveBestSectors, getBestGhost, saveBestGhost } from '../utils/storage.js';
@@ -87,9 +87,20 @@ let _prevDrsActive = false;
 
 let _boostPadCooldown = 0;
 
-// fixed-step physics
-const FIXED_DT  = 1 / 60;
+// fixed-step physics @ 120Hz with state interpolation
+const FIXED_DT  = 1 / 120;
+const MAX_SUBSTEPS = 8;          // cap catch-up after long frames / tab return
 let accumulator = 0;
+// Physics snapshot for render-time interpolation (prev / curr)
+const _physPrev = { x: 0, y: 0, angle: 0 };
+const _physCurr = { x: 0, y: 0, angle: 0 };
+function _lerp(a, b, t) { return a + (b - a) * t; }
+function _lerpAngle(a, b, t) {
+  let d = b - a;
+  while (d >  Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return a + d * t;
+}
 
 // camera state (lerped)
 const _camPos    = new THREE.Vector3();
@@ -105,6 +116,13 @@ export function initGame(cd, tr, resultsCb, menuCb, options = {}) {
   onMenu      = menuCb;
   running     = true;
   accumulator = 0;
+  resetSmoothedInput();
+  {
+    const sp = tr.startPos || { x: 0, y: 0, angle: 0 };
+    _physPrev.x = _physCurr.x = sp.x;
+    _physPrev.y = _physCurr.y = sp.y;
+    _physPrev.angle = _physCurr.angle = sp.angle;
+  }
   cameraMode  = 'chase';
   lastWallHitId = 0;
   _boostPadCooldown = 0;
@@ -181,7 +199,7 @@ export function initGame(cd, tr, resultsCb, menuCb, options = {}) {
   scene.add(fill);
 
   // ── track ──
-  getTrackGroup(track, scene);
+  loadCircuit(track.id, scene);
   if ((raceOptions.mode || 'timeTrial') === 'timeTrial' && bestGhost) renderRecordLine(bestGhost, scene);
 
   // ── scenery (mountains, trees, billboards, pit garages, etc) ──
@@ -229,6 +247,7 @@ export function stopGame() {
   running = false;
   hideMiniMap();
   hideRaceCountdown();
+  disposeCircuit();
   if (resultsTimeout) {
     clearTimeout(resultsTimeout);
     resultsTimeout = null;
@@ -284,24 +303,45 @@ export function updateGame(dt, now) {
     boost: false, boostJust: false, gearUp: false, gearDown: false,
   };
 
-  // ── fixed-step physics ──
+  // ── fixed-step physics @ 120Hz (accumulator pattern) ──
+  // Decoupled from render rate: at 30fps render we still tick physics ~4×/frame.
+  // After the loop, _physPrev/_physCurr hold the last two integrator states and
+  // alpha = accumulator / FIXED_DT is the residual fraction used to lerp them
+  // for rendering. boostJust is edge-triggered → consume only on first sub-step.
   accumulator += dt;
   let steps = 0;
-  while (accumulator >= FIXED_DT && steps < 5) {
-    updatePhysics(car, driveInput, FIXED_DT, track);
+  let boostJustConsumed = !driveInput.boostJust;
+  while (accumulator >= FIXED_DT && steps < MAX_SUBSTEPS) {
+    // snapshot state BEFORE the integrator runs
+    _physPrev.x = car.x; _physPrev.y = car.y; _physPrev.angle = car.angle;
+
+    // per-step smoothed steer (framerate-independent damp), other inputs raw
+    const stepInput = {
+      ...driveInput,
+      steer: smoothSteer(driveInput.steer || 0, FIXED_DT),
+      boostJust: boostJustConsumed ? false : driveInput.boostJust,
+    };
+    boostJustConsumed = true;
+
+    updatePhysics(car, stepInput, FIXED_DT, track);
     _tickBoostPads(FIXED_DT);
     if (raceReleased && car?.drifting) updateMissionProgress('drift_second', FIXED_DT);
-    if (raceReleased && driveInput.boostJust) updateMissionProgress('boost_used');
+    if (raceReleased && stepInput.boostJust) updateMissionProgress('boost_used');
     if (raceReleased && (raceOptions.mode || 'timeTrial') === 'timeTrial') captureRecordLineSample(FIXED_DT, car);
     if (raceReleased && lapStats) {
-      if (driveInput.throttle > 0) lapStats.throttleUsed = true;
+      if (stepInput.throttle > 0) lapStats.throttleUsed = true;
       lapStats.maxSpeed = Math.max(lapStats.maxSpeed, car.speed * KMH_PER_UNIT);
       lapStats.offTrack = lapStats.offTrack || !!car.offTrack;
     }
+
+    // snapshot state AFTER the integrator runs
+    _physCurr.x = car.x; _physCurr.y = car.y; _physCurr.angle = car.angle;
+
     accumulator -= FIXED_DT;
     steps++;
   }
-  if (steps >= 5) accumulator = 0;
+  // Spiral-of-death guard: drop residual on overrun so we don't compound debt.
+  if (steps >= MAX_SUBSTEPS) accumulator = 0;
 
   // ── audio ──
   updateEngineSound(car.rpm, car.maxRpm);
@@ -364,6 +404,16 @@ export function updateGame(dt, now) {
   updateWind(windPool, dt);
   updateSparks(sparkPool, dt);
 
+  // ── render-time interpolation (alpha = residual sub-step fraction) ──
+  // Swap canonical physics state → interpolated visual state for the duration
+  // of mesh + camera + render, then restore so next frame integrates from the
+  // canonical state. Position lerp + shortest-path angle lerp.
+  const alpha = Math.max(0, Math.min(1, accumulator / FIXED_DT));
+  const _cx = car.x, _cy = car.y, _ca = car.angle;
+  car.x = _lerp(_physPrev.x, _physCurr.x, alpha);
+  car.y = _lerp(_physPrev.y, _physCurr.y, alpha);
+  car.angle = _lerpAngle(_physPrev.angle, _physCurr.angle, alpha);
+
   // ── 3D update ──
   updateCar3D(carMesh, car, driveInput, track, dt);
   applyDriftBodyFx(driftFxState, carMesh, car, dt);
@@ -394,6 +444,9 @@ export function updateGame(dt, now) {
   renderer.render(scene, camera3d);
   updateMiniMap({ x: car.x, y: car.y });
   _renderHUD(dt, kmh);
+
+  // restore canonical physics state for next frame's integrator
+  car.x = _cx; car.y = _cy; car.angle = _ca;
 }
 
 function _saveLapCompletion(event, isNew, completedPath) {

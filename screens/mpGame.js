@@ -9,10 +9,10 @@ import { createCar, createCar3D, updateCar3D } from '../js/car.js';
 import { initStartBoostState, tickStartBoost } from '../kart-boost/index.js';
 import { KART_CAMERA } from '../kart-boost/config.js';
 import { updatePhysics, KMH_PER_UNIT, TOP_SPEED_MULT } from '../js/physics.js';
-import { getTrackGroup } from '../js/track3d.js';
+import { loadCircuit, disposeCircuit } from '../js/circuitLoader.js';
 import { drawHUD } from '../js/hud.js';
 import { createTiming, startTiming, updateTiming } from '../js/timing.js';
-import { getInput } from '../utils/input.js';
+import { getInput, smoothSteer, resetSmoothedInput } from '../utils/input.js';
 import { startEngine, stopEngine, updateEngineSound, resumeContext, playLapDing, playWallThud } from '../js/audio.js';
 import { formatTime } from '../utils/math.js';
 import {
@@ -32,7 +32,18 @@ import { getSharedRenderer } from '../js/renderer.js';
 import { checkVehicleCollisions } from '../js/competitionCollision.js';
 import { showRaceCountdown, updateRaceCountdown, hideRaceCountdown } from '../js/effects/raceCountdown.js';
 
-const FIXED_DT = 1 / 60;
+// Fixed-step physics @ 120Hz with render-time interpolation (same as solo).
+const FIXED_DT = 1 / 120;
+const MAX_SUBSTEPS = 8;
+const _physPrev = { x: 0, y: 0, angle: 0 };
+const _physCurr = { x: 0, y: 0, angle: 0 };
+function _lerp(a, b, t) { return a + (b - a) * t; }
+function _lerpAngle(a, b, t) {
+  let d = b - a;
+  while (d >  Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return a + d * t;
+}
 const STATE_SEND_HZ = 30;
 const STATE_SEND_INTERVAL_MS = 1000 / STATE_SEND_HZ;
 const CAMERA_MODES = ['chase', 'hood', 'high'];
@@ -108,6 +119,13 @@ export function initMpGame({
   onLeaveCb = onLeave;
   running = true;
   accumulator = 0;
+  resetSmoothedInput();
+  {
+    const sp = trackIn.startPos || { x: 0, y: 0, angle: 0 };
+    _physPrev.x = _physCurr.x = sp.x;
+    _physPrev.y = _physCurr.y = sp.y;
+    _physPrev.angle = _physCurr.angle = sp.angle;
+  }
   cameraMode = 'chase';
   lastWallHitId = 0;
   raceReleased = false;
@@ -163,7 +181,7 @@ export function initMpGame({
   fill.position.set(-200, 200, 300);
   scene.add(fill);
 
-  getTrackGroup(track, scene);
+  loadCircuit(track.id, scene);
   propsGroup = scatterProps(scene, track);
 
   // Spawn local car (own physics)
@@ -218,6 +236,7 @@ export function initMpGame({
 export function stopMpGame(options = {}) {
   running = false;
   hideRaceCountdown();
+  disposeCircuit();
   for (const fn of mpUnsubs) { try { fn(); } catch {} }
   mpUnsubs = [];
   stopEngine();
@@ -280,15 +299,24 @@ export function updateMpGame(dt, now) {
     boost: false, boostJust: false, gearUp: false, gearDown: false,
   };
 
-  // Identical fixed-step physics loop to solo.
+  // Identical fixed-step physics loop to solo: 120Hz accumulator + interp.
   accumulator += dt;
   let steps = 0;
-  while (accumulator >= FIXED_DT && steps < 5) {
-    updatePhysics(car, driveInput, FIXED_DT, track);
+  let boostJustConsumed = !driveInput.boostJust;
+  while (accumulator >= FIXED_DT && steps < MAX_SUBSTEPS) {
+    _physPrev.x = car.x; _physPrev.y = car.y; _physPrev.angle = car.angle;
+    const stepInput = {
+      ...driveInput,
+      steer: smoothSteer(driveInput.steer || 0, FIXED_DT),
+      boostJust: boostJustConsumed ? false : driveInput.boostJust,
+    };
+    boostJustConsumed = true;
+    updatePhysics(car, stepInput, FIXED_DT, track);
+    _physCurr.x = car.x; _physCurr.y = car.y; _physCurr.angle = car.angle;
     accumulator -= FIXED_DT;
     steps++;
   }
-  if (steps >= 5) accumulator = 0;
+  if (steps >= MAX_SUBSTEPS) accumulator = 0;
 
   updateEngineSound(car.rpm, car.maxRpm);
 
@@ -328,6 +356,13 @@ export function updateMpGame(dt, now) {
   updateWind(windPool, dt);
   updateSparks(sparkPool, dt);
 
+  // ── render-time interpolation swap (canonical → visual lerp) ──
+  const alpha = Math.max(0, Math.min(1, accumulator / FIXED_DT));
+  const _cx = car.x, _cy = car.y, _ca = car.angle;
+  car.x = _lerp(_physPrev.x, _physCurr.x, alpha);
+  car.y = _lerp(_physPrev.y, _physCurr.y, alpha);
+  car.angle = _lerpAngle(_physPrev.angle, _physCurr.angle, alpha);
+
   // Local mesh
   updateCar3D(carMesh, car, driveInput, track, dt);
   applyDriftBodyFx(driftFxState, carMesh, car, dt);
@@ -356,6 +391,9 @@ export function updateMpGame(dt, now) {
 
   renderer.render(scene, camera3d);
   _renderHUD(dt, kmh, msUntilStart);
+
+  // Restore canonical state before any non-visual consumer (net send below).
+  car.x = _cx; car.y = _cy; car.angle = _ca;
 
   // Send my state to server at fixed cadence
   if (raceReleased && net?.connected) {

@@ -136,10 +136,7 @@ function _resolveCollision(car, nextX, nextY, track) {
   let fx = nextX, fy = nextY;
   const a  = car.angle;
   const ca = Math.cos(a), sa = Math.sin(a);
-  const halfTrack = (track.width || 100) / 2;
-  const maxDist = Math.max(18, halfTrack + COLLISION_EDGE_GRACE);
-  const wallRideLimit = maxDist + WALL_RIDE_EXTRA;
-  const offRoadLimit = halfTrack + OFF_ROAD_GRACE;
+  const fallbackHalf = (track.width || 100) / 2;
 
   let collided = false;
   let rideTouch = false;
@@ -159,6 +156,11 @@ function _resolveCollision(car, nextX, nextY, track) {
       if (!hit) continue;
       car._collisionSegmentHint = hit.index;
 
+      const halfTrack = _halfWidthAt(track, hit.index, fallbackHalf);
+      const maxDist = Math.max(18, halfTrack + COLLISION_EDGE_GRACE);
+      const wallRideLimit = maxDist + WALL_RIDE_EXTRA;
+      const offRoadLimit = halfTrack + OFF_ROAD_GRACE;
+
       const rideable = _isWallRideCorner(car, hit, maxDist);
       if (rideable && hit.dist > maxDist - 2 && hit.dist <= wallRideLimit + 2) {
         rideTouch = true;
@@ -166,7 +168,7 @@ function _resolveCollision(car, nextX, nextY, track) {
       }
 
       const activeLimit = rideable ? wallRideLimit : maxDist;
-      const invalidSurface = hit.dist > offRoadLimit && !_isPointOnRoad(cx, cy, track);
+      const invalidSurface = hit.dist > offRoadLimit && !_isPointOnRoadWithHit(cx, cy, track, hit, halfTrack);
       if (hit.dist <= activeLimit && !invalidSurface) continue;
 
       anyOff = true;
@@ -315,6 +317,25 @@ function _isPointOnRoad(x, y, track) {
   const inner = track?.innerBoundary;
   if (!outer?.length || !inner?.length) return true;
   return _pointInPoly(x, y, outer) && !_pointInPoly(x, y, inner);
+}
+
+function _isPointOnRoadWithHit(x, y, track, hit, halfTrack) {
+  if (track?.overpass) {
+    if (!hit) return true;
+    return hit.dist <= halfTrack;
+  }
+  return _isPointOnRoad(x, y, track);
+}
+
+function _halfWidthAt(track, idx, fallback) {
+  const arr = track?.halfWidth;
+  if (Array.isArray(arr) && arr.length > 0) {
+    const len = arr.length;
+    const i = ((idx % len) + len) % len;
+    const v = arr[i];
+    if (Number.isFinite(v)) return v;
+  }
+  return fallback;
 }
 
 function _pointInPoly(x, y, poly) {

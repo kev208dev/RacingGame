@@ -2,6 +2,8 @@
 // Coordinates are hand-traced from each linked circuit hero map in its original
 // image orientation. No mirroring or reshaping is applied.
 
+import { CIRCUITS_V2_TRACKS } from './circuits_v2.js';
+
 function buildSourceCenterline(trace, sourceSize, scale = 3.1, targetStep = 34) {
   const points = trace.slice();
   const first = points[0];
@@ -414,9 +416,8 @@ function makeNeonApexTrack() {
   };
 }
 
-// ─── 트랙 등록 — Neon Apex 하나만 ─────────────────────────────────
-// 기존 트랙 (Autodromo Hermanos Rodriguez + 5개 official) 모두 삭제됨.
 export const TRACKS = [
+  ...CIRCUITS_V2_TRACKS,
   makeNeonApexTrack(),
 ];
 
