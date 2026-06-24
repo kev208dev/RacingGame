@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { createCarDesign } from './carDesigns.js';
 import { mapStatToPhysics, normalizeCarStats } from './carStats.js';
 import { getSkinById } from '../data/skins.js';
-import { KART_CAMERA as KC } from '../kart-boost/config.js';
+import { KART_CAMERA as KC, KART_PROPORTIONS as KP } from '../kart-boost/config.js';
 
 const CAR_DESIGN_BY_ID = {
   apex_gt3: 'gt_silver',
@@ -83,7 +83,10 @@ export function createCar3D(carData = {}) {
   const model = createCarDesign(designType);
   _applySkin(model, carData.skin);
   model.rotation.y = Math.PI / 2;
-  model.scale.set(5.2, 5.2, 5.2);
+  // 카트라이더식 박스 비율: Y만 H_MUL로 스트레치. X,Z는 기본 5.2 유지 (휠 좌우/전후 절대치는
+  // 휠 position 곱셈으로 처리 — 그래야 차체와 휠이 독립 컨트롤됨).
+  const baseS = 5.2;
+  model.scale.set(baseS, baseS * KP.HEIGHT_MUL, baseS);
   root.add(model);
 
   const wheelGroups = [];
@@ -98,6 +101,24 @@ export function createCar3D(carData = {}) {
       wheelGroups.push(child);
     }
   });
+
+  // ── 카트라이더 비율 적용: 휠베이스 단축 / 트레드 좁힘 / 휠 반경 ↑ / 부모 Y 스트레치 보정 ──
+  // 부모 model.scale.y = baseS * H 이므로 휠 local.y/Y-radius가 H배 길어짐.
+  // 휠 scale.y = R/H 보정 → 원 단면 유지. wheel.position.y /= H → 지면 접촉 보존.
+  const Hm = KP.HEIGHT_MUL;
+  const Rm = KP.WHEEL_RADIUS_MUL;
+  const Wm = KP.WHEELBASE_MUL;
+  const Tm = KP.TRACK_WIDTH_MUL;
+  for (const wg of wheelGroups) {
+    // 휠 자체 스케일: X(축 너비) Z(원 半경 한 축)는 R, Y(원 半경 다른 축)는 R/H로 부모 Y스트레치 상쇄.
+    wg.scale.set(Rm, Rm / Hm, Rm);
+    // 휠 좌표: 휠베이스 단축(Z), 트레드 좁힘(X), 지면 접촉 보존(Y).
+    wg.position.x *= Tm;
+    wg.position.z *= Wm;
+    wg.position.y /= Hm;
+    wg.baseY = wg.position.y;
+    if (wg.userData) wg.userData.baseY = wg.position.y;
+  }
 
   root.wheelGroups = wheelGroups;
   root.body        = model;
@@ -144,7 +165,7 @@ function _applySkin(model, skinData) {
 export function updateCar3D(mesh3d, car, input, track = null, dt = 1 / 60) {
   // 2D y → 3D -z mapping
   const wallRideLift = car.wallRiding ? Math.min(2.2, 0.35 + (car.speed || 0) * 0.006) : 0;
-  const surfaceY = _trackSurfaceHeight(track, car.x, car.y) + wallRideLift;
+  const surfaceY = _trackSurfaceHeight(track, car.x, car.y, car._collisionSegmentHint) + wallRideLift;
   car.roadHeight = surfaceY;
   mesh3d.position.set(car.x, surfaceY, -car.y);
   if (mesh3d._visualAngle == null) mesh3d._visualAngle = car.angle;
@@ -341,10 +362,48 @@ export function updateCar3D(mesh3d, car, input, track = null, dt = 1 / 60) {
   });
 }
 
-function _trackSurfaceHeight(track, x, y) {
-  const profile = track?.roadProfile;
+function _trackSurfaceHeight(track, x, y, hintIdx) {
   const cl = track?.centerLine || [];
-  if (!profile || cl.length < 2) return 0;
+  if (cl.length < 2) return 0;
+  const heightArr = track?.height;
+  const isOverpass = !!track?.overpass;
+
+  if (Array.isArray(heightArr) && heightArr.length === cl.length) {
+    let best;
+    if (isOverpass && Number.isFinite(hintIdx)) {
+      best = _heightNearestWindow(cl, x, y, hintIdx, 8);
+    } else {
+      best = _heightNearestGlobal(cl, x, y);
+    }
+    const N = cl.length;
+    const i0 = Math.floor(best.i) % N;
+    const t = best.i - Math.floor(best.i);
+    const i1 = (i0 + 1) % N;
+    const h0 = heightArr[i0];
+    const h1 = heightArr[i1];
+    if (Number.isFinite(h0) && Number.isFinite(h1)) return h0 * (1 - t) + h1 * t;
+    if (Number.isFinite(h0)) return h0;
+    return 0;
+  }
+
+  const profile = track?.roadProfile;
+  if (!profile) return 0;
+  const best = _heightNearestGlobal(cl, x, y);
+  const p = best.i / cl.length;
+  if (profile.type === 'climb') {
+    const climb = Math.sin(p * Math.PI) ** 1.25;
+    const loopPulse = Math.sin(p * Math.PI * 4) * 0.12;
+    return (profile.height || 28) * Math.max(0, climb + loopPulse);
+  }
+  if (profile.type === 'rumble') {
+    const amp = profile.roughness || 1;
+    return Math.sin(x * 0.018 + y * 0.011) * amp
+      + Math.sin(x * 0.041 - y * 0.023) * amp * 0.55;
+  }
+  return 0;
+}
+
+function _heightNearestGlobal(cl, x, y) {
   let best = { d2: Infinity, i: 0 };
   for (let i = 0; i < cl.length; i++) {
     const [x1, y1] = cl[i];
@@ -358,16 +417,25 @@ function _trackSurfaceHeight(track, x, y) {
     const d2 = (x - px) ** 2 + (y - py) ** 2;
     if (d2 < best.d2) best = { d2, i: i + t };
   }
-  const p = best.i / cl.length;
-  if (profile.type === 'climb') {
-    const climb = Math.sin(p * Math.PI) ** 1.25;
-    const loopPulse = Math.sin(p * Math.PI * 4) * 0.12;
-    return (profile.height || 28) * Math.max(0, climb + loopPulse);
+  return best;
+}
+
+function _heightNearestWindow(cl, x, y, hint, radius) {
+  const N = cl.length;
+  const h = ((hint % N) + N) % N;
+  let best = { d2: Infinity, i: h };
+  for (let off = -radius; off <= radius; off++) {
+    const i = ((h + off) % N + N) % N;
+    const [x1, y1] = cl[i];
+    const [x2, y2] = cl[(i + 1) % N];
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const lenSq = dx * dx + dy * dy || 1;
+    const t = Math.max(0, Math.min(1, ((x - x1) * dx + (y - y1) * dy) / lenSq));
+    const px = x1 + dx * t;
+    const py = y1 + dy * t;
+    const d2 = (x - px) ** 2 + (y - py) ** 2;
+    if (d2 < best.d2) best = { d2, i: i + t };
   }
-  if (profile.type === 'rumble') {
-    const amp = profile.roughness || 1;
-    return Math.sin(x * 0.018 + y * 0.011) * amp
-      + Math.sin(x * 0.041 - y * 0.023) * amp * 0.55;
-  }
-  return 0;
+  return best;
 }

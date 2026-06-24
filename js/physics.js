@@ -8,6 +8,7 @@ import {
   MIN_DRIFT_SPEED as KART_MIN_DRIFT_SPEED,
   DOUBLE_DRIFT_MIN_SPEED as KART_DOUBLE_DRIFT_MIN_SPEED,
 } from '../kart-boost/index.js';
+import { updateAnalytics } from './driftAnalytics.js';
 
 export const TOP_SPEED_MULT = 1.0; // kart 모델은 car.maxSpeed 자체를 cruise cap으로 사용
 export const KMH_PER_UNIT   = 1;
@@ -19,20 +20,38 @@ export const DOUBLE_DRIFT_MIN_SPEED = KART_DOUBLE_DRIFT_MIN_SPEED;
 export function respawnAtCenter(car, track) {
   const cl = track?.centerLine || [];
   if (!cl.length) return;
-  let best = { d2: Infinity, px: car.x, py: car.y, ex: 1, ey: 0 };
-  for (let i = 0; i < cl.length; i++) {
-    const [x1, y1] = cl[i];
-    const [x2, y2] = cl[(i + 1) % cl.length];
-    const ex = x2 - x1, ey = y2 - y1;
-    const len2 = ex * ex + ey * ey || 1;
-    const t = Math.max(0, Math.min(1, ((car.x - x1) * ex + (car.y - y1) * ey) / len2));
-    const px = x1 + ex * t, py = y1 + ey * t;
-    const d2 = (car.x - px) ** 2 + (car.y - py) ** 2;
-    if (d2 < best.d2) best = { d2, px, py, ex, ey };
+  const isOverpass = !!track?.overpass;
+  const heightArr = track?.height;
+  const hint = car._collisionSegmentHint;
+  let best = null;
+
+  if (isOverpass && Number.isFinite(hint)) {
+    best = _scanSegmentsWindow(cl, car.x, car.y, hint, 14);
   }
+  if (!best) {
+    if (isOverpass && Array.isArray(heightArr) && heightArr.length === cl.length) {
+      const targetH = Number.isFinite(car.roadHeight) ? car.roadHeight : 0;
+      let bd = Infinity;
+      for (let i = 0; i < cl.length; i++) {
+        const seg = _segDistance(cl, i, car.x, car.y);
+        const hdiff = heightArr[i] - targetH;
+        const score = seg.d2 + hdiff * hdiff * 4;
+        if (score < bd) { bd = score; best = seg; }
+      }
+    } else {
+      let bd = Infinity;
+      for (let i = 0; i < cl.length; i++) {
+        const seg = _segDistance(cl, i, car.x, car.y);
+        if (seg.d2 < bd) { bd = seg.d2; best = seg; }
+      }
+    }
+  }
+  if (!best) return;
+
   car.x = best.px;
   car.y = best.py;
   car.angle = Math.atan2(best.ey, best.ex);
+  car._collisionSegmentHint = best.index;
   car.vx = 0; car.vy = 0; car.speed = 0;
   car.steerAngle = 0;
   car.drifting = false;
@@ -72,9 +91,17 @@ export function updatePhysics(car, input, dt, track) {
     car._kartInited = true;
   }
 
+  if (car._collisionSegmentHint == null) {
+    car._collisionSegmentHint = _initialSegmentIndex(car.x, car.y, track);
+  }
+
   // ─── 1. KartRider 주행: 마찰 분리 + 드리프트 상태머신 + 부스트 폭발 ───
   // track 인자로 surface(빙판) 판정.
   stepKartDrift(car, input, dt, track);
+
+  // 분석 레이어 — car.phase / car.yawRate / car.aLat / axleLoads 산출 (HUD용).
+  // 거동 변경 없음(관측만). 이 호출 없으면 디버그 HUD에 phase=STRAIGHT, yawRate=0 고정.
+  updateAnalytics(car, dt, input);
 
   // ─── 2. 수동 기어 입력 (HUD 보조) ───
   if (input.gearUp) {
@@ -152,7 +179,7 @@ function _resolveCollision(car, nextX, nextY, track) {
     for (const [lx, lz] of CAR_CORNERS) {
       const cx = fx + lx * ca + lz * sa;
       const cy = fy + lx * sa - lz * ca;
-      const hit = _closestCenterlineSegment(cx, cy, track.centerLine || [], car._collisionSegmentHint);
+      const hit = _closestCenterlineSegment(cx, cy, track, car._collisionSegmentHint);
       if (!hit) continue;
       car._collisionSegmentHint = hit.index;
 
@@ -232,10 +259,12 @@ function _resolveCollision(car, nextX, nextY, track) {
   }
 }
 
-function _closestCenterlineSegment(x, y, centerLine, hintIndex = null) {
+function _closestCenterlineSegment(x, y, track, hintIndex = null) {
+  const centerLine = track?.centerLine || [];
   const cache = _getCollisionCache(centerLine);
   const segments = cache.segments;
   if (!segments.length) return null;
+  const isOverpass = !!track?.overpass;
 
   let best = null;
   let bestD2 = Infinity;
@@ -271,9 +300,19 @@ function _closestCenterlineSegment(x, y, centerLine, hintIndex = null) {
   if (hinted) {
     const maxExpected = 260;
     if (!best || bestD2 > maxExpected * maxExpected) {
-      best = null;
-      bestD2 = Infinity;
-      for (const seg of segments) scanSegment(seg);
+      if (isOverpass) {
+        best = null;
+        bestD2 = Infinity;
+        const radius = 30;
+        for (let off = -radius; off <= radius; off++) {
+          const idx = (hintIndex + off + segments.length) % segments.length;
+          scanSegment(segments[idx]);
+        }
+      } else {
+        best = null;
+        bestD2 = Infinity;
+        for (const seg of segments) scanSegment(seg);
+      }
     }
   }
 
@@ -325,6 +364,48 @@ function _isPointOnRoadWithHit(x, y, track, hit, halfTrack) {
     return hit.dist <= halfTrack;
   }
   return _isPointOnRoad(x, y, track);
+}
+
+function _segDistance(cl, i, x, y) {
+  const N = cl.length;
+  const [x1, y1] = cl[i];
+  const [x2, y2] = cl[(i + 1) % N];
+  const ex = x2 - x1, ey = y2 - y1;
+  const len2 = ex * ex + ey * ey || 1;
+  const t = clamp(((x - x1) * ex + (y - y1) * ey) / len2, 0, 1);
+  const px = x1 + ex * t, py = y1 + ey * t;
+  const d2 = (x - px) ** 2 + (y - py) ** 2;
+  return { d2, px, py, ex, ey, index: i };
+}
+
+function _scanSegmentsWindow(cl, x, y, hint, radius) {
+  const N = cl.length;
+  let best = null;
+  let bd = Infinity;
+  for (let off = -radius; off <= radius; off++) {
+    const i = ((hint + off) % N + N) % N;
+    const seg = _segDistance(cl, i, x, y);
+    if (seg.d2 < bd) { bd = seg.d2; best = seg; }
+  }
+  return best;
+}
+
+function _initialSegmentIndex(x, y, track) {
+  const cl = track?.centerLine || [];
+  if (cl.length < 2) return 0;
+  let bestIdx = 0;
+  let bestD2 = Infinity;
+  for (let i = 0; i < cl.length; i++) {
+    const [x1, y1] = cl[i];
+    const [x2, y2] = cl[(i + 1) % cl.length];
+    const ex = x2 - x1, ey = y2 - y1;
+    const len2 = ex * ex + ey * ey || 1;
+    const t = clamp(((x - x1) * ex + (y - y1) * ey) / len2, 0, 1);
+    const px = x1 + ex * t, py = y1 + ey * t;
+    const d2 = (x - px) ** 2 + (y - py) ** 2;
+    if (d2 < bestD2) { bestD2 = d2; bestIdx = i; }
+  }
+  return bestIdx;
 }
 
 function _halfWidthAt(track, idx, fallback) {
