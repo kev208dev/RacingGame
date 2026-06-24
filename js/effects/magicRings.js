@@ -77,7 +77,12 @@ export function createMagicRings(mount, options = {}) {
 
   let renderer;
   try {
-    renderer = new THREE.WebGLRenderer({ alpha: true });
+    renderer = new THREE.WebGLRenderer({
+      alpha: true,
+      premultipliedAlpha: true,
+      preserveDrawingBuffer: false,
+      antialias: false,
+    });
   } catch (e) {
     return null;
   }
@@ -85,12 +90,25 @@ export function createMagicRings(mount, options = {}) {
     renderer.dispose();
     return null;
   }
+  renderer.autoClear = true;
   renderer.setClearColor(0x000000, 0);
-  renderer.domElement.style.width = '100%';
-  renderer.domElement.style.height = '100%';
-  renderer.domElement.style.display = 'block';
-  if (cfg.blur > 0) renderer.domElement.style.filter = `blur(${cfg.blur}px)`;
-  mount.appendChild(renderer.domElement);
+
+  // 기존 magic-rings 캔버스가 같은 mount에 남아있으면 중복 마운트 방지 — 강제 제거.
+  mount.querySelectorAll('canvas[data-magic-rings="1"]').forEach((c) => c.remove());
+
+  const dom = renderer.domElement;
+  dom.dataset.magicRings = '1';
+  dom.style.width = '100%';
+  dom.style.height = '100%';
+  dom.style.display = 'block';
+  // 부드러운 페이드 인 — 캔버스 자체 opacity transition (셰이더 fadeIn과 별도).
+  dom.style.opacity = '0';
+  dom.style.transition = 'opacity 300ms ease-out';
+  if (cfg.blur > 0) dom.style.filter = `blur(${cfg.blur}px)`;
+  mount.appendChild(dom);
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => { dom.style.opacity = '1'; });
+  });
 
   const scene = new THREE.Scene();
   const camera = new THREE.OrthographicCamera(-0.5, 0.5, 0.5, -0.5, 0.1, 10);
