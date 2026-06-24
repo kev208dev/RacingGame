@@ -62,6 +62,19 @@ export function clearFrameKeys() {
   }
 }
 
+// ── Steering input smoothing (framerate-independent exponential damp) ──
+// Maintains a single low-pass state so physics sub-steps at any rate read a
+// stable, ramp-up steer signal instead of bang-bang {-1, 0, +1}. Call once per
+// physics sub-step with that step's dt; reset on race init / respawn.
+let _smoothedSteer = 0;
+const STEER_HALF_LIFE = 0.06; // seconds — 60ms ≈ snappy but smoothed
+export function smoothSteer(rawSteer, dt, halfLife = STEER_HALF_LIFE) {
+  const k = 1 - Math.exp(-Math.LN2 * Math.max(0, dt) / Math.max(1e-4, halfLife));
+  _smoothedSteer += (rawSteer - _smoothedSteer) * k;
+  return _smoothedSteer;
+}
+export function resetSmoothedInput() { _smoothedSteer = 0; }
+
 export function getInput() {
   const mobile = getMobileInput();
 

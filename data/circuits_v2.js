@@ -63,9 +63,9 @@ function _findEdgeViolators(spec, hwMin, hwMax) {
   const violators = new Set();
 
   for (let i = 0; i < N; i++) {
-    const w2 = 2 * spec.halfWidth[i];
-    if (w2 < 2 * hwMin) violators.add(i);
-    else if (w2 > 2 * hwMax) violators.add(i);
+    const hw = spec.halfWidth[i];
+    if (hw < hwMin) violators.add(i);
+    else if (hw > hwMax) violators.add(i);
   }
 
   const testPoly = (poly) => {
@@ -109,7 +109,7 @@ function _findEdgeViolators(spec, hwMin, hwMax) {
 function _validateAndAdjust(spec) {
   const carW = spec.CAR_WIDTH || CAR_WIDTH_DEFAULT;
   const hwMin = (7 * carW) / 2;
-  const hwMax = (13 * carW) / 2;
+  const hwMax = (18 * carW) / 2;
   const N = spec.centerline.length;
   let adjusted = 0;
   let clampedRange = 0;
@@ -287,10 +287,10 @@ function _buildPinchFlow() {
   const height = new Array(N);
   for (let i = 0; i < N; i++) {
     const t = (i / N) * Math.PI * 2;
-    const x = 1100 * Math.cos(t) + 140 * Math.sin(3 * t);
-    const y = 820 * Math.sin(t) + 110 * Math.cos(3 * t);
+    const x = 1400 * Math.cos(t) + 180 * Math.sin(3 * t);
+    const y = 1050 * Math.sin(t) + 140 * Math.cos(3 * t);
     centerline[i] = [x, y];
-    halfWidth[i] = 80 + 24 * Math.cos(4 * t);
+    halfWidth[i] = 110 + 30 * Math.cos(4 * t);
     height[i] = 0;
   }
   const { leftEdge, rightEdge } = _buildEdges(centerline, halfWidth);
@@ -327,9 +327,9 @@ function _buildCanyonTight() {
   const height = new Array(N);
   for (let i = 0; i < N; i++) {
     const t = (i / N) * Math.PI * 2;
-    const r = 1000 + 220 * Math.sin(3 * t) - 100 * Math.cos(5 * t);
+    const r = 1250 + 260 * Math.sin(3 * t) - 130 * Math.cos(5 * t);
     centerline[i] = [r * Math.cos(t), r * Math.sin(t)];
-    halfWidth[i] = 60 + 4 * Math.sin(7 * t);
+    halfWidth[i] = 82 + 6 * Math.sin(7 * t);
     height[i] = 0;
   }
   const { leftEdge, rightEdge } = _buildEdges(centerline, halfWidth);
@@ -359,10 +359,10 @@ function _buildGauntletVar() {
   const height = new Array(N);
   for (let i = 0; i < N; i++) {
     const t = (i / N) * Math.PI * 2;
-    const x = 1200 * Math.cos(t) + 220 * Math.cos(3 * t);
-    const y = 940 * Math.sin(t) + 170 * Math.sin(3 * t);
+    const x = 1500 * Math.cos(t) + 260 * Math.cos(3 * t);
+    const y = 1180 * Math.sin(t) + 200 * Math.sin(3 * t);
     centerline[i] = [x, y];
-    halfWidth[i] = 80 + 24 * Math.sin(3 * t);
+    halfWidth[i] = 105 + 30 * Math.sin(3 * t);
     height[i] = 0;
   }
   const { leftEdge, rightEdge } = _buildEdges(centerline, halfWidth);
@@ -392,10 +392,10 @@ function _buildSpeedwayS() {
   const height = new Array(N);
   for (let i = 0; i < N; i++) {
     const t = (i / N) * Math.PI * 2;
-    const x = 1500 * Math.cos(t);
-    const y = 720 * Math.sin(t) + 110 * Math.sin(3 * t);
+    const x = 1750 * Math.cos(t);
+    const y = 850 * Math.sin(t) + 130 * Math.sin(3 * t);
     centerline[i] = [x, y];
-    halfWidth[i] = 90 + 14 * Math.cos(2 * t);
+    halfWidth[i] = 120 + 20 * Math.cos(2 * t);
     height[i] = 0;
   }
   const { leftEdge, rightEdge } = _buildEdges(centerline, halfWidth);
@@ -423,14 +423,14 @@ function _buildPLoop() {
   const centerline = new Array(N);
   const halfWidth = new Array(N);
   const height = new Array(N);
-  const bridgeHeight = 42;
-  const baseHW = 60;
+  const bridgeHeight = 46;
+  const baseHW = 90;
   const bridgeCenter = N / 4;
   const bridgeHalf = N / 8;
   for (let i = 0; i < N; i++) {
     const t = (i / N) * Math.PI * 2 + Math.PI / 2;
-    const x = 950 * Math.sin(t);
-    const y = 480 * Math.sin(2 * t);
+    const x = 1150 * Math.sin(t);
+    const y = 580 * Math.sin(2 * t);
     centerline[i] = [x, y];
     halfWidth[i] = baseHW;
     const di = _wrapDelta(i - bridgeCenter, N);

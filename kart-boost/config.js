@@ -17,7 +17,7 @@ export const KART_TUNING = {
   // drift 전환 = 즉시 (수식 드롭). μ는 normal→drift = 약 30% 수준으로 표현.
   GRIP_DRIFT:       0.965, // 0.982→0.965 — 횡그립 강화 (꽉 물고 돔)
   DRIFT_SIDE_GRIP:  0.965,
-  GRIP_NORMAL:      0.40,  // 0.55→0.40 — 평소 노면 꽉 물게 (떠다님 ❌)
+  GRIP_NORMAL:      0.15,  // 0.40→0.15 — 평소 거의 레일 (뒤축 vL 빠르게 0 수렴)
   ROLL_FWD:         0.998,   // 0.995→0.998 — passive 전진 감쇠 줄임 (속도 유지)
 
   // ── 속도 티어 (km/h) ───────────────────────────────────────
@@ -54,7 +54,9 @@ export const KART_TUNING = {
   DRIFT_MIN_HOLD:     0.15,          // s — 진입 직후 그레이스 (즉시 release 방지)
   DRIFT_GRACE_TIME:   0.22,          // s — 드리프트 키 떼도 이 시간 안에 재탭하면 드리프트 이어감 (톡톡이)
   DRIFT_MIN_BETA:     8 * Math.PI / 180,  // 8° — 이 이상이면 IsDrifting 유지
-  DRIFT_RELEASE_BETA: 3 * Math.PI / 180,  // 3° — 이 이하로 떨어지면 자동 release
+  DRIFT_RELEASE_BETA: 4 * Math.PI / 180,  // 4° — release 임계 (히스테리시스 적용)
+  DRIFT_RELEASE_DEBOUNCE: 0.10,           // s — (handbrake off) AND (β<RELEASE) 이 시간 유지돼야 release (채터링 방지)
+  MIN_DRIFT_STEER:    0.15,               // |steer| 최소 — 이 미만이면 드리프트 진입 ❌
   DRIFT_SPIN_BETA:    88 * Math.PI / 180, // 88° — 이 이상이면 스핀오프 (속도 증발)
   SPIN_SPEED_KEEP:    0.18,          // 스핀 시 vF/vL 잔존율 (=82% 손실)
 
@@ -62,13 +64,21 @@ export const KART_TUNING = {
   // K_base: 카트 고유. 좋은 카트일수록 작음.
   // K_angle: exp 성장 — 깊이 꺾을수록 급격히 감속.
   // K_input: 안쪽 키 hold 시 가산. 톡톡이(키 떼기) 시 0.
-  DRIFT_KBASE:        3,             // 8→3 — 평이 드리프트 시 스크럽 최소 (속도 유지)
+  DRIFT_KBASE:        2,             // 3→2 — 종방향 그립 손실 최소화 (드리프트가 과감속하지 않게)
   DRIFT_KANGLE_SCALE: 0.8,           // 2.5→0.8 — TARGET 부근서 가벼움, 깊은각만 exp로 묵직
   DRIFT_KANGLE_TAU:   0.55,          // rad — exp(β/tau) - 1
   DRIFT_KINPUT:       0,             // 안쪽 키 hold 페널티 ❌
   INSIDE_HOLD_THRESHOLD: 0.4,
-  DRIFT_ESCAPE_FORCE: 32,            // km/h/s — 드리프트 中 passive 전진 가속 (속도 유지~약간 가속)
+  DRIFT_ESCAPE_FORCE: 45,            // 32→45 — passive 전진 가속 ↑ (드리프트 中에도 속도 유지)
   DEEP_ANGLE_PENALTY: 55,            // km/h/s/rad — DEEP_ANGLE(60°) 초과분 × 이 값 추가 감속
+
+  // ── BURST / SUSTAIN / ALIGN phase 머신 (HUD 라벨 + boost release) ──
+  BURST_TIME:              0.18,     // s — BURST 라벨 지속 시간 (slip build와 동기화)
+  RELEASE_BOOST_MIN:       30,       // 게이지 ≥ 이 값일 때만 release boost 발사
+  RELEASE_BOOST_DV_BASE:   0.35,     // gauge=MIN일 때 BOOST_INSTANT_DV 배수
+  RELEASE_BOOST_DV_MAX:    1.00,     // gauge=GAUGE_MAX일 때 BOOST_INSTANT_DV 배수
+  RELEASE_BOOST_SUSTAIN_MIN: 0.4,    // sustain timer 배수 (gauge=MIN)
+  RELEASE_BOOST_SUSTAIN_MAX: 1.0,    // sustain timer 배수 (gauge=MAX)
 
   // ── 카운터 스티어 (Alignment Torque) ──────────────────────
   // 반대 방향키 입력 시 heading을 velocity 벡터로 능동 정렬 → β 축소.
@@ -151,21 +161,51 @@ export const KART_TUNING = {
   MIN_DRIFT_SPEED: 28,
 };
 
-// ── 카메라 / FOV 연출 ────────────────────────────────────────
-// KartRider식: 낮고 가깝게 + 속도 비례 FOV. 드리프트 거동은 별도(현 상태 유지).
-export const KART_CAMERA = {
-  // ── chase 리그 (낮은 시점 + 짧은 거리) ──
-  CAM_HEIGHT:        22,    // 13→22 (+70% — 위에서 내려다보는 카트라이더식)
-  CAM_DIST:          30,    // 유지 (가까움)
-  CAM_LOOK_AHEAD:    55,    // 50→55 (앞 도로 더 보임)
-  CAM_LOOK_Y:        2,     // 9→2 (타겟 낮춤 → 카메라 약 -14° 피치)
-  CAM_DIST_SPEED_ADD: 4,    // 10→4 — 고속에서도 거의 안 멀어짐
+// ── 차체 비율 (카트라이더식 박스형 카트) ───────────────────────
+// 단일 진입점. createCar3D() 가 wheel/body 메시에 일괄 적용.
+// ④ 과보정 → ⑤ 수치 보정 — 키 줄이고 폭 살짝 넓혀 안정적 스탠스.
+export const KART_PROPORTIONS = {
+  // 차체 Y-스케일 배수. ④ 1.60 (너무 키 큰 타워) → ⑤ 1.30 (원본의 ~1.3배).
+  HEIGHT_MUL:        1.30,
+  // 휠베이스(앞뒤) 배수. 짧고 컴팩트 유지.
+  // ④ 0.63 → ⑤ 0.65 (살짝 더 길게 — 폭/길이 1.0 부근 정사각 풋프린트 위해).
+  WHEELBASE_MUL:     0.65,
+  // 트레드(좌우) 배수. 폭 넓혀 안정적 스탠스.
+  // ④ 0.88 → ⑤ 0.95 (현저히 넓게, 풋프린트 폭/길이 ≈ 0.85~1.0 타깃).
+  TRACK_WIDTH_MUL:   0.95,
+  // 바퀴 반지름 배수. 차체 높이의 ~35% 직경 타깃.
+  // ④ 1.45 (과대 → 절반 차체 높이 차지) → ⑤ 1.05.
+  WHEEL_RADIUS_MUL:  1.05,
+  // 돔(콕핏/캐노피) Y 압축 비율. 본체 위에 얹힌 헬멧/운전석 느낌.
+  // 신규 — 1.0 = 원본. 0.5 = 절반 높이.
+  DOME_Y_SHRINK:     0.55,
+  DOME_XZ_SHRINK:    0.90,
+  DOME_Y_LIFT:      -0.15,   // 본체 위에 안착시키려 살짝 ↓
+};
 
-  // ── FOV 속도 비례 ──
-  FOV_BASE:        62,    // 정지
-  FOV_MAX:         100,   // 88→100 — 고속 FOV 펀치 강화
-  FOV_LERP:        0.08,    // 부드러움 계수 (60fps 기준, dt 보정됨)
-  FOV_BOOST_BUMP:  12,      // 6→12 boost FOV 추가
+// ── 카메라 / FOV 연출 ────────────────────────────────────────
+// 카트라이더식 비율: 위에서 내려다보는 ~14~17° 피치 + FOV 넓혀 도로 비중 ↑.
+// before / after 수치는 각 키에 inline 주석.
+export const KART_CAMERA = {
+  // ── chase 리그 (탑다운 약 17° 피치 + 카트가 화면 하단 中앙) ──
+  // pitch ≈ atan2(HEIGHT - LOOK_Y, DIST + LOOK_AHEAD)
+  // ③: atan2(22-2, 30+55) ≈ 13.2°
+  // ④: atan2(34-0, 36+75) ≈ 17.0° — 거리 너무 멈
+  // ⑤: atan2(28-2, 30+55) ≈ 17.0° — 거리는 ③로 복귀, 높이만 ↑로 피치 유지.
+  CAM_HEIGHT:        28,    // ④ 34 → ⑤ 28 (피치 ~17° 유지하면서 가까이).
+  CAM_DIST:          30,    // ④ 36 → ⑤ 30 (③로 복귀).
+  CAM_LOOK_AHEAD:    55,    // ④ 75 → ⑤ 55 (③로 복귀).
+  CAM_LOOK_Y:        2,     // ④ 0 → ⑤ 2 (③로 복귀).
+  CAM_DIST_SPEED_ADD: 2,    // ④ 4 → ⑤ 2 — 속도 기반 거리 변화 절반.
+
+  // ── FOV (약한 광각, 속도 기반 변화 절반 미만으로 추가 축소) ──
+  // ③: 62 → 100 (Δ=38)
+  // ④: 70 → 108 (Δ=38) — 둘 다 키워서 고속에서 카트 너무 작음.
+  // ⑤: 66 → 70 (Δ=4) — 베이스 +4° 약한 광각 유지, 속도 FOV 폭 거의 제거 (카트 크기 유지).
+  FOV_BASE:        66,    // ④ 70 → ⑤ 66 (+4° 약한 광각).
+  FOV_MAX:         70,    // ④ 108 → ⑤ 70 (속도 폭 38→4 — 고속에서 카트 ~87% 크기 유지).
+  FOV_LERP:        0.08,
+  FOV_BOOST_BUMP:  6,     // ④ 12 → ⑤ 6 (boost FOV 펀치도 절반).
 
   // ── 차체 lean/visual 임계감쇠 ──
   LEAN_DAMPING:    0.12,   // body.rotation.x/z lerp (낮을수록 진동 적고 부드러움)
@@ -174,12 +214,18 @@ export const KART_CAMERA = {
   // ── 드리프트 카메라 (yaw 오프셋 — 기존 유지) ──
   CAM_DIST_PULL:   0.17,
   CAM_HEIGHT_DROP: 5,
-  // PC 원작: 카메라는 '진행방향(velocity)'을 추적. 차체 헤딩 추적 ❌. drift yaw 오프셋도 ❌.
-  // 아래 값은 legacy(다른 screen 참조 유지용)만 남기고 사용하지 않음.
-  DRIFT_YAW_GAIN:  0.0,
+  // 카트라이더식: 드리프트 中 카메라가 차체 heading을 따라 swing, 안쪽으로 살짝 끌려듦.
+  // 평소엔 heading 빠르게 따라가지만 드리프트 中엔 지연된 스무딩 (월드가 카트 中심으로 회전).
+  CAM_HEADING_FOLLOW_NORMAL: 9.0,        // /s — 평소 heading 추적 속도
+  CAM_HEADING_FOLLOW_DRIFT:  7.0,        // 5.5→7.0 — 드리프트 中 타이트 follow (카트가 화면 가장자리로 ❌)
+  CAM_DRIFT_INWARD_SWING:    0.14,       // 0.22→0.14 (~8°) — 안쪽 swing 캡 축소 (카트가 화면 中앙 유지)
+  CAM_DRIFT_INWARD_LERP:     7.0,        // /s — 안쪽 swing 스무딩 응답
+  CAM_POS_LERP_NORMAL:       12.0,       // /s — 위치 추적 응답 (평소)
+  CAM_POS_LERP_DRIFT:        15.0,       // /s — 드리프트 中 위치 추적 타이트 (지오메트리 떨림 ❌)
+  DRIFT_YAW_GAIN:  0.0,                  // (legacy 보존)
   DRIFT_YAW_MAX:   0.0,
   DRIFT_YAW_SMOOTH: 6.0,
-  CAM_YAW_FOLLOW:  0.0,                  // (legacy) 카메라는 velocity만 추적 — heading 0%.
+  CAM_YAW_FOLLOW:  0.0,                  // (legacy)
   BODY_ROLL_DRIFT: 0.080,    // (legacy, 사용 안 함 — KART_ROLL_MAX로 교체)
   SPEEDLINE_KMH:   120,   // 200→120 — 속도선 일찍 시작
   SPEEDLINE_RANGE: 160,
@@ -217,7 +263,7 @@ export const KART_CAMERA = {
 
   // 1) 고속 바람저항
   WIND_SPEED_MIN:    130,        // 180→130 — 바람 와류 일찍 활성
-  WIND_FOV_ADD:      5,
+  WIND_FOV_ADD:      2,          // ④ 5 → ⑤ 2 (고속 FOV 추가폭 절반).
   WINDLINE_MAX:      1.0,
   RADIALBLUR_MAX:    0.0,
 

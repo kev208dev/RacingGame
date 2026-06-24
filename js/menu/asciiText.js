@@ -254,7 +254,7 @@ export class CanvAscii {
   setMesh() {
     this.textCanvas = new CanvasTxt(this.textString, {
       fontSize: this.textFontSize,
-      fontFamily: 'IBM Plex Mono',
+      fontFamily: 'Orbitron',
       color: this.textColor,
     });
     this.textCanvas.resize();

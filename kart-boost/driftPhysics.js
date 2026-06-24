@@ -56,6 +56,7 @@ function _pointInPoly(x, y, poly) {
 
 // ─── 드리프트 종료 루틴 (manual / align / spin) ───────────────
 // - 상태 → release, drifting=false (μ는 다음 tick에 즉시 NORMAL로 복귀)
+// - hysteresis 종료(=드리프트 키 떼서 자연 종료)면 충전된 게이지에 비례한 release boost 발사.
 function endDriftRoutine(car, reason) {
   car.driftState = 'release';
   car.driftStateTime = 0;
@@ -70,7 +71,36 @@ function endDriftRoutine(car, reason) {
     car._recoverActive = true;
     car._recoverTimer  = K.RECOVER_DURATION;
     car._recoverDone   = false;
+    // 카트라이더 정렬 부스터: 키 떼면 충전된 게이지 비례 즉발 가속.
+    // hysteresis / manual 종료 한정 (spin / cut 제외).
+    if ((reason === 'hysteresis' || reason === 'manual')
+        && (car.boostMeter || 0) >= (K.RELEASE_BOOST_MIN || 30)) {
+      _fireReleaseBoost(car);
+    }
   }
+}
+
+// Release boost — drifting key 릴리즈 시 게이지 비례 forward 임펄스.
+// 스택 시스템과 독립적으로 작동(스택은 보존). 게이지 0으로 소비.
+function _fireReleaseBoost(car) {
+  const gauge = clamp((car.boostMeter || 0) / Math.max(1, K.GAUGE_MAX), 0, 1);
+  const dvScale = (K.RELEASE_BOOST_DV_BASE ?? 0.35)
+    + ((K.RELEASE_BOOST_DV_MAX ?? 1.0) - (K.RELEASE_BOOST_DV_BASE ?? 0.35)) * gauge;
+  const sustainScale = (K.RELEASE_BOOST_SUSTAIN_MIN ?? 0.4)
+    + ((K.RELEASE_BOOST_SUSTAIN_MAX ?? 1.0) - (K.RELEASE_BOOST_SUSTAIN_MIN ?? 0.4)) * gauge;
+  const fwdX = Math.cos(car.angle), fwdY = Math.sin(car.angle);
+  const rgtX = -fwdY, rgtY = fwdX;
+  let vF = car.vx * fwdX + car.vy * fwdY;
+  let vL = car.vx * rgtX + car.vy * rgtY;
+  vF += K.BOOST_INSTANT_DV * dvScale;
+  car.vx = fwdX * vF + rgtX * vL;
+  car.vy = fwdY * vF + rgtY * vL;
+  car.boostSustainTimer  = K.BOOST_SUSTAIN_TIME * sustainScale;
+  car.boostCapDecayTimer = 0;
+  car.boosting           = true;
+  car.boostFireFx        = 1.0;
+  car.boostMeter         = 0;
+  car._boostReleaseFx    = 1.0; // 외부 FX hook (트레일/플레임용)
 }
 
 // ─── 메인 스텝 ────────────────────────────────────────────
@@ -310,12 +340,22 @@ export function stepKartDrift(car, input, dt, track) {
   const slipSigned = Math.atan2(vL, Math.max(1e-3, Math.abs(vF)));
   car.driftAngle = clamp(slipSigned, -K.MAX_SLIP_ANGLE, K.MAX_SLIP_ANGLE);
 
-  // 자동 release: drift 中 β가 RELEASE 임계 밑으로 떨어지면 μ 원복.
-  // 기본적으로는 안쪽 키 hold + 카운터 키 없으면 β 안 줄어듬.
-  // 카운터 키 alignment로만 β가 깎여서 RELEASE 도달.
-  if (car.drifting && car.driftStateTime > K.DRIFT_MIN_HOLD
-      && betaPost < K.DRIFT_RELEASE_BETA) {
-    endDriftRoutine(car, 'align');
+  // 히스테리시스 release: drift 中 (handbrake 떼짐) AND (β < RELEASE) 가
+  // DRIFT_RELEASE_DEBOUNCE 이상 연속 유지될 때만 release. 한 프레임 β 튐으로
+  // GRIP↔DRIFT 채터링 방지.
+  if (car.drifting && car.driftStateTime > K.DRIFT_MIN_HOLD) {
+    const releaseConds = !input.handbrake && betaPost < K.DRIFT_RELEASE_BETA;
+    if (releaseConds) {
+      car._releaseDebounce = (car._releaseDebounce || 0) + dt;
+      if (car._releaseDebounce >= (K.DRIFT_RELEASE_DEBOUNCE || 0.1)) {
+        endDriftRoutine(car, 'hysteresis');
+        car._releaseDebounce = 0;
+      }
+    } else {
+      car._releaseDebounce = 0;
+    }
+  } else if (!car.drifting) {
+    car._releaseDebounce = 0;
   }
 
   // ─── 게이지 충전 ───
@@ -374,18 +414,16 @@ export function updateDriftStateMachine(car, input, dt) {
 
   if (car.driftState === 'idle' || car.driftState === 'release') {
     const steerSign = Math.sign(input.steer || 0);
-    const hasSteer  = Math.abs(input.steer || 0) > 0.1;
-    // 마찰원 초과 트리거 — Shift 없이도 후륜 그립 한계 넘으면 자동 진입.
-    const frictionTrigger = K.FRICTION_TRIGGER
-      && car.frictionCircleOver
-      && hasSteer
-      && speed > (K.FRICTION_TRIGGER_MIN_SPEED || 60);
-    // 전진 中에만 드리프트 진입. 후진(vFwd<0) → 진입 ❌.
-    if ((handbrake || frictionTrigger) && hasSteer && vFwd > K.MIN_DRIFT_SPEED) {
-      car.driftState     = 'charge';
-      car.driftStateTime = 0;
-      car.drifting       = true;
-      car._driftDir      = steerSign;
+    const minSteer  = K.MIN_DRIFT_STEER ?? 0.15;
+    const hasSteer  = Math.abs(input.steer || 0) >= minSteer;
+    // 진입 = handbrake(드리프트 키) AND 최소 조향각. slip 임계값 자동 진입 ❌ (채터링 원인).
+    if (handbrake && hasSteer && vFwd > K.MIN_DRIFT_SPEED) {
+      car.driftState       = 'charge';
+      car.driftStateTime   = 0;
+      car.drifting         = true;
+      car._driftDir        = steerSign;
+      car._releaseDebounce = 0;
+      car._driftGraceT     = null;
       // 회복 中 새 드리프트 — 회복 페이즈 즉시 종료.
       car._recoverActive = false;
       car._recoverDone   = true;
@@ -400,20 +438,10 @@ export function updateDriftStateMachine(car, input, dt) {
     }
   } else if (car.driftState === 'charge') {
     car.drifting = true;
-    // 톡톡이 grace — handbrake 떼도 DRIFT_GRACE_TIME 동안 드리프트 유지. 재탭 시 이어감.
-    if (handbrake) {
-      car._driftGraceT = null;
-    } else {
-      if (car._driftGraceT == null) car._driftGraceT = K.DRIFT_GRACE_TIME || 0.22;
-      car._driftGraceT -= dt;
-      if (car._driftGraceT <= 0) {
-        car._driftGraceT = null;
-        endDriftRoutine(car, 'manual');
-      }
-    }
-    // 후진 진입 시 강제 종료.
+    // release는 hysteresis(stepKartDrift)가 담당. 여기서는 후진 진입만 강제 종료.
     if (vFwd < 0) {
-      car._driftGraceT = null;
+      car._driftGraceT     = null;
+      car._releaseDebounce = 0;
       endDriftRoutine(car, 'manual');
     }
   }

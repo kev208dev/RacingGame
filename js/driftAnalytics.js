@@ -1,13 +1,14 @@
 import { KART_TUNING as K } from '../kart-boost/config.js';
 
-// ── 6단계 드리프트 상태 ────────────────────────────────────────
+// ── 드리프트 phase 라벨 ────────────────────────────────────────
+// 카트라이더식 3-phase (BURST → SUSTAIN → ALIGN) + 비드리프트 표시용 보조 라벨.
 export const PHASE = {
   STRAIGHT:    'STRAIGHT',
   ENTRY:       'ENTRY',
   LOAD_SHIFT:  'LOAD_SHIFT',
-  DRIFT_START: 'DRIFT_START',
-  DRIFT_HOLD:  'DRIFT_HOLD',
-  EXIT:        'EXIT',
+  BURST:       'BURST',     // 진입 직후 yaw 킥 + slip build (~BURST_TIME)
+  SUSTAIN:     'SUSTAIN',   // 드리프트 키 hold + 게이지 충전 中
+  ALIGN:       'ALIGN',     // release 후 slip 정렬 + 부스터 발사
 };
 
 // 매 프레임 호출. 거동 변경 ❌(관측만) — 단, K.FRICTION_TRIGGER true 면 마찰원 초과 시 drift 진입 가능.
@@ -66,16 +67,18 @@ export function updateAnalytics(car, dt, input) {
   d.FreqRear = Math.abs(m * d.aY) * rearBias;
   d.frictionCircleOver = d.FreqRear > d.Fmax_rear * (K.FRICTION_OVER_MARGIN || 1.0);
 
-  // ── 6단계 분류.
+  // ── phase 분류 (BURST/SUSTAIN/ALIGN + 보조 라벨) ──
   const absSteer = Math.abs(car.steerAngle || 0);
   const absAy    = Math.abs(d.aY);
   let phase;
-  if (car._recoverActive) {
-    phase = PHASE.EXIT;
-  } else if (car.drifting) {
-    phase = (car.driftStateTime || 0) < (K.PHASE_DRIFT_START_WIN || 0.22)
-          ? PHASE.DRIFT_START
-          : PHASE.DRIFT_HOLD;
+  if (car.drifting) {
+    // BURST = 진입 직후 ~BURST_TIME — yaw kick + slip build. 이후 SUSTAIN.
+    phase = (car.driftStateTime || 0) < (K.BURST_TIME || 0.18)
+          ? PHASE.BURST
+          : PHASE.SUSTAIN;
+  } else if (car._recoverActive) {
+    // 드리프트 종료 직후 → ALIGN (slip 정렬 + release boost 발사 직후).
+    phase = PHASE.ALIGN;
   } else if (absSteer < (K.PHASE_ENTRY_STEER || 0.06) && absAy < (K.PHASE_TURN_AY || 40)) {
     phase = PHASE.STRAIGHT;
   } else if (absAy > (K.PHASE_TURN_AY || 40)) {

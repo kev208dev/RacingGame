@@ -574,8 +574,17 @@ function _emitDriftFx(dt, driveInput) {
 }
 
 function _driftTrailColor() {
-  // 검은 고무 타이어 자국. 발광/컬러 ❌.
-  return KART_CAMERA.SKID_MARK_COLOR ?? 0x141414;
+  // 카트라이더식: 충전된 게이지 비례 색 변화 (LOW → HIGH lerp).
+  // 게이지 = 0 → 옅은 노랑, 게이지 = 100 → 파랑/보라.
+  const c0 = KART_CAMERA.TRAIL_COLOR_LOW  ?? 0xfff099;
+  const c1 = KART_CAMERA.TRAIL_COLOR_HIGH ?? 0x6688ff;
+  const t = Math.max(0, Math.min(1, (car?.boostMeter || 0) / 100));
+  const r0 = (c0 >> 16) & 0xff, g0 = (c0 >> 8) & 0xff, b0 = c0 & 0xff;
+  const r1 = (c1 >> 16) & 0xff, g1 = (c1 >> 8) & 0xff, b1 = c1 & 0xff;
+  const r = (r0 + (r1 - r0) * t) | 0;
+  const g = (g0 + (g1 - g0) * t) | 0;
+  const b = (b0 + (b1 - b0) * t) | 0;
+  return (r << 16) | (g << 8) | b;
 }
 
 function _scheduleResults(ev) {
@@ -679,15 +688,22 @@ function _updateCamera(dt) {
   let dA = car.angle - _camAngle;
   while (dA >  Math.PI) dA -= Math.PI * 2;
   while (dA < -Math.PI) dA += Math.PI * 2;
-  const angK = 1 - Math.exp(-9.0 * dt);
+  // 카트라이더식: 드리프트 中엔 heading 추적을 늦춰 월드가 카트 中심으로 도는 느낌.
+  const headingRate = car.drifting
+    ? (KART_CAMERA.CAM_HEADING_FOLLOW_DRIFT  ?? 5.5)
+    : (KART_CAMERA.CAM_HEADING_FOLLOW_NORMAL ?? 9.0);
+  const angK = 1 - Math.exp(-headingRate * dt);
   _camAngle += dA * angK;
 
-  // 드리프트 카메라: 미끄러지는 반대로 ~15° yaw
+  // 드리프트 카메라 안쪽 swing: 카메라가 드리프트 방향(_driftDir)으로 살짝 끌려듦.
+  // sign = _driftDir (좌 드리프트=-1 → 좌측으로 yaw, 우 드리프트=+1 → 우측으로 yaw).
+  const swingCap = KART_CAMERA.CAM_DRIFT_INWARD_SWING ?? 0.22;
   const driftYawTarget = car.drifting
-    ? Math.max(-0.26, Math.min(0.26, -(car.driftAngle || 0) * 0.55))
+    ? Math.max(-swingCap, Math.min(swingCap, (car._driftDir || 0) * swingCap))
     : 0;
+  const swingLerp = KART_CAMERA.CAM_DRIFT_INWARD_LERP ?? 7.0;
   car._camDriftYaw = (car._camDriftYaw || 0)
-    + (driftYawTarget - (car._camDriftYaw || 0)) * (1 - Math.exp(-8.0 * dt));
+    + (driftYawTarget - (car._camDriftYaw || 0)) * (1 - Math.exp(-swingLerp * dt));
   // 후방 보기: '/' 누른 동안 카메라 좌우 반전
   const rearFlip = rearViewActive ? Math.PI : 0;
   const aimAngle = _camAngle + car._camDriftYaw + rearFlip;
@@ -702,7 +718,11 @@ function _updateCamera(dt) {
   const ly = LOOK_Y_BASE + roadY;
   const lz = -(car.y + sn * LOOK_AHEAD);
 
-  const posK  = 1 - Math.exp(-12.0 * dt);
+  // 드리프트 中엔 위치 추적 타이트 (카트가 화면 가장자리로 밀리지 ❌).
+  const posRate = car.drifting
+    ? (KART_CAMERA.CAM_POS_LERP_DRIFT  ?? 15.0)
+    : (KART_CAMERA.CAM_POS_LERP_NORMAL ?? 12.0);
+  const posK  = 1 - Math.exp(-posRate * dt);
   const lookK = 1 - Math.exp(-15.0 * dt);
 
   _camPos.x += (tx - _camPos.x) * posK;

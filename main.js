@@ -30,6 +30,7 @@ import {
 } from './utils/profile.js';
 import { nicknameRejectMessage } from './utils/nicknameFilter.js';
 import { initAds, showBannerAd } from './js/ads.js';
+import { createWavesBackground } from './js/effects/waves.js';
 import { initAnalytics, trackEvent } from './js/analytics.js';
 import { submitScore as submitPlaceholderScore } from './js/leaderboard.js';
 import { clearRaceRecordsOnce } from './utils/storage.js';
@@ -136,6 +137,7 @@ function showScreen(id) {
   currentScreen = id?.replace?.(/^screen-/, '') || id;
   if (window.gameState) window.gameState.currentScreen = currentScreen;
   updateGameState({ currentScreen });
+  try { _syncScreenWaves(resolved); } catch (e) { console.warn('[waves]', e); }
   console.log('[Screen]', currentScreen);
 }
 function hideScreens() {
@@ -613,12 +615,50 @@ async function _loadMainLeaderboardPreview(statusText = 'Loading racers...') {
   return mainLeaderboardPreviewPromise;
 }
 
+const _wavesHandles = new Map();
+const WAVES_OPTS = {
+  lineColor: 'rgba(255, 255, 255, 0.45)',
+  backgroundColor: 'transparent',
+  waveSpeedX: 0.02,
+  waveSpeedY: 0.01,
+  waveAmpX: 40,
+  waveAmpY: 20,
+  friction: 0.9,
+  tension: 0.01,
+  maxCursorMove: 120,
+  xGap: 12,
+  yGap: 36,
+};
+function _mountWavesOn(el) {
+  if (!el || _wavesHandles.has(el)) return;
+  const handle = createWavesBackground(el, WAVES_OPTS);
+  _wavesHandles.set(el, handle);
+}
+function _unmountWavesOn(el) {
+  const h = el && _wavesHandles.get(el);
+  if (h) { h.dispose(); _wavesHandles.delete(el); }
+}
+function _mountLeaderboardWaves(overlay) { _mountWavesOn(overlay); }
+function _unmountLeaderboardWaves() {
+  _unmountWavesOn(document.getElementById('leaderboard-overlay'));
+}
+const WAVES_SCREEN_IDS = ['screen-trackselect', 'screen-lobby'];
+function _syncScreenWaves(activeScreenId) {
+  WAVES_SCREEN_IDS.forEach(sid => {
+    const el = document.getElementById(sid);
+    if (!el) return;
+    if (sid === activeScreenId) _mountWavesOn(el);
+    else _unmountWavesOn(el);
+  });
+}
+
 function _openLeaderboardOverlay() {
   const overlay = document.getElementById('leaderboard-overlay');
   if (!overlay) return;
   returnScreenAfterPanel = currentScreen === 'lobbyPractice' ? 'main' : (currentScreen || 'main');
   initFullLeaderboardOnce();
   showScreen('leaderboard');
+  _mountLeaderboardWaves(overlay);
   trackEvent('leaderboard_open', { source: returnScreenAfterPanel });
   _loadGlobalLeaderboard();
 }
@@ -635,7 +675,10 @@ function _wireGlobalLeaderboard() {
   if (trackFilter) trackFilter.addEventListener('change', () => _loadGlobalLeaderboard());
 
   const open = () => _openLeaderboardOverlay();
-  const close = () => returnScreenAfterPanel === 'main' ? goToMain() : showScreen(returnScreenAfterPanel || 'main');
+  const close = () => {
+    _unmountLeaderboardWaves();
+    return returnScreenAfterPanel === 'main' ? goToMain() : showScreen(returnScreenAfterPanel || 'main');
+  };
 
   openBtn?.addEventListener('click', open);
   closeBtn && closeBtn.addEventListener('click', close);

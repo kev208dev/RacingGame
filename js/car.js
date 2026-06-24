@@ -102,23 +102,41 @@ export function createCar3D(carData = {}) {
     }
   });
 
-  // ── 카트라이더 비율 적용: 휠베이스 단축 / 트레드 좁힘 / 휠 반경 ↑ / 부모 Y 스트레치 보정 ──
-  // 부모 model.scale.y = baseS * H 이므로 휠 local.y/Y-radius가 H배 길어짐.
-  // 휠 scale.y = R/H 보정 → 원 단면 유지. wheel.position.y /= H → 지면 접촉 보존.
+  // ── 카트라이더 비율: 휠베이스 단축 / 폭 보정 / 휠 반경 / 부모 Y 스트레치 보정 ──
+  // 휠 그룹은 wheel.rotation.z = π/2 (cylinder axial: local Y → local X).
+  // 부모 model.scale.y = baseS*Hm 이라 cylinder의 한쪽 半경(local X→world Y)이 Hm배 늘어남.
+  // 라운드 단면 유지: wheel.scale.x = Rm/Hm (X = cylinder radius 쪽), Y/Z = Rm.
+  // wheel.position.y /= Hm → 지면 접촉 보존.
   const Hm = KP.HEIGHT_MUL;
   const Rm = KP.WHEEL_RADIUS_MUL;
   const Wm = KP.WHEELBASE_MUL;
   const Tm = KP.TRACK_WIDTH_MUL;
   for (const wg of wheelGroups) {
-    // 휠 자체 스케일: X(축 너비) Z(원 半경 한 축)는 R, Y(원 半경 다른 축)는 R/H로 부모 Y스트레치 상쇄.
-    wg.scale.set(Rm, Rm / Hm, Rm);
-    // 휠 좌표: 휠베이스 단축(Z), 트레드 좁힘(X), 지면 접촉 보존(Y).
+    wg.scale.set(Rm / Hm, Rm, Rm);
     wg.position.x *= Tm;
     wg.position.z *= Wm;
     wg.position.y /= Hm;
     wg.baseY = wg.position.y;
     if (wg.userData) wg.userData.baseY = wg.position.y;
   }
+
+  // ── 돔/캐노피/콕핏 개별 스케일: 본체 위에 얹힌 헬멧/운전석 비율 ──
+  // 부모 Y 스트레치(Hm)는 모든 메시 균등 적용 → 캐노피가 너무 커져 본체 짓누름.
+  // 각 파트 scale.y를 DOME_Y_SHRINK로 보정 + xz 약간 축소 + 위치 살짝 ↓.
+  const domeY = KP.DOME_Y_SHRINK ?? 0.55;
+  const domeXZ = KP.DOME_XZ_SHRINK ?? 0.90;
+  const domeLift = KP.DOME_Y_LIFT ?? -0.15;
+  model.traverse(m => {
+    if (!m.isMesh) return;
+    const n = (m.name || '').toLowerCase();
+    const isDome = n.includes('canopy') || n.includes('cabin')
+      || n.includes('dome') || n.includes('cockpit') || n.includes('helmet');
+    if (!isDome) return;
+    m.scale.y *= domeY;
+    m.scale.x *= domeXZ;
+    m.scale.z *= domeXZ;
+    m.position.y += domeLift;
+  });
 
   root.wheelGroups = wheelGroups;
   root.body        = model;

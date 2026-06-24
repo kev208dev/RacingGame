@@ -78,16 +78,13 @@ function _render() {
   const backBtn  = document.getElementById('btn-back-car');
   const startBtn = document.getElementById('btn-start-game');
   const modeEl = document.getElementById('track-mode-label');
-  const ghostBox = document.getElementById('ghost-option-box');
-  const ghostToggle = document.getElementById('track-ghost-toggle');
   if (modeEl) modeEl.textContent = raceMode === 'timeTrial' ? 'Time Trial - Official records' : raceMode === 'ranked' ? 'Ranked Beta - no official time records' : 'Friendly Online - no official records';
-  if (ghostBox) ghostBox.classList.toggle('hidden', raceMode !== 'timeTrial');
   if (startBtn) startBtn.textContent = raceMode === 'timeTrial' ? 'Start Race' : 'Next';
   if (backBtn)  backBtn.onclick  = () => { if (onBack)   onBack(); };
   if (startBtn) startBtn.onclick = () => {
     if (onSelect) onSelect(TRACKS[selectedIndex], {
       mode: raceMode,
-      ghostEnabled: raceMode === 'timeTrial' && !!ghostToggle?.checked,
+      ghostEnabled: raceMode === 'timeTrial',
     });
   };
 }
